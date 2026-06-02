@@ -1,34 +1,20 @@
-# Node.js dependencies
+# Dependencies
 node_modules/
 
 # Build output
-/dist/
-/build/
+dist/
 
-# Log files
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
+# Local env / logs
 *.log
-
-# Environment variables
 .env
-.env.*
+.env.local
+.env.*.local
 
-# Editor directories and files
-.DS_Store
+# Editor / OS
 .vscode/
 .idea/
-
-# Cache directories
-.cache/
-.out/
-
-# Temporary files
-*.tmp
-*.temp
-
-# OS generated files
+.DS_Store
 Thumbs.db
-ehthumbs.db
-Desktop.ini
+
+# Vercel
+.vercel/
