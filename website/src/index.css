@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  background: #060d0c;
+  color: #eafff8;
+  font-family: 'Satoshi', system-ui, sans-serif;
+}
+
+/* Ambient aurora behind everything */
+.bg-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(60% 50% at 18% 8%, rgba(14, 165, 164, 0.18), transparent 70%),
+    radial-gradient(50% 45% at 92% 18%, rgba(94, 234, 212, 0.12), transparent 70%),
+    radial-gradient(70% 60% at 50% 110%, rgba(14, 165, 164, 0.14), transparent 70%),
+    #060d0c;
+}
+
+/* Subtle film grain */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/[0.04] backdrop-blur-xl border border-white/[0.08];
+  }
+  .glow-ring {
+    box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.08),
+      0 20px 60px -20px rgba(14, 165, 164, 0.45);
+  }
+  .text-gradient {
+    @apply bg-gradient-to-br from-mint to-teal bg-clip-text text-transparent;
+  }
+  .card {
+    @apply glass rounded-3xl p-5;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl bg-mint text-[#042521] font-semibold px-5 py-3 transition-shadow hover:shadow-[0_0_36px_rgba(94,234,212,0.5)] disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl glass px-5 py-3 text-ink hover:border-mint/40 transition-colors;
+  }
+  .field {
+    @apply w-full rounded-2xl bg-black/30 border border-white/10 px-4 py-3 text-ink outline-none focus:border-mint/50 transition-colors placeholder:text-muted/60;
+  }
+  .nav-link {
+    @apply flex items-center gap-3 rounded-2xl px-4 py-3 text-muted hover:text-ink hover:bg-white/[0.04] transition-colors;
+  }
+  .nav-link-active {
+    @apply text-ink bg-mint/[0.12] border border-mint/20;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(94, 234, 212, 0.18);
+  border-radius: 99px;
+}

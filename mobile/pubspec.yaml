@@ -1,0 +1,78 @@
+name: aeris_expense
+description: >
+  AERIS Expense — Android-first expense tracker that auto-reads bank/UPI SMS,
+  stores transactions in Firestore, renders 7+ chart types via fl_chart, and
+  surfaces on-device statistical predictions + cut-down recommendations.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── Firebase
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.7
+  cloud_firestore: ^4.15.6
+  firebase_storage: ^11.6.7
+  firebase_messaging: ^14.7.16
+
+  # ── State management
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+
+  # ── SMS + permissions (Android only)
+  another_telephony: ^0.4.1
+  permission_handler: ^11.3.0
+
+  # ── Charts
+  fl_chart: ^0.66.2
+
+  # ── UI utilities
+  google_fonts: ^6.1.0
+  flutter_svg: ^2.0.9
+  shimmer: ^3.0.0
+  flutter_animate: ^4.5.0
+  intl: ^0.19.0
+  uuid: ^4.3.3
+
+  # ── Local cache (offline-first while Firestore syncs)
+  shared_preferences: ^2.2.2
+  sqflite: ^2.3.2
+  path_provider: ^2.1.2
+  path: ^1.9.0
+
+  # ── Networking + utils
+  http: ^1.2.1
+  collection: ^1.18.0
+  rxdart: ^0.27.7
+
+  # ── Notifications
+  flutter_local_notifications: ^17.0.0
+
+  cupertino_icons: ^1.0.6
+  syncfusion_flutter_charts: ^33.2.8
+  cryptography: ^2.9.0
+  flutter_secure_storage: ^10.3.1
+  confetti: ^0.8.0
+  flutter_timezone: ^5.1.0
+  home_widget: ^0.9.2
+  syncfusion_flutter_xlsio: ^33.2.8
+  share_plus: ">=7.2.2 <10.0.0"
+  syncfusion_officechart: ^33.2.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  riverpod_generator: ^2.4.0
+  build_runner: ^2.4.8
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

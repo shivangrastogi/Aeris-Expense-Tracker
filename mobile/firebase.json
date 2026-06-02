@@ -1,0 +1,1 @@
+{"firestore":{"rules":"firestore.rules"},"flutter":{"platforms":{"android":{"default":{"projectId":"jarvisv1-c40ed","appId":"1:350601698623:android:734e1ed42a98a70a54478a","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"jarvisv1-c40ed","configurations":{"android":"1:350601698623:android:734e1ed42a98a70a54478a"}}}}}}
