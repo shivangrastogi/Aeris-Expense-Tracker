@@ -10,6 +10,16 @@
   -webkit-font-smoothing: antialiased;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  /* Belt-and-suspenders: never let a stray wide element create a horizontal
+     scroll that makes the whole page render as a shrunk desktop view on phones. */
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   background: #060d0c;

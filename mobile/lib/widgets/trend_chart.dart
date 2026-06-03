@@ -20,7 +20,7 @@ class TrendChart extends ConsumerStatefulWidget {
 
 class _TrendChartState extends ConsumerState<TrendChart> {
   int _rangeDays = 90;
-  bool _balance = false; // false = daily spend, true = running balance
+  bool _balance = false; // false = daily spend, true = cumulative net flow
 
   late final ZoomPanBehavior _zoom = ZoomPanBehavior(
     enablePinching: true,
@@ -51,18 +51,23 @@ class _TrendChartState extends ConsumerState<TrendChart> {
             Row(
               children: [
                 Expanded(
-                  child: Text(_balance ? 'Running balance' : 'Daily spend trend',
+                  child: Text(_balance ? 'Cumulative net flow' : 'Daily spend trend',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           )),
                 ),
-                // Spend / Balance toggle
+                // Spend / Net toggle. "Net" is cumulative (credits − debits)
+                // over the window, not a real account balance (we don't have
+                // your opening balance), so it's labelled honestly.
                 ToggleButtons(
                   isSelected: [!_balance, _balance],
                   onPressed: (i) => setState(() => _balance = i == 1),
                   borderRadius: BorderRadius.circular(8),
                   constraints: const BoxConstraints(minHeight: 30, minWidth: 64),
-                  children: const [Text('Spend'), Text('Balance')],
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  selectedColor: Theme.of(context).colorScheme.onPrimary,
+                  fillColor: Theme.of(context).colorScheme.primary,
+                  children: const [Text('Spend'), Text('Net')],
                 ),
               ],
             ),
@@ -119,6 +124,10 @@ class _TrendChartState extends ConsumerState<TrendChart> {
                           dataSource: data,
                           xValueMapper: (p, _) => p.date,
                           yValueMapper: (p, _) => p.value,
+                          // Monotonic spline: never overshoots between points,
+                          // so the curve can't imply spend on a zero day or dip
+                          // below the real daily amounts.
+                          splineType: SplineType.monotonic,
                           borderWidth: 2.5,
                           borderColor: color,
                           gradient: LinearGradient(

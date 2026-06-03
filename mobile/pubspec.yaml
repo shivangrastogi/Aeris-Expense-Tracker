@@ -65,6 +65,21 @@ dependencies:
   share_plus: ">=7.2.2 <10.0.0"
   syncfusion_officechart: ^33.2.8
 
+  # ── Profile picture (pick from gallery/camera; bytes are encrypted in Firestore)
+  image_picker: ^1.1.2
+
+  # ── Biometric / device-credential app lock
+  local_auth: ^2.3.0
+
+  # ── Bank statement import (PDF / CSV / Excel → transactions)
+  file_picker: 8.0.7   # pinned: >=8.1.0 needs web ^1.0 which conflicts with the old firebase_messaging
+  csv: ^6.0.0
+  syncfusion_flutter_pdf: ^33.2.8
+  # XLSX is read via archive (zip) + xml — avoids the `excel` package's
+  # archive ^3 pin which conflicts with syncfusion_officechart's archive ^4.
+  archive: ^4.0.0
+  xml: ^6.5.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

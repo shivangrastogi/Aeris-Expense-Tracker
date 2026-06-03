@@ -1,3 +1,5 @@
+import 'dart:isolate';
+
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 
 import '../models/budget.dart';
@@ -38,13 +40,56 @@ class FirestoreService {
     Query<Map<String, dynamic>> q =
         _txCol(uid).orderBy('timestamp', descending: true);
     if (limit != null) q = q.limit(limit);
-    return q.snapshots().asyncMap((s) async {
-      final out = <Transaction>[];
-      for (final d in s.docs) {
-        out.add(await _decodeTxn(d.id, d.data()));
+    return q.snapshots().asyncMap((s) => _decodeAll(s.docs));
+  }
+
+  /// Decode a whole snapshot, reusing the per-doc cache and offloading any
+  /// uncached AES-GCM work to a background isolate so the UI never blocks while
+  /// the dashboard first loads.
+  Future<List<Transaction>> _decodeAll(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+    final dek = KeyVault.instance.dek;
+    final results = List<Transaction?>.filled(docs.length, null);
+    final pendingIdx = <int>[];
+    final pendingBlobs = <String>[];
+
+    for (var i = 0; i < docs.length; i++) {
+      final data = docs[i].data();
+      final enc = data['enc'];
+      if (enc is String && dek != null) {
+        final cached = _txCache[docs[i].id];
+        if (cached != null && cached.enc == enc) {
+          results[i] = cached.txn; // reuse — no re-decrypt
+        } else {
+          pendingIdx.add(i);
+          pendingBlobs.add(enc);
+        }
+      } else {
+        results[i] = Transaction.fromMap(docs[i].id, data); // legacy plaintext
       }
-      return out;
-    });
+    }
+
+    if (pendingBlobs.isNotEmpty && dek != null) {
+      // Big first load → decrypt in an isolate; a couple of new docs → inline
+      // (avoids isolate spawn overhead on live updates).
+      final maps = pendingBlobs.length >= 12
+          ? await Isolate.run(() => _decryptBlobs(pendingBlobs, dek))
+          : await _decryptBlobs(pendingBlobs, dek);
+      for (var j = 0; j < pendingIdx.length; j++) {
+        final i = pendingIdx[j];
+        final m = maps[j];
+        if (m == null) {
+          results[i] = Transaction.fromMap(docs[i].id, docs[i].data());
+          continue;
+        }
+        m['timestamp'] =
+            Timestamp.fromMillisecondsSinceEpoch((m['timestamp'] as num).toInt());
+        final txn = Transaction.fromMap(docs[i].id, m);
+        _txCache[docs[i].id] = (enc: pendingBlobs[j], txn: txn);
+        results[i] = txn;
+      }
+    }
+    return [for (final t in results) if (t != null) t];
   }
 
   Future<List<Transaction>> fetchTransactions(String uid,
@@ -200,6 +245,50 @@ class FirestoreService {
   Future<void> saveKeys(String uid, Map<String, dynamic> data) =>
       _keysDoc(uid).set(data);
 
+  // ─ Opening balances (encrypted) ────────────────────────────
+  // Per-account opening balance so we can show a TRUE running balance
+  // (opening + cumulative net). Stored as one encrypted {key: amount} map.
+  DocumentReference<Map<String, dynamic>> _balancesDoc(String uid) =>
+      _db.collection('users').doc(uid).collection('meta').doc('balances');
+
+  Map<String, double> _decodeBalances(Map<String, dynamic>? m) {
+    final raw = (m?['balances'] as Map?) ?? const {};
+    return raw.map((k, v) => MapEntry(k.toString(), (v as num).toDouble()));
+  }
+
+  Stream<Map<String, double>> watchOpeningBalances(String uid) =>
+      _balancesDoc(uid).snapshots().asyncMap((d) async {
+        final dek = KeyVault.instance.dek;
+        final enc = d.data()?['enc'];
+        if (enc is String && dek != null) {
+          try {
+            return _decodeBalances(
+                await CryptoService.instance.decryptJson(enc, dek));
+          } catch (_) {/* fall through */}
+        }
+        return <String, double>{};
+      });
+
+  Future<void> setOpeningBalance(
+      String uid, String accountKey, double amount) async {
+    final dek = KeyVault.instance.dek;
+    if (dek == null) return;
+    final snap = await _balancesDoc(uid).get();
+    final current = <String, double>{};
+    final enc = snap.data()?['enc'];
+    if (enc is String) {
+      try {
+        current.addAll(
+            _decodeBalances(await CryptoService.instance.decryptJson(enc, dek)));
+      } catch (_) {/* start fresh */}
+    }
+    current[accountKey] = amount;
+    await _balancesDoc(uid).set({
+      'enc': await CryptoService.instance.encryptJson({'balances': current}, dek),
+      'v': 1,
+    });
+  }
+
   /// Re-encrypt any plaintext transactions/budgets left from before E2E was
   /// enabled. Idempotent — docs already carrying an `enc` blob are skipped.
   /// Requires the vault to be unlocked.
@@ -256,4 +345,21 @@ class FirestoreService {
 
   Future<void> deleteGoal(String uid, String id) =>
       _goalsCol(uid).doc(id).delete();
+}
+
+/// Top-level so it can run inside `Isolate.run`. Decrypts a batch of `enc`
+/// blobs with the data key; a null entry means that blob failed to decrypt.
+/// Pure-Dart AES-GCM, so it runs fine off the main isolate.
+Future<List<Map<String, dynamic>?>> _decryptBlobs(
+    List<String> blobs, List<int> key) async {
+  final cs = CryptoService.instance;
+  final out = <Map<String, dynamic>?>[];
+  for (final b in blobs) {
+    try {
+      out.add(await cs.decryptJson(b, key));
+    } catch (_) {
+      out.add(null);
+    }
+  }
+  return out;
 }

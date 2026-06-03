@@ -12,7 +12,9 @@ class TransactionsScreen extends ConsumerStatefulWidget {
   /// Optional starting filters (used when opened from Home's debit/credit tap).
   final TxnDirection? initialDir;
   final String? initialCategory;
-  const TransactionsScreen({super.key, this.initialDir, this.initialCategory});
+  final String? initialAccount; // filter to one account (key from accounts_provider)
+  const TransactionsScreen(
+      {super.key, this.initialDir, this.initialCategory, this.initialAccount});
 
   @override
   ConsumerState<TransactionsScreen> createState() => _TransactionsScreenState();
@@ -21,6 +23,7 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   String _query = '';
   String? _filterCategory;
+  String? _filterAccount;
   TxnDirection? _filterDir;
   DateTimeRange? _dateRange;
   final ScrollController _scroll = ScrollController();
@@ -32,6 +35,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     super.initState();
     _filterDir = widget.initialDir;
     _filterCategory = widget.initialCategory;
+    _filterAccount = widget.initialAccount;
     _scroll.addListener(() {
       if (_scroll.hasClients &&
           _scroll.position.pixels >= _scroll.position.maxScrollExtent - 300 &&
@@ -74,6 +78,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       appBar: AppBar(
         title: const Text('Transactions'),
         actions: [
+          IconButton(
+            tooltip: 'Import statement',
+            icon: const Icon(Icons.upload_file),
+            onPressed: () =>
+                Navigator.pushNamed(context, '/transactions/import'),
+          ),
           IconButton(
             tooltip: 'Filter by date',
             icon: Icon(_dateRange == null
@@ -146,6 +156,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   }
                   if (_filterCategory != null &&
                       t.categoryId != _filterCategory) return false;
+                  if (_filterAccount != null) {
+                    final acc = (t.account == null || t.account!.trim().isEmpty)
+                        ? 'unassigned'
+                        : t.account!.trim();
+                    if (acc != _filterAccount) return false;
+                  }
                   if (!_inRange(t.timestamp)) return false;
                   if (_query.isEmpty) return true;
                   return (t.merchant ?? '').toLowerCase().contains(_query) ||

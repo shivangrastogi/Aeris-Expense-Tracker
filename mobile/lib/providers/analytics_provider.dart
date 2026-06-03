@@ -55,6 +55,7 @@ class AnalyticsSnapshot {
   final double monthNet;
   final double dailyAvgExpense;
   final Map<String, double> byCategory;
+  final Map<String, int> countByCategory; // # of debit txns per category
   final Map<String, double> dailyExpenseSeries; // 'YYYY-MM-DD' → expense
   final Map<String, double> monthlyExpenseSeries; // all-time 'YYYY-MM'
   final Map<String, double> monthlyIncomeSeries;
@@ -69,6 +70,7 @@ class AnalyticsSnapshot {
     required this.monthNet,
     required this.dailyAvgExpense,
     required this.byCategory,
+    required this.countByCategory,
     required this.dailyExpenseSeries,
     required this.monthlyExpenseSeries,
     required this.monthlyIncomeSeries,
@@ -83,6 +85,7 @@ class AnalyticsSnapshot {
     final end = range.end;
     double inSum = 0, outSum = 0;
     final byCat = <String, double>{};
+    final countByCat = <String, int>{};
     final daily = <String, double>{};
     final mExp = <String, double>{};
     final mInc = <String, double>{};
@@ -104,6 +107,7 @@ class AnalyticsSnapshot {
       }
       outSum += t.amount;
       byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.amount;
+      countByCat[t.categoryId] = (countByCat[t.categoryId] ?? 0) + 1;
       final dk = '${t.timestamp.year}-'
           '${t.timestamp.month.toString().padLeft(2, '0')}-'
           '${t.timestamp.day.toString().padLeft(2, '0')}';
@@ -130,6 +134,7 @@ class AnalyticsSnapshot {
       monthNet: inSum - outSum,
       dailyAvgExpense: avg,
       byCategory: byCat,
+      countByCategory: countByCat,
       dailyExpenseSeries: daily,
       monthlyExpenseSeries: mExp,
       monthlyIncomeSeries: mInc,

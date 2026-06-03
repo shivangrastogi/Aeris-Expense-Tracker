@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "350601698623",
+    "project_id": "jarvisv1-c40ed",
+    "storage_bucket": "jarvisv1-c40ed.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:350601698623:android:734e1ed42a98a70a54478a",
+        "android_client_info": {
+          "package_name": "com.aeris.expense"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAhfTir-XeRYSVzm1bWzQrFJu7nksKOuVg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

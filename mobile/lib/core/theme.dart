@@ -53,9 +53,9 @@ class AerisColors {
   ];
 }
 
-ThemeData buildAerisTheme(Brightness brightness) {
+ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
   final scheme = ColorScheme.fromSeed(
-    seedColor: AerisColors.seed,
+    seedColor: seed ?? AerisColors.seed,
     brightness: brightness,
   );
   final base = brightness == Brightness.light ? ThemeData.light() : ThemeData.dark();
@@ -104,7 +104,13 @@ ThemeData buildAerisTheme(Brightness brightness) {
     ),
     chipTheme: ChipThemeData(
       backgroundColor: scheme.surfaceVariant.withOpacity(0.6),
-      labelStyle: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
+      // Pin label + icon colour to the scheme — without this the label has no
+      // colour and falls back to white (fine on dark, invisible on light).
+      labelStyle: GoogleFonts.inter(
+          fontSize: 12, fontWeight: FontWeight.w500, color: scheme.onSurface),
+      secondaryLabelStyle: GoogleFonts.inter(
+          fontSize: 12, fontWeight: FontWeight.w500, color: scheme.onSurface),
+      iconTheme: IconThemeData(color: scheme.onSurfaceVariant, size: 18),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       side: BorderSide.none,
     ),

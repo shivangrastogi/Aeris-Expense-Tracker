@@ -22,10 +22,12 @@ class ProfileScreen extends ConsumerWidget {
               child: Row(children: [
                 CircleAvatar(
                   radius: 32,
-                  backgroundImage: profile?.photoUrl != null
-                      ? NetworkImage(profile!.photoUrl!)
-                      : null,
-                  child: profile?.photoUrl == null
+                  backgroundImage: profile?.photoBytes != null
+                      ? MemoryImage(profile!.photoBytes!)
+                      : (profile?.photoUrl != null
+                          ? NetworkImage(profile!.photoUrl!) as ImageProvider
+                          : null),
+                  child: (profile?.photoBytes == null && profile?.photoUrl == null)
                       ? const Icon(Icons.person, size: 30)
                       : null,
                 ),
@@ -57,6 +59,12 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 8),
+          _tile(context, Icons.videogame_asset, 'Aeris World · avatars, challenges & more',
+              () => Navigator.pushNamed(context, AppRoutes.aerisWorld)),
+          _tile(context, Icons.account_balance, 'Accounts',
+              () => Navigator.pushNamed(context, AppRoutes.accounts)),
+          _tile(context, Icons.upload_file, 'Import bank statement',
+              () => Navigator.pushNamed(context, AppRoutes.importStatement)),
           _tile(context, Icons.sms, 'Review SMS imports',
               () => Navigator.pushNamed(context, AppRoutes.smsReview)),
           _tile(context, Icons.settings, 'Settings',

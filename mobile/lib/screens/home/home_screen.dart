@@ -5,11 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/routes.dart';
 import '../../core/theme.dart';
+import '../../models/avatar_skin.dart';
 import '../../models/category.dart';
 import '../../models/transaction.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/budgets_provider.dart';
+import '../../providers/gamification_provider.dart';
+import '../../providers/insights_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../services/quote_service.dart';
 import '../../services/sms_service.dart';
@@ -17,6 +20,7 @@ import '../../utils/formatters.dart';
 import '../../widgets/animated_count.dart';
 import '../../widgets/budget_ring.dart';
 import '../../widgets/gradient_card.dart';
+import '../../widgets/aeris_avatar.dart';
 import '../../widgets/greeting_header.dart';
 import '../../widgets/mascot/aeris_mascot.dart';
 import '../../widgets/quote_carousel.dart';
@@ -55,6 +59,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final budgets = ref.watch(budgetsStreamProvider).asData?.value ?? const [];
     final importProgress = ref.watch(importProgressProvider);
     final quote = ref.watch(quoteProvider);
+    final insights = ref.watch(insightsProvider).asData?.value;
+    final hidden = ref.watch(gamificationProvider.select((s) => s.hiddenCards));
+    final aeris = ref.watch(avatarStatusProvider);
+    final gam = ref.watch(gamificationProvider);
+    final riskyBudgets = insights == null
+        ? 0
+        : insights.budgetProjections
+            .where((p) =>
+                p.alreadyOver ||
+                (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))
+            .length;
     final name = profile?.displayName?.split(' ').first ?? 'there';
 
     return Scaffold(
@@ -127,10 +142,114 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               loading: () => const _LoadingCards(),
               error: (e, _) => Text('Could not load analytics: $e'),
             ),
+            if (!hidden.contains('aeris')) ...[
+              const SizedBox(height: 14),
+              GestureDetector(
+                onTap: () => Navigator.pushNamed(context, AppRoutes.aerisWorld),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      // Keep the skin's hue but stay dark enough that the white
+                      // text reads in BOTH light and dark mode (some skins, like
+                      // the default Spark, have a very light core).
+                      colors: [
+                        Color.lerp(aeris.skin.aura, Colors.black, 0.05)!,
+                        Color.lerp(aeris.skin.aura, Colors.black, 0.38)!,
+                      ],
+                    ),
+                  ),
+                  child: Row(children: [
+                    AerisAvatar(
+                        skin: aeris.skin,
+                        stage: aeris.stage,
+                        mood: aeris.mood,
+                        size: 62,
+                        animate: false),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Level ${aeris.level} · ${stageNames[aeris.stage]}',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 16)),
+                          const SizedBox(height: 6),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: LinearProgressIndicator(
+                              value: (gam.earned % auraPerLevel) / auraPerLevel,
+                              minHeight: 7,
+                              backgroundColor: Colors.white24,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                              '${gam.available} Aura · ${auraToNextLevel(gam.earned)} to level ${aeris.level + 1}',
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Colors.white),
+                  ]),
+                ),
+              ).animate(delay: 100.ms).fadeIn(duration: 350.ms),
+            ],
+            if (insights != null && !hidden.contains('forecast')) ...[
+              const SizedBox(height: 14),
+              Card(
+                color: riskyBudgets > 0
+                    ? AerisColors.warning.withOpacity(0.10)
+                    : AerisColors.info.withOpacity(0.08),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(children: [
+                    Icon(
+                        riskyBudgets > 0
+                            ? Icons.warning_amber_rounded
+                            : Icons.insights,
+                        color: riskyBudgets > 0
+                            ? AerisColors.warning
+                            : AerisColors.info),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(insights.monthEstimate.label,
+                              style: const TextStyle(fontSize: 12)),
+                          Text(formatRupees(insights.monthEstimate.estimate),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w800, fontSize: 18)),
+                          if (riskyBudgets > 0)
+                            Text(
+                                '$riskyBudgets budget${riskyBudgets == 1 ? '' : 's'} on track to exceed — see AI tab',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AerisColors.warning,
+                                    fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ]),
+                ),
+              ).animate(delay: 120.ms).fadeIn(duration: 350.ms),
+            ],
+            if (!hidden.contains('quote')) ...[
+              const SizedBox(height: 14),
+              _quoteCard(quote),
+            ],
             const SizedBox(height: 14),
-            _quoteCard(quote),
-            const SizedBox(height: 14),
-            Card(
+            if (!hidden.contains('goals'))
+              Card(
               child: ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(8),
@@ -148,7 +267,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ).animate(delay: 160.ms).fadeIn(duration: 350.ms),
             const SizedBox(height: 10),
-            Card(
+            if (!hidden.contains('subs'))
+              Card(
               child: ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(8),

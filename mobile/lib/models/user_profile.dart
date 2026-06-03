@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserProfile {
@@ -10,6 +12,14 @@ class UserProfile {
   final double monthlyIncome;   // for budget recommendations
   final DateTime createdAt;
 
+  /// Decrypted profile-picture bytes (transient — never written to Firestore in
+  /// the clear). The picture is stored encrypted as a `photoEnc` blob; this
+  /// holds the decrypted image in memory for display. See [AuthService].
+  final Uint8List? photoBytes;
+
+  /// Transient flag: when true, [AuthService] removes the stored photo on save.
+  final bool photoCleared;
+
   const UserProfile({
     required this.uid,
     required this.email,
@@ -19,6 +29,8 @@ class UserProfile {
     this.photoUrl,
     this.currency = 'INR',
     this.monthlyIncome = 0,
+    this.photoBytes,
+    this.photoCleared = false,
   });
 
   Map<String, dynamic> toMap() => {
@@ -48,14 +60,21 @@ class UserProfile {
     String? photoUrl,
     String? currency,
     double? monthlyIncome,
-  }) => UserProfile(
-        uid: uid,
-        email: email,
-        createdAt: createdAt,
-        displayName: displayName ?? this.displayName,
-        phone: phone ?? this.phone,
-        photoUrl: photoUrl ?? this.photoUrl,
-        currency: currency ?? this.currency,
-        monthlyIncome: monthlyIncome ?? this.monthlyIncome,
-      );
+    Uint8List? photoBytes,
+    bool? photoCleared,
+  }) {
+    final cleared = photoCleared ?? false;
+    return UserProfile(
+      uid: uid,
+      email: email,
+      createdAt: createdAt,
+      displayName: displayName ?? this.displayName,
+      phone: phone ?? this.phone,
+      photoUrl: photoUrl ?? this.photoUrl,
+      currency: currency ?? this.currency,
+      monthlyIncome: monthlyIncome ?? this.monthlyIncome,
+      photoBytes: cleared ? null : (photoBytes ?? this.photoBytes),
+      photoCleared: cleared,
+    );
+  }
 }

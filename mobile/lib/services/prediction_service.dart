@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../models/budget.dart';
 import '../models/category.dart';
 import '../models/insight.dart';
 import '../models/transaction.dart';
@@ -96,6 +97,47 @@ class PredictionService {
       ));
     });
     out.sort((a, b) => b.estimate.compareTo(a.estimate));
+    return out;
+  }
+
+  /// Project each budgeted category to month-end at the current burn rate,
+  /// and estimate how many days until the cap is breached. Sorted worst-first.
+  List<BudgetProjection> projectBudgets(
+      List<Transaction> txns, List<Budget> budgets) {
+    final now = DateTime.now();
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final dayIdx = now.day;
+    final spent = <String, double>{};
+    for (final t in txns.where((t) => t.isDebit)) {
+      if (t.timestamp.year == now.year && t.timestamp.month == now.month) {
+        spent[t.categoryId] = (spent[t.categoryId] ?? 0) + t.amount;
+      }
+    }
+    final out = <BudgetProjection>[];
+    for (final b in budgets.where((b) => b.monthlyCap > 0)) {
+      final s = spent[b.categoryId] ?? 0;
+      final dailyRate = dayIdx == 0 ? 0.0 : s / dayIdx;
+      final projected = dailyRate * daysInMonth;
+      final alreadyOver = s > b.monthlyCap;
+      int? daysUntil;
+      if (alreadyOver) {
+        daysUntil = 0;
+      } else if (dailyRate > 0 && projected > b.monthlyCap) {
+        daysUntil = ((b.monthlyCap - s) / dailyRate).ceil();
+        final remainingMonthDays = daysInMonth - dayIdx;
+        if (daysUntil > remainingMonthDays) daysUntil = null;
+      }
+      out.add(BudgetProjection(
+        categoryId: b.categoryId,
+        cap: b.monthlyCap,
+        spentSoFar: s,
+        projectedMonthEnd: projected,
+        alreadyOver: alreadyOver,
+        daysUntilExceed: daysUntil,
+      ));
+    }
+    out.sort((a, b) => (b.projectedMonthEnd / b.cap)
+        .compareTo(a.projectedMonthEnd / a.cap));
     return out;
   }
 

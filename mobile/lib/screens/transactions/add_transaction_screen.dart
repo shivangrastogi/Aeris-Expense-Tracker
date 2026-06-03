@@ -4,11 +4,14 @@ import 'package:uuid/uuid.dart';
 
 import '../../models/category.dart';
 import '../../models/transaction.dart';
+import '../../providers/accounts_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/transactions_provider.dart';
 
 class AddTransactionScreen extends ConsumerStatefulWidget {
-  const AddTransactionScreen({super.key});
+  /// Optionally open straight into Income or Expense mode.
+  final TxnDirection? initialDirection;
+  const AddTransactionScreen({super.key, this.initialDirection});
   @override
   ConsumerState<AddTransactionScreen> createState() => _AddTransactionScreenState();
 }
@@ -17,15 +20,30 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   final _amount = TextEditingController();
   final _merchant = TextEditingController();
   final _note = TextEditingController();
-  TxnDirection _dir = TxnDirection.debit;
+  late TxnDirection _dir = widget.initialDirection ?? TxnDirection.debit;
   String _categoryId = 'other';
+  String? _account; // account key, null = no account
   DateTime _when = DateTime.now();
   bool _busy = false;
 
   @override
+  void dispose() {
+    _amount.dispose();
+    _merchant.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final income = _dir == TxnDirection.credit;
+    // Real accounts (exclude the synthetic 'unassigned' bucket) for the picker.
+    final accounts = ref
+        .watch(accountsProvider)
+        .where((a) => a.key != unassignedAccount)
+        .toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('Add transaction')),
+      appBar: AppBar(title: Text(income ? 'Add income' : 'Add transaction')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -40,7 +58,13 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                     label: Text('Income'), icon: Icon(Icons.north)),
               ],
               selected: {_dir},
-              onSelectionChanged: (s) => setState(() => _dir = s.first),
+              onSelectionChanged: (s) => setState(() {
+                _dir = s.first;
+                // Sensible default category when switching to income.
+                if (_dir == TxnDirection.credit && _categoryId == 'other') {
+                  _categoryId = 'salary';
+                }
+              }),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -52,8 +76,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: _merchant,
-              decoration: const InputDecoration(
-                labelText: 'Merchant / payee', prefixIcon: Icon(Icons.store)),
+              decoration: InputDecoration(
+                labelText: income ? 'Source / payer' : 'Merchant / payee',
+                prefixIcon: const Icon(Icons.store)),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -69,6 +94,21 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                   ])),
               ],
               onChanged: (v) => setState(() => _categoryId = v ?? 'other'),
+            ),
+            const SizedBox(height: 12),
+            // Account picker (so manual entries feed the Accounts view).
+            DropdownButtonFormField<String?>(
+              value: _account,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                  labelText: 'Account (optional)',
+                  prefixIcon: Icon(Icons.account_balance)),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('No account')),
+                for (final a in accounts)
+                  DropdownMenuItem(value: a.key, child: Text(a.label)),
+              ],
+              onChanged: (v) => setState(() => _account = v),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -95,7 +135,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
             const SizedBox(height: 16),
             ElevatedButton.icon(
               icon: const Icon(Icons.save),
-              label: const Text('Save transaction'),
+              label: Text(income ? 'Save income' : 'Save transaction'),
               onPressed: _busy ? null : _save,
             ),
           ],
@@ -120,6 +160,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
       direction: _dir,
       timestamp: _when,
       merchant: _merchant.text.trim().isEmpty ? null : _merchant.text.trim(),
+      account: _account,
       categoryId: _categoryId,
       note: _note.text.trim().isEmpty ? null : _note.text.trim(),
       source: TxnSource.manual,

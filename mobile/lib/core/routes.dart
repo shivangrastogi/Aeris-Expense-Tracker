@@ -7,8 +7,11 @@ import '../screens/home/root_shell.dart';
 import '../screens/transactions/add_transaction_screen.dart';
 import '../screens/transactions/transaction_detail_screen.dart';
 import '../screens/transactions/transactions_screen.dart';
+import '../screens/transactions/statement_import_screen.dart';
 import '../screens/profile/edit_profile_screen.dart';
 import '../screens/profile/settings_screen.dart';
+import '../screens/accounts/accounts_screen.dart';
+import '../screens/gamification/aeris_world_screen.dart';
 import '../screens/sms_inbox/sms_review_screen.dart';
 import '../screens/budgets/budget_edit_screen.dart';
 import '../screens/goals/goals_screen.dart';
@@ -25,6 +28,9 @@ class AppRoutes {
   static const addTxn = '/transactions/add';
   static const txnDetail = '/transactions/detail';
   static const transactions = '/transactions';
+  static const importStatement = '/transactions/import';
+  static const accounts = '/accounts';
+  static const aerisWorld = '/aeris-world';
   static const editProfile = '/profile/edit';
   static const settings = '/settings';
   static const smsReview = '/sms/review';
@@ -49,7 +55,8 @@ class AppRoutes {
         page = const RootShell();
         break;
       case addTxn:
-        page = const AddTransactionScreen();
+        page = AddTransactionScreen(
+            initialDirection: s.arguments as TxnDirection?);
         break;
       case transactions:
         final a = s.arguments;
@@ -60,6 +67,15 @@ class AppRoutes {
         break;
       case txnDetail:
         page = TransactionDetailScreen(txn: s.arguments as Transaction);
+        break;
+      case importStatement:
+        page = const StatementImportScreen();
+        break;
+      case accounts:
+        page = const AccountsScreen();
+        break;
+      case aerisWorld:
+        page = const AerisWorldScreen();
         break;
       case editProfile:
         page = const EditProfileScreen();

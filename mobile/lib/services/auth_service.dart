@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -56,6 +57,19 @@ class AuthService {
     m['incomeEnc'] =
         await CryptoService.instance.encryptJson({'income': p.monthlyIncome}, dek);
     if (deleteLegacy) m['monthlyIncome'] = FieldValue.delete();
+
+    // Profile picture — encrypt the image BYTES (never a clear URL or the raw
+    // image). Stored as a `photoEnc` blob, just like income. If photoBytes is
+    // null and the user didn't explicitly clear it, leave photoEnc untouched so
+    // a name-only edit (merge write) keeps the existing picture.
+    m.remove('photoUrl');
+    if (p.photoBytes != null) {
+      m['photoEnc'] = await CryptoService.instance.encryptBytes(p.photoBytes!, dek);
+      if (deleteLegacy) m['photoUrl'] = FieldValue.delete();
+    } else if (p.photoCleared) {
+      m['photoEnc'] = FieldValue.delete();
+      m['photoUrl'] = FieldValue.delete();
+    }
     return m;
   }
 
@@ -194,7 +208,15 @@ class AuthService {
         data['monthlyIncome'] = (dec['income'] as num?)?.toDouble() ?? 0;
       } catch (_) {/* leave as-is if it can't be decrypted */}
     }
-    return UserProfile.fromMap(uid, data);
+    var profile = UserProfile.fromMap(uid, data);
+    if (data['photoEnc'] is String && dek != null) {
+      try {
+        final bytes = await CryptoService.instance
+            .decryptBytes(data['photoEnc'] as String, dek);
+        profile = profile.copyWith(photoBytes: Uint8List.fromList(bytes));
+      } catch (_) {/* picture stays empty if it can't be decrypted */}
+    }
+    return profile;
   }
 
   Future<void> saveProfile(UserProfile p) async {

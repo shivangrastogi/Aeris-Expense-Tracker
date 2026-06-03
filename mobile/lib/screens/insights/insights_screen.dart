@@ -35,6 +35,12 @@ class InsightsScreen extends ConsumerWidget {
             const MascotCard(),
             const SizedBox(height: 12),
             _PredictionCard(p: bundle.monthEstimate, hero: true),
+            if (bundle.budgetProjections.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _SectionTitle('Budget projections'),
+              for (final bp in bundle.budgetProjections)
+                _BudgetProjectionCard(bp: bp),
+            ],
             const SizedBox(height: 16),
             _SectionTitle('Recommendations'),
             ...bundle.recommendations.map(_RecCard.new),
@@ -116,6 +122,69 @@ class _PredictionCard extends StatelessWidget {
             Text(p.basis, style: TextStyle(
                 fontSize: 11,
                 color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BudgetProjectionCard extends StatelessWidget {
+  final BudgetProjection bp;
+  const _BudgetProjectionCard({required this.bp});
+
+  @override
+  Widget build(BuildContext context) {
+    final cat = Categories.byId(bp.categoryId);
+    final (Color color, IconData icon, String status) = bp.alreadyOver
+        ? (AerisColors.debit, Icons.error_outline,
+            'Over budget by ${formatRupees(bp.spentSoFar - bp.cap, compact: true)}')
+        : bp.willExceed
+            ? (AerisColors.warning, Icons.trending_up,
+                bp.daysUntilExceed != null
+                    ? 'On pace to exceed in ~${bp.daysUntilExceed} day${bp.daysUntilExceed == 1 ? '' : 's'} '
+                        '(≈${formatRupees(bp.projectedMonthEnd, compact: true)} by month-end)'
+                    : 'Projected ≈${formatRupees(bp.projectedMonthEnd, compact: true)} by month-end')
+            : (AerisColors.credit, Icons.check_circle_outline,
+                'On track — projected ≈${formatRupees(bp.projectedMonthEnd, compact: true)} of ${formatRupees(bp.cap, compact: true)}');
+    final pct = bp.cap <= 0 ? 0.0 : (bp.spentSoFar / bp.cap).clamp(0.0, 1.0);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(cat.icon, color: cat.color, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: Text(cat.label,
+                      style: const TextStyle(fontWeight: FontWeight.w700))),
+              Text(
+                  '${formatRupees(bp.spentSoFar, compact: true)} / ${formatRupees(bp.cap, compact: true)}',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: pct,
+                minHeight: 8,
+                color: color,
+                backgroundColor: color.withOpacity(0.12),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(status,
+                    style: TextStyle(
+                        fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+              ),
+            ]),
           ],
         ),
       ),

@@ -26,6 +26,7 @@ class ExportService {
     final wb = xlsio.Workbook();
     _summary(wb, txns);
     _transactions(wb, txns);
+    _accounts(wb, txns);
     _categories(wb, txns);
     _monthly(wb, txns);
     _topMerchants(wb, txns);
@@ -110,6 +111,51 @@ class ExportService {
       r++;
     }
     sh.getRangeByName('A1:G1').autoFitColumns();
+  }
+
+  // Per-account totals (Spent / Received / Net / count), grouped by the
+  // account tag on each transaction. Powers the "different per bank account"
+  // breakdown in the export.
+  void _accounts(xlsio.Workbook wb, List<Transaction> txns) {
+    final sh = wb.worksheets.addWithName('Accounts');
+    final spent = <String, double>{};
+    final received = <String, double>{};
+    final count = <String, int>{};
+    for (final t in txns) {
+      final k = (t.account == null || t.account!.trim().isEmpty)
+          ? 'Unassigned'
+          : 'A/C ${t.account!.trim()}';
+      if (t.isCredit) {
+        received[k] = (received[k] ?? 0) + t.amount;
+      } else {
+        spent[k] = (spent[k] ?? 0) + t.amount;
+      }
+      count[k] = (count[k] ?? 0) + 1;
+    }
+    const headers = ['Account', 'Spent', 'Received', 'Net', 'Transactions'];
+    for (var i = 0; i < headers.length; i++) {
+      sh.getRangeByIndex(1, i + 1).setText(headers[i]);
+    }
+    _header(sh.getRangeByName('A1:E1'));
+    final keys = count.keys.toList()
+      ..sort((a, b) => (count[b] ?? 0).compareTo(count[a] ?? 0));
+    var r = 2;
+    for (final k in keys) {
+      final s = spent[k] ?? 0, rcv = received[k] ?? 0;
+      sh.getRangeByIndex(r, 1).setText(k);
+      sh.getRangeByIndex(r, 2)
+        ..setNumber(s)
+        ..numberFormat = _money;
+      sh.getRangeByIndex(r, 3)
+        ..setNumber(rcv)
+        ..numberFormat = _money;
+      sh.getRangeByIndex(r, 4)
+        ..setNumber(rcv - s)
+        ..numberFormat = _money;
+      sh.getRangeByIndex(r, 5).setNumber((count[k] ?? 0).toDouble());
+      r++;
+    }
+    sh.getRangeByName('A1:E1').autoFitColumns();
   }
 
   void _categories(xlsio.Workbook wb, List<Transaction> txns) {

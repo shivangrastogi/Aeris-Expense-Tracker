@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../providers/budgets_provider.dart';
 import '../../providers/transactions_provider.dart';
+import '../../services/app_lock_service.dart';
 import '../../services/export_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/prediction_service.dart';
@@ -25,6 +27,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _encrypting = false;
   bool _reminders = false;
   bool _exporting = false;
+  bool _appLock = false;
+  bool _bgAllowed = false;
 
   Future<void> _export() async {
     final messenger = ScaffoldMessenger.of(context);
@@ -54,12 +58,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _refresh() async {
     final g = await SmsService.instance.hasPermission();
     final prefs = await SharedPreferences.getInstance();
+    final lock = await AppLockService.instance.isEnabled();
+    final bg = await Permission.ignoreBatteryOptimizations.isGranted;
     if (mounted) {
       setState(() {
         _smsGranted = g;
         _reminders = prefs.getBool('reminders_on') ?? false;
+        _appLock = lock;
+        _bgAllowed = bg;
       });
     }
+  }
+
+  /// Ask the OS to exempt AERIS from battery optimisation (one-tap system
+  /// dialog). On OEMs that also gate "auto-launch", we point the user to the
+  /// app's system settings page as a fallback.
+  Future<void> _allowBackground() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final status = await Permission.ignoreBatteryOptimizations.request();
+    if (mounted) setState(() => _bgAllowed = status.isGranted);
+    if (!status.isGranted) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text(
+            'On Realme/Xiaomi also turn on "Auto-launch" / set battery to '
+            '"Unrestricted" in app settings.'),
+      ));
+    }
+  }
+
+  Future<void> _toggleAppLock(bool v) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (v) {
+      if (!await AppLockService.instance.isAvailable()) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text(
+                'No biometric or device PIN set up. Add one in your phone settings first.')));
+        return;
+      }
+      // Verify it works before turning it on.
+      if (!await AppLockService.instance.authenticate('Enable app lock')) {
+        return;
+      }
+    }
+    await AppLockService.instance.setEnabled(v);
+    if (mounted) setState(() => _appLock = v);
   }
 
   Future<void> _toggleReminders(bool v) async {
@@ -244,6 +286,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onTap: _busy ? null : _backfill,
           ),
           if (_busy) const LinearProgressIndicator(minHeight: 2),
+          // Background-activity exemption — only relevant once SMS auto-import
+          // is on. Lets the broadcast receiver keep firing when the app's closed.
+          if (_smsGranted)
+            ListTile(
+              leading: const Icon(Icons.battery_saver_outlined),
+              title: const Text('Allow background activity'),
+              subtitle: Text(_bgAllowed
+                  ? 'Allowed — AERIS can read bank SMS even when closed'
+                  : 'Let AERIS keep reading bank SMS when the app is closed'),
+              trailing: _bgAllowed
+                  ? const Icon(Icons.check_circle, color: Colors.green)
+                  : const Icon(Icons.chevron_right),
+              onTap: _allowBackground,
+            ),
+          if (_smsGranted && !_bgAllowed)
+            ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.only(left: 72, right: 16),
+              title: const Text(
+                  'Still missing SMS? Open app settings → set battery to '
+                  '"Unrestricted" and enable Auto-launch',
+                  style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: () => openAppSettings(),
+            ),
           SwitchListTile(
             secondary: const Icon(Icons.notifications_active_outlined),
             title: const Text('Smart reminders'),
@@ -312,6 +379,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     .textTheme
                     .titleSmall
                     ?.copyWith(fontWeight: FontWeight.w700)),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.fingerprint),
+            title: const Text('App lock'),
+            subtitle: const Text(
+                'Require fingerprint / device PIN when reopening AERIS'),
+            value: _appLock,
+            onChanged: _toggleAppLock,
           ),
           ListTile(
             leading: const Icon(Icons.enhanced_encryption_outlined),

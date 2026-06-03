@@ -13,18 +13,31 @@ import '../../widgets/chart_card.dart';
 import '../../widgets/range_selector.dart';
 import '../../widgets/trend_chart.dart';
 
-class AnalyticsScreen extends ConsumerWidget {
+class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AnalyticsScreen> createState() => _AnalyticsScreenState();
+}
+
+class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
+  String? _selectedCat;
+
+  @override
+  Widget build(BuildContext context) {
     final analytics = ref.watch(analyticsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Analytics')),
       body: analytics.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('$e')),
-        data: (s) => ListView(
+        data: (s) {
+          // Drop the selection if that category isn't in the current range.
+          final sel = (_selectedCat != null &&
+                  s.byCategory.containsKey(_selectedCat))
+              ? _selectedCat
+              : null;
+          return ListView(
           padding: const EdgeInsets.fromLTRB(14, 6, 14, 28),
           children: [
             Align(alignment: Alignment.centerRight, child: const RangeSelector()),
@@ -35,9 +48,18 @@ class AnalyticsScreen extends ConsumerWidget {
               height: 260,
               child: CategoryDonut(
                 byCategory: s.byCategory,
-                onCategorySelected: (id) => Navigator.pushNamed(
-                    context, AppRoutes.transactions, arguments: id),
+                // Tap a slice → reveal an animated detail card below (no longer
+                // navigates straight to the transaction list).
+                onCategorySelected: (id) => setState(
+                    () => _selectedCat = _selectedCat == id ? null : id),
               ),
+            ),
+            _CategoryDetailReveal(
+              snapshot: s,
+              categoryId: sel,
+              onClose: () => setState(() => _selectedCat = null),
+              onView: (id) => Navigator.pushNamed(
+                  context, AppRoutes.transactions, arguments: id),
             ),
             const SizedBox(height: 14),
             ChartCard(
@@ -80,13 +102,149 @@ class AnalyticsScreen extends ConsumerWidget {
               child: _CategoryRadar(byCategory: s.byCategory),
             ),
           ].animate(interval: 70.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
-        ),
+          );
+        },
       ),
     );
   }
 
   double _sum(Map<String, double> m) =>
       m.values.fold(0.0, (a, b) => a + b);
+}
+
+// ── Animated category detail (replaces tap-to-navigate) ────────
+// A glassy card that flips/scales into view (3D-ish) with the selected
+// category's amount, share, count and average — plus a button to drill in.
+class _CategoryDetailReveal extends StatelessWidget {
+  final AnalyticsSnapshot snapshot;
+  final String? categoryId;
+  final VoidCallback onClose;
+  final void Function(String id) onView;
+  const _CategoryDetailReveal({
+    required this.snapshot,
+    required this.categoryId,
+    required this.onClose,
+    required this.onView,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 420),
+      transitionBuilder: (child, anim) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: anim,
+          child: AnimatedBuilder(
+            animation: curved,
+            builder: (_, c) {
+              final v = curved.value;
+              return Transform(
+                alignment: Alignment.topCenter,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.0016) // perspective
+                  ..rotateX((1 - v) * 0.9) // tilt up into place
+                  ..scale(0.92 + 0.08 * v),
+                child: c,
+              );
+            },
+            child: child,
+          ),
+        );
+      },
+      child: categoryId == null
+          ? const SizedBox(width: double.infinity, key: ValueKey('none'))
+          : _card(context, categoryId!),
+    );
+  }
+
+  Widget _card(BuildContext context, String id) {
+    final cat = Categories.byId(id);
+    final amount = snapshot.byCategory[id] ?? 0;
+    final count = snapshot.countByCategory[id] ?? 0;
+    final total = snapshot.byCategory.values.fold<double>(0, (a, b) => a + b);
+    final pct = total == 0 ? 0.0 : amount / total;
+    final avg = count == 0 ? 0.0 : amount / count;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      key: ValueKey(id),
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [cat.color.withValues(alpha: 0.20), cat.color.withValues(alpha: 0.05)],
+          ),
+          border: Border.all(color: cat.color.withValues(alpha: 0.35)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: cat.color.withValues(alpha: 0.22),
+              child: Icon(cat.icon, color: cat.color, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(cat.label,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.close),
+              onPressed: onClose,
+            ),
+          ]),
+          const SizedBox(height: 6),
+          Text(formatRupees(amount),
+              style: TextStyle(
+                  fontSize: 30, fontWeight: FontWeight.w900, color: cat.color)),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 10,
+              color: cat.color,
+              backgroundColor: cat.color.withValues(alpha: 0.12),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            _stat(context, '${(pct * 100).toStringAsFixed(0)}%', 'of spend'),
+            _stat(context, '$count', count == 1 ? 'transaction' : 'transactions'),
+            _stat(context, formatRupees(avg, compact: true), 'avg / txn'),
+          ]),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => onView(id),
+              icon: const Icon(Icons.list_alt, size: 18),
+              label: const Text('View transactions'),
+              style: TextButton.styleFrom(foregroundColor: scheme.onSurface),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _stat(BuildContext context, String value, String label) {
+    return Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+        Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      ]),
+    );
+  }
 }
 
 // (Category breakdown now rendered by the CategoryDonut widget with
@@ -381,14 +539,15 @@ class _CategoryRadar extends StatelessWidget {
         ),
       );
     }
-    final maxV = top.first.value;
     return RadarChart(RadarChartData(
       radarShape: RadarShape.polygon,
       radarBorderData: BorderSide(color: Colors.grey.withOpacity(0.3)),
       gridBorderData: BorderSide(color: Colors.grey.withOpacity(0.2)),
       tickCount: 4,
-      ticksTextStyle: const TextStyle(fontSize: 8, color: Colors.grey),
-      titleTextStyle: const TextStyle(fontSize: 10),
+      ticksTextStyle: TextStyle(
+          fontSize: 8, color: Theme.of(context).colorScheme.onSurfaceVariant),
+      titleTextStyle: TextStyle(
+          fontSize: 10, color: Theme.of(context).colorScheme.onSurface),
       getTitle: (i, _) => RadarChartTitle(
           text: Categories.byId(top[i].key).label.split(' ').first),
       dataSets: [

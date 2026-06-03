@@ -61,6 +61,27 @@ class Anomaly {
   });
 }
 
+/// A month-end projection for a category that has a budget cap.
+class BudgetProjection {
+  final String categoryId;
+  final double cap;
+  final double spentSoFar;
+  final double projectedMonthEnd; // at current burn rate
+  final bool alreadyOver;
+  final int? daysUntilExceed; // null = won't exceed this month; 0 = already over
+
+  const BudgetProjection({
+    required this.categoryId,
+    required this.cap,
+    required this.spentSoFar,
+    required this.projectedMonthEnd,
+    required this.alreadyOver,
+    required this.daysUntilExceed,
+  });
+
+  bool get willExceed => alreadyOver || projectedMonthEnd > cap;
+}
+
 /// A recurring payment the system has detected (rent, Netflix, EMI etc.).
 class RecurringPayment {
   final String merchant;

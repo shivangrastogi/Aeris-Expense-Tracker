@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -10,6 +11,14 @@ import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Draw edge-to-edge with a transparent status/nav bar from the very first
+  // frame — otherwise the AppBar-less Home tab shows a black status bar until
+  // a tab switch forces a relayout (Android 15 edge-to-edge behaviour).
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    systemNavigationBarColor: Colors.transparent,
+  ));
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
