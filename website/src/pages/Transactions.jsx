@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Plus, Search, Pencil, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
 import { useData } from '../state/Data.jsx';
 import { formatRupees, relativeDate, categoryById, CATEGORIES } from '../data/categories.js';
+import { paymentAppFor } from '../data/merchantDirectory.js';
 import CategoryIcon from '../components/CategoryIcon.jsx';
 import TxnModal from '../components/TxnModal.jsx';
 
@@ -98,7 +99,7 @@ export default function Transactions() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{t.merchant || categoryById(t.categoryId).label}</div>
-                      <div className="text-xs text-muted truncate">{categoryById(t.categoryId).label}{t.note ? ` · ${t.note}` : ''}</div>
+                      <div className="text-xs text-muted truncate">{categoryById(t.categoryId).label}{paymentAppFor(t.upiVpa) ? ` · ${paymentAppFor(t.upiVpa)}` : ''}{t.note ? ` · ${t.note}` : ''}</div>
                     </div>
                     <div className={`flex items-center gap-1 font-semibold ${t.direction === 'credit' ? 'text-credit' : 'text-ink'}`}>
                       {t.direction === 'credit' ? <ArrowDownRight size={15} /> : <ArrowUpRight size={15} />}

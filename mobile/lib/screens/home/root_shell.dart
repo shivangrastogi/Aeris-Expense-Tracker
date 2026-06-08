@@ -49,11 +49,22 @@ class _RootShellState extends ConsumerState<RootShell> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _wireSms();
+      _ensureDailyCheckinScheduled();
       if (!await OnboardingScreen.isDone() && mounted) {
         Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => const OnboardingScreen(), fullscreenDialog: true));
       }
     });
+  }
+
+  /// If the user already has reminders enabled (from a previous session,
+  /// before the daily check-in existed), make sure the daily check-in nudge is
+  /// scheduled too — without it they'd never be reminded to claim their reward.
+  Future<void> _ensureDailyCheckinScheduled() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('reminders_on') ?? false) {
+      await NotificationService.instance.scheduleDailyCheckin();
+    }
   }
 
   /// Once the user is signed in, kick the SMS listener so any new bank
@@ -67,10 +78,10 @@ class _RootShellState extends ConsumerState<RootShell> {
     if (!await SmsService.instance.hasPermission()) return;
     // Live incoming SMS → persist immediately.
     await SmsService.instance.startLiveListening(onTxn: (p) => _persist(uid, p));
-    // Defer the (heavier) inbox backfill a couple of seconds so the dashboard
-    // paints and becomes interactive FIRST — the scan + encrypt then runs
-    // quietly in the background with a progress chip.
-    Future.delayed(const Duration(seconds: 2), () async {
+    // Defer the (heavier) inbox backfill so the dashboard paints and becomes
+    // interactive FIRST — the scan + encrypt then runs quietly in the
+    // background with a progress chip.
+    Future.delayed(const Duration(seconds: 4), () async {
       if (!mounted) return;
       final blocked = ref.read(blockedSendersProvider).valueOrNull ?? const {};
       await SmsImportService.instance.backfill(
@@ -136,7 +147,15 @@ class _RootShellState extends ConsumerState<RootShell> {
     final analytics = ref.watch(analyticsProvider).valueOrNull;
     final budgets = ref.watch(budgetsStreamProvider).valueOrNull;
     if (analytics != null && budgets != null) {
-      final target = budgets.fold<double>(0, (s, b) => s + b.monthlyCap);
+      // Prefer the explicit overall "total monthly budget"; else sum categories.
+      final explicitTotal = budgets
+          .where((b) => b.categoryId == '__total__')
+          .fold<double>(0, (s, b) => s + b.monthlyCap);
+      final target = explicitTotal > 0
+          ? explicitTotal
+          : budgets
+              .where((b) => b.categoryId != '__total__')
+              .fold<double>(0, (s, b) => s + b.monthlyCap);
       WidgetService.updateBudgetLeft(
         left: target - analytics.monthExpense,
         target: target,
@@ -170,13 +189,21 @@ class _RootShellState extends ConsumerState<RootShell> {
             label: 'Me'),
         ],
       ),
-      floatingActionButton: _idx == 1
-          ? FloatingActionButton.extended(
-              onPressed: () => _addSheet(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Add'),
+      floatingActionButton: _idx == 0
+          // Home: one-tap voice capture (speak one or many transactions).
+          ? FloatingActionButton(
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.voice),
+              tooltip: 'Add by voice',
+              child: const Icon(Icons.mic),
             )
-          : null,
+          : _idx == 1
+              ? FloatingActionButton.extended(
+                  onPressed: () => _addSheet(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add'),
+                )
+              : null,
     );
   }
 
@@ -189,6 +216,18 @@ class _RootShellState extends ConsumerState<RootShell> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0x330EA5A4),
+                child: Icon(Icons.mic, color: Color(0xFF0EA5A4)),
+              ),
+              title: const Text('Quick add'),
+              subtitle: const Text('Type or dictate — "spent 200 on chai"'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, AppRoutes.quickAdd);
+              },
+            ),
             ListTile(
               leading: const CircleAvatar(
                 backgroundColor: Color(0x33EF4444),

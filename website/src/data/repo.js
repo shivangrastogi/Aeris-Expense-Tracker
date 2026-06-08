@@ -44,6 +44,8 @@ async function decodeTxn(id, data, dek) {
       smsBody: m.smsBody ?? null,
       smsSender: m.smsSender ?? null,
       reviewed: m.reviewed ?? true,
+      reference: m.reference ?? null,
+      upiVpa: m.upiVpa ?? null,
     };
   }
   // Legacy plaintext doc.
@@ -61,6 +63,8 @@ async function decodeTxn(id, data, dek) {
     smsBody: data.smsBody ?? null,
     smsSender: data.smsSender ?? null,
     reviewed: data.reviewed ?? true,
+    reference: data.reference ?? null,
+    upiVpa: data.upiVpa ?? null,
   };
 }
 
@@ -77,6 +81,9 @@ async function encodeTxn(t, dek) {
     smsBody: t.smsBody ?? null,
     smsSender: t.smsSender ?? null,
     reviewed: t.reviewed ?? true,
+    // Preserve UPI enrichment written by the phone app (don't drop on edit).
+    reference: t.reference ?? null,
+    upiVpa: t.upiVpa ?? null,
   };
   return {
     timestamp: Timestamp.fromDate(t.timestamp),

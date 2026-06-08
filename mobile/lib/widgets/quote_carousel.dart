@@ -89,7 +89,7 @@ class _QuoteCarouselState extends State<QuoteCarousel> {
                   decoration: BoxDecoration(
                     color: _page == i
                         ? AerisColors.seed
-                        : Colors.grey.withOpacity(0.35),
+                        : Colors.grey.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
@@ -113,7 +113,7 @@ class _QuoteCarouselState extends State<QuoteCarousel> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: colors.last.withOpacity(0.32),
+              color: colors.last.withValues(alpha: 0.32),
               blurRadius: 16,
               offset: const Offset(0, 8)),
         ],
@@ -129,7 +129,7 @@ class _QuoteCarouselState extends State<QuoteCarousel> {
                     fontSize: 96,
                     height: 1,
                     fontWeight: FontWeight.w900,
-                    color: Colors.white.withOpacity(0.16))),
+                    color: Colors.white.withValues(alpha: 0.16))),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -151,7 +151,7 @@ class _QuoteCarouselState extends State<QuoteCarousel> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text('— ${q.author}',
                       style: TextStyle(
-                          color: Colors.white.withOpacity(0.85),
+                          color: Colors.white.withValues(alpha: 0.85),
                           fontSize: 12,
                           fontWeight: FontWeight.w700)),
                 ),

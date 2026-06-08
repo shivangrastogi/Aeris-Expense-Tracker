@@ -2,6 +2,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/category.dart';
 import '../models/transaction.dart';
+import 'merchant_directory.dart';
 
 /// Parse Indian bank / UPI SMS into a [Transaction].
 ///
@@ -90,6 +91,19 @@ class SmsParser {
     caseSensitive: false,
   );
 
+  /// Reference / UTR / RRN number — "UPI Ref no 453812345678", "Ref 123456",
+  /// "RRN 123456789012", "txn id 123456", "UPI:123456789012".
+  static final _refRe = RegExp(
+    r'(?:upi(?:\s*ref(?:\s*no)?)?|ref(?:erence)?\s*(?:no\.?|number|id)?|rrn|utr|txn\s*(?:id|ref))[:\s#\-]*([0-9]{6,18})',
+    caseSensitive: false,
+  );
+
+  /// A UPI VPA / handle anywhere in the body, e.g. `name@okhdfcbank`, `q12@ybl`.
+  static final _vpaRe = RegExp(
+    r'([a-z0-9][a-z0-9._\-]{1,}@[a-z]{2,})',
+    caseSensitive: false,
+  );
+
   /// SMS time hints — most alerts include date "30-05-26" or "30/05/2026".
   static final _dateRe = RegExp(
     r'\b([0-3]?[0-9])[-\/]([0-1]?[0-9])[-\/](20[0-9]{2}|[0-9]{2})\b',
@@ -156,8 +170,18 @@ class SmsParser {
     if (direction == TxnDirection.credit && !trusted) return null;
 
     final acct = _acctRe.firstMatch(clean)?.group(1);
-    final merchant = _extractMerchant(clean, direction);
-    final categoryId = _categoryFor(direction, merchant ?? clean);
+    final vpa = _vpaRe.firstMatch(clean)?.group(1)?.toLowerCase();
+    final reference = _refRe.firstMatch(clean)?.group(1);
+    var merchant = _extractMerchant(clean, direction);
+
+    // Enrich on-device: a known payee gets a friendly name + category; an
+    // unknown one gets a cleaned-up name from its VPA prefix where readable.
+    final dirHit = MerchantDirectory.lookup(merchant) ??
+        MerchantDirectory.lookup(vpa);
+    merchant = MerchantDirectory.prettyName(vpa, merchant) ?? merchant;
+    final categoryId = (dirHit != null && direction == TxnDirection.debit)
+        ? dirHit.categoryId
+        : _categoryFor(direction, '${merchant ?? ''} ${vpa ?? clean}');
     final ts = _extractDate(clean, fallback: receivedAt);
 
     return ParsedSms(
@@ -173,6 +197,8 @@ class SmsParser {
         smsBody: body,
         smsSender: sender,
         reviewed: false,
+        reference: reference,
+        upiVpa: vpa,
       ),
       confidence: _scoreConfidence(clean, merchant, acct),
     );

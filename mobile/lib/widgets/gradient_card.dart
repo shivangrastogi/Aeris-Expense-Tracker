@@ -23,7 +23,7 @@ class GradientCard extends StatelessWidget {
     final shadowColor = (gradient.colors.isNotEmpty
             ? gradient.colors.last
             : Colors.black)
-        .withOpacity(0.30);
+        .withValues(alpha: 0.30);
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: gradient,

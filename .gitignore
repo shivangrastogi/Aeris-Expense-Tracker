@@ -1,0 +1,35 @@
+# ── Build artifacts (never commit these) ──
+**/build/
+**/.gradle/
+**/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.flutter-plugins-dependencies
+*.apk
+*.aab
+*.ipa
+
+# ── Web ──
+node_modules/
+dist/
+website/node_modules/
+website/dist/
+
+# ── Local env / logs ──
+*.log
+.env
+.env.local
+.env.*.local
+
+# ── Optional: client Firebase config (these are CLIENT keys, not server
+#    secrets — safe to commit, but uncomment to keep them out of a public repo.
+#    If you uncomment, keep local copies; the apps won't build without them.) ──
+# mobile/android/app/google-services.json
+# mobile/lib/firebase_options.dart
+# website/src/firebaseConfig.js
+
+# ── OS / editor ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

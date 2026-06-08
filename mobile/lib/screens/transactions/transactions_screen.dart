@@ -229,7 +229,7 @@ class _TxnSkeleton extends StatelessWidget {
   const _TxnSkeleton();
   @override
   Widget build(BuildContext context) {
-    final base = Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4);
+    final base = Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4);
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
@@ -243,7 +243,7 @@ class _TxnSkeleton extends StatelessWidget {
               .animate(onPlay: (c) => c.repeat())
               .shimmer(
                   duration: 1200.ms,
-                  color: Theme.of(context).colorScheme.surface.withOpacity(0.5)),
+                  color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.5)),
       ],
     );
   }

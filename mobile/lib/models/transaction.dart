@@ -17,6 +17,8 @@ class Transaction {
   final String? smsBody;          // original SMS for audit/review
   final String? smsSender;
   final bool reviewed;            // user has confirmed an auto-parsed txn
+  final String? reference;        // UPI Ref / UTR / RRN from the SMS
+  final String? upiVpa;           // payee/payer UPI ID e.g. name@okhdfcbank
 
   const Transaction({
     required this.id,
@@ -31,6 +33,8 @@ class Transaction {
     this.smsBody,
     this.smsSender,
     this.reviewed = true,
+    this.reference,
+    this.upiVpa,
   });
 
   bool get isDebit => direction == TxnDirection.debit;
@@ -49,6 +53,8 @@ class Transaction {
         'smsBody': smsBody,
         'smsSender': smsSender,
         'reviewed': reviewed,
+        'reference': reference,
+        'upiVpa': upiVpa,
       };
 
   factory Transaction.fromMap(String id, Map<String, dynamic> map) => Transaction(
@@ -64,6 +70,8 @@ class Transaction {
         smsBody: map['smsBody'] as String?,
         smsSender: map['smsSender'] as String?,
         reviewed: map['reviewed'] as bool? ?? true,
+        reference: map['reference'] as String?,
+        upiVpa: map['upiVpa'] as String?,
       );
 
   Transaction copyWith({
@@ -87,6 +95,8 @@ class Transaction {
         smsBody: smsBody,
         smsSender: smsSender,
         reviewed: reviewed ?? this.reviewed,
+        reference: reference,
+        upiVpa: upiVpa,
       );
 
   static TxnDirection _dirFrom(String? s) {

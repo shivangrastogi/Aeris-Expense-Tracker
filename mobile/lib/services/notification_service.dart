@@ -62,6 +62,25 @@ class NotificationService {
     );
   }
 
+  /// A once-a-day nudge to claim the check-in reward and keep the streak alive.
+  /// Repeats daily at [hour] using the time-of-day match.
+  Future<void> scheduleDailyCheckin({int hour = 9}) async {
+    await init();
+    await _plugin.zonedSchedule(
+      1002,
+      'Your daily AERIS reward 🎁',
+      'Check in now to claim today\'s Aura and keep your streak alive!',
+      _nextTimeOfDay(hour),
+      _details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time, // repeat daily
+    );
+  }
+
+  Future<void> cancelDailyCheckin() => _plugin.cancel(1002);
+
   Future<void> scheduleBillReminder(
       int index, String merchant, double amount, int dayOfMonth) async {
     await init();
@@ -86,6 +105,13 @@ class NotificationService {
     while (d.weekday != weekday || !d.isAfter(now)) {
       d = d.add(const Duration(days: 1));
     }
+    return d;
+  }
+
+  tz.TZDateTime _nextTimeOfDay(int hour) {
+    final now = tz.TZDateTime.now(tz.local);
+    var d = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour);
+    if (!d.isAfter(now)) d = d.add(const Duration(days: 1));
     return d;
   }
 

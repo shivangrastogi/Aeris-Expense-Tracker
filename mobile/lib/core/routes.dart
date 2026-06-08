@@ -5,7 +5,9 @@ import '../screens/auth/signup_screen.dart';
 import '../screens/auth/otp_screen.dart';
 import '../screens/home/root_shell.dart';
 import '../screens/transactions/add_transaction_screen.dart';
+import '../screens/transactions/quick_add_screen.dart';
 import '../screens/transactions/transaction_detail_screen.dart';
+import '../screens/transactions/voice_capture_screen.dart';
 import '../screens/transactions/transactions_screen.dart';
 import '../screens/transactions/statement_import_screen.dart';
 import '../screens/profile/edit_profile_screen.dart';
@@ -17,6 +19,7 @@ import '../screens/budgets/budget_edit_screen.dart';
 import '../screens/goals/goals_screen.dart';
 import '../screens/assistant/assistant_screen.dart';
 import '../screens/subscriptions/subscriptions_screen.dart';
+import '../screens/insights/wrapped_screen.dart';
 import '../models/transaction.dart';
 
 class AppRoutes {
@@ -26,6 +29,9 @@ class AppRoutes {
   static const otp = '/otp';
   static const home = '/home';
   static const addTxn = '/transactions/add';
+  static const quickAdd = '/transactions/quick-add';
+  static const voice = '/voice';
+  static const wrapped = '/wrapped';
   static const txnDetail = '/transactions/detail';
   static const transactions = '/transactions';
   static const importStatement = '/transactions/import';
@@ -57,6 +63,15 @@ class AppRoutes {
       case addTxn:
         page = AddTransactionScreen(
             initialDirection: s.arguments as TxnDirection?);
+        break;
+      case quickAdd:
+        page = const QuickAddScreen();
+        break;
+      case voice:
+        page = const VoiceCaptureScreen();
+        break;
+      case wrapped:
+        page = const WrappedScreen();
         break;
       case transactions:
         final a = s.arguments;

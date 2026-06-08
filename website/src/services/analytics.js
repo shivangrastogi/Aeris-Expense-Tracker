@@ -79,6 +79,26 @@ export function dailySeries(txns) {
   return out;
 }
 
+// Average monthly spend per category over the last `months` months — the
+// basis for auto-suggested budgets. Returns { categoryId: avg }.
+export function categoryMonthlyAverages(txns, months = 3) {
+  const now = new Date();
+  const perCat = {}; // catId -> { monthKey: total }
+  for (const t of txns.filter(isDebit)) {
+    const d = t.timestamp;
+    const diff = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+    if (diff < 0 || diff >= months) continue;
+    const mk = `${d.getFullYear()}-${d.getMonth()}`;
+    (perCat[t.categoryId] ||= {})[mk] = (perCat[t.categoryId]?.[mk] || 0) + t.amount;
+  }
+  const out = {};
+  for (const [cat, ms] of Object.entries(perCat)) {
+    const vals = Object.values(ms);
+    out[cat] = vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+  return out;
+}
+
 // Headline numbers for the dashboard.
 export function monthSummary(txns, monthlyIncome = 0) {
   const rows = thisMonth(txns);

@@ -86,7 +86,7 @@ class _MascotPainter extends CustomPainter {
     // Cheap solid offset "shadow" (no per-frame blur — that caused jank).
     canvas.drawRRect(
       rrect.shift(const Offset(0, 3)),
-      Paint()..color = color.withOpacity(0.18),
+      Paint()..color = color.withValues(alpha: 0.18),
     );
 
     // Antenna
@@ -114,7 +114,7 @@ class _MascotPainter extends CustomPainter {
           center: Offset(cx, h * 0.54), width: bodyW * 0.82, height: bodyH * 0.62),
       Radius.circular(w * 0.22),
     );
-    canvas.drawRRect(face, Paint()..color = Colors.white.withOpacity(0.92));
+    canvas.drawRRect(face, Paint()..color = Colors.white.withValues(alpha: 0.92));
 
     // Eyes
     final eyeY = h * 0.50;
@@ -125,7 +125,7 @@ class _MascotPainter extends CustomPainter {
 
     // Cheeks (happy / celebrate)
     if (mood == MascotMood.happy || mood == MascotMood.celebrate) {
-      final cheek = Paint()..color = const Color(0xFFFB7185).withOpacity(0.35);
+      final cheek = Paint()..color = const Color(0xFFFB7185).withValues(alpha: 0.35);
       canvas.drawCircle(Offset(cx - eyeDx - w * 0.02, eyeY + h * 0.07), w * 0.04, cheek);
       canvas.drawCircle(Offset(cx + eyeDx + w * 0.02, eyeY + h * 0.07), w * 0.04, cheek);
     }
@@ -164,7 +164,7 @@ class _MascotPainter extends CustomPainter {
     canvas.drawCircle(Offset.zero, r, Paint()..color = const Color(0xFF1F2937));
     // little highlight
     canvas.drawCircle(Offset(-r * 0.3, -r * 0.3), r * 0.3,
-        Paint()..color = Colors.white.withOpacity(0.9));
+        Paint()..color = Colors.white.withValues(alpha: 0.9));
     canvas.restore();
   }
 

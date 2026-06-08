@@ -149,5 +149,35 @@ class AnalyticsSnapshot {
 final analyticsProvider = Provider<AsyncValue<AnalyticsSnapshot>>((ref) {
   final range = ref.watch(analyticsRangeProvider);
   final tx = ref.watch(transactionsStreamProvider);
-  return tx.whenData((txns) => AnalyticsSnapshot.from(txns, range));
+
+  // Firestore re-emits the same transaction list on benign events (cache→server
+  // hand-off, reconnects). Recomputing the full O(n) snapshot each time is
+  // wasted work on the UI isolate, so memoize on a cheap content signature and
+  // reuse the last snapshot when nothing relevant actually changed.
+  return tx.whenData((txns) {
+    final sig = _signature(txns, range);
+    final cached = _analyticsCache;
+    if (cached != null && cached.sig == sig) return cached.snapshot;
+    final snap = AnalyticsSnapshot.from(txns, range);
+    _analyticsCache = (sig: sig, snapshot: snap);
+    return snap;
+  });
 });
+
+/// Last computed snapshot + the signature it was built from. A module-level
+/// cache (rather than a provider) so it can be safely written during the
+/// analytics provider's own build.
+({String sig, AnalyticsSnapshot snapshot})? _analyticsCache;
+
+/// A cheap fingerprint of the inputs: count + range + a running fold of each
+/// transaction's id/amount/timestamp. Cheaper than building the snapshot's
+/// string-keyed maps, and changes whenever an item is added, removed or edited.
+String _signature(List<Transaction> txns, AnalyticsRange range) {
+  var h = 17;
+  for (final t in txns) {
+    h = 0x1fffffff & (h * 31 + t.id.hashCode);
+    h = 0x1fffffff & (h * 31 + t.amount.hashCode);
+    h = 0x1fffffff & (h * 31 + t.timestamp.millisecondsSinceEpoch);
+  }
+  return '${txns.length}|${range.start}|${range.end}|${range.label}|$h';
+}

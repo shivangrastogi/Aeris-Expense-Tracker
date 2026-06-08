@@ -130,10 +130,10 @@ class _SkyPainter extends CustomPainter {
     canvas.restore();
     // twinkling stars
     final twinkle = (0.4 + 0.6 * (0.5 + 0.5 * math.sin(t * 2 * math.pi))).clamp(0.0, 1.0);
-    final star = Paint()..color = const Color(0xFFFFE082).withOpacity(twinkle);
+    final star = Paint()..color = const Color(0xFFFFE082).withValues(alpha: twinkle);
     canvas.drawCircle(Offset(size.width * 0.85, size.height * 0.2), 1.4, star);
     canvas.drawCircle(Offset(size.width * 0.2, size.height * 0.8), 1.1,
-        Paint()..color = const Color(0xFFFFE082).withOpacity(1 - twinkle));
+        Paint()..color = const Color(0xFFFFE082).withValues(alpha: 1 - twinkle));
   }
 
   @override

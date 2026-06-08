@@ -8,6 +8,7 @@ import '../../models/insight.dart';
 import '../../providers/insights_provider.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/mascot/mascot_card.dart';
+import '../../widgets/skeleton.dart';
 
 class InsightsScreen extends ConsumerWidget {
   const InsightsScreen({super.key});
@@ -27,7 +28,7 @@ class InsightsScreen extends ConsumerWidget {
         ],
       ),
       body: b.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const InsightsSkeleton(),
         error: (e, _) => Center(child: Text('$e')),
         data: (bundle) => ListView(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 32),
@@ -93,7 +94,7 @@ class _PredictionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: hero ? AerisColors.info.withOpacity(0.10) : null,
+      color: hero ? AerisColors.info.withValues(alpha: 0.10) : null,
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -172,7 +173,7 @@ class _BudgetProjectionCard extends StatelessWidget {
                 value: pct,
                 minHeight: 8,
                 color: color,
-                backgroundColor: color.withOpacity(0.12),
+                backgroundColor: color.withValues(alpha: 0.12),
               ),
             ),
             const SizedBox(height: 8),
@@ -219,7 +220,7 @@ class _RecCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: AerisColors.credit.withOpacity(0.15),
+                    color: AerisColors.credit.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -250,7 +251,7 @@ class _RecurringCard extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: cat.color.withOpacity(0.18),
+          backgroundColor: cat.color.withValues(alpha: 0.18),
           child: Icon(cat.icon, color: cat.color),
         ),
         title: Text(r.merchant,
@@ -282,7 +283,7 @@ class _AnomalyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: AerisColors.warning.withOpacity(0.06),
+      color: AerisColors.warning.withValues(alpha: 0.06),
       child: ListTile(
         leading: const Icon(Icons.warning_amber_rounded, color: AerisColors.warning),
         title: Text(a.merchant ?? 'Unknown',

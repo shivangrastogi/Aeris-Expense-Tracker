@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/budgets_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../services/app_lock_service.dart';
+import '../../services/backup_service.dart';
 import '../../services/export_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/prediction_service.dart';
@@ -115,6 +116,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return;
       }
       await NotificationService.instance.scheduleWeeklySummary();
+      await NotificationService.instance.scheduleDailyCheckin();
       final txns = ref.read(transactionsStreamProvider).valueOrNull ?? const [];
       final recurring = PredictionService.instance.detectRecurring(txns);
       for (var i = 0; i < recurring.length; i++) {
@@ -156,6 +158,74 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       progress.state = null;
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _backup() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final pass = await _promptPassphrase(
+        'Set a backup passphrase',
+        'You\'ll need this exact passphrase to restore. It can\'t be recovered.',
+        'Back up');
+    if (pass == null) return;
+    if (pass.length < 4) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Use a passphrase of at least 4 characters.')));
+      return;
+    }
+    final uid = ref.read(currentUserIdProvider);
+    if (uid == null) return;
+    messenger.showSnackBar(
+        const SnackBar(content: Text('Preparing encrypted backup…')));
+    try {
+      await BackupService.instance.exportBackup(uid, pass);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Backup failed: $e')));
+    }
+  }
+
+  Future<void> _restore() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final pass = await _promptPassphrase(
+        'Enter the backup passphrase',
+        'The passphrase you set when you created the backup.',
+        'Restore');
+    if (pass == null || pass.isEmpty) return;
+    final uid = ref.read(currentUserIdProvider);
+    if (uid == null) return;
+    try {
+      final n = await BackupService.instance.restoreBackup(uid, pass);
+      if (n < 0) return; // cancelled
+      messenger.showSnackBar(
+          SnackBar(content: Text('Restored $n transaction${n == 1 ? '' : 's'}.')));
+    } catch (e) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Restore failed — wrong passphrase or invalid file.')));
+    }
+  }
+
+  Future<String?> _promptPassphrase(
+      String title, String helper, String action) {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          obscureText: true,
+          autofocus: true,
+          decoration: InputDecoration(
+              labelText: 'Passphrase', helperText: helper, helperMaxLines: 3),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, ctrl.text),
+              child: Text(action)),
+        ],
+      ),
+    );
   }
 
   Future<void> _encryptExisting() async {
@@ -331,6 +401,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2.4))
                 : const Icon(Icons.download_outlined),
             onTap: _exporting ? null : _export,
+          ),
+          ListTile(
+            leading: const Icon(Icons.backup_outlined),
+            title: const Text('Back up my data'),
+            subtitle: const Text(
+                'Save an encrypted backup file you can restore on any device'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _backup,
+          ),
+          ListTile(
+            leading: const Icon(Icons.restore),
+            title: const Text('Restore from backup'),
+            subtitle:
+                const Text('Import transactions from an AERIS backup file'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _restore,
           ),
           const Divider(),
 

@@ -52,7 +52,7 @@ class _BudgetEditScreenState extends ConsumerState<BudgetEditScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             CircleAvatar(
-              backgroundColor: cat.color.withOpacity(0.2),
+              backgroundColor: cat.color.withValues(alpha: 0.2),
               child: Icon(cat.icon, color: cat.color),
             ),
             const SizedBox(width: 12),

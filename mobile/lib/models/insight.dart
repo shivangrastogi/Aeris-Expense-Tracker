@@ -82,6 +82,27 @@ class BudgetProjection {
   bool get willExceed => alreadyOver || projectedMonthEnd > cap;
 }
 
+/// Current-month cash position + a forward projection ("will I run short?").
+class Cashflow {
+  final double incomeSoFar;
+  final double expenseSoFar;
+  final double projectedExpense;   // month-end at the current burn rate
+  final double projectedNet;       // available income − projected expense
+  final int? runwayDays;           // days the remaining money lasts at burn rate
+  final InsightSeverity severity;
+  final String message;
+
+  const Cashflow({
+    required this.incomeSoFar,
+    required this.expenseSoFar,
+    required this.projectedExpense,
+    required this.projectedNet,
+    required this.runwayDays,
+    required this.severity,
+    required this.message,
+  });
+}
+
 /// A recurring payment the system has detected (rent, Netflix, EMI etc.).
 class RecurringPayment {
   final String merchant;

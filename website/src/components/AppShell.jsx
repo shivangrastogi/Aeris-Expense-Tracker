@@ -7,6 +7,7 @@ import {
   Wallet,
   Target,
   Sparkles,
+  PartyPopper,
   Lock,
   LogOut,
   ShieldCheck,
@@ -19,6 +20,7 @@ const NAV = [
   { to: '/charts', label: 'Charts', icon: PieChart },
   { to: '/budgets', label: 'Budgets', icon: Wallet },
   { to: '/goals', label: 'Goals', icon: Target },
+  { to: '/wrapped', label: 'Wrapped', icon: PartyPopper },
   { to: '/assistant', label: 'Aeris AI', icon: Sparkles },
 ];
 

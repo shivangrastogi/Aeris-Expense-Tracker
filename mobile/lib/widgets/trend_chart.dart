@@ -115,7 +115,7 @@ class _TrendChartState extends ConsumerState<TrendChart> {
                         majorTickLines: const MajorTickLines(size: 0),
                         majorGridLines: MajorGridLines(
                             width: 0.6,
-                            color: Colors.grey.withOpacity(0.18)),
+                            color: Colors.grey.withValues(alpha: 0.18)),
                         axisLabelFormatter: (a) => ChartAxisLabel(
                             formatRupees(a.value, compact: true), null),
                       ),
@@ -134,8 +134,8 @@ class _TrendChartState extends ConsumerState<TrendChart> {
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              color.withOpacity(0.35),
-                              color.withOpacity(0.02),
+                              color.withValues(alpha: 0.35),
+                              color.withValues(alpha: 0.02),
                             ],
                           ),
                         ),

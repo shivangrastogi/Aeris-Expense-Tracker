@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/routes.dart';
@@ -11,6 +10,8 @@ import '../../utils/formatters.dart';
 import '../../widgets/category_donut.dart';
 import '../../widgets/chart_card.dart';
 import '../../widgets/range_selector.dart';
+import '../../widgets/skeleton.dart';
+import '../../widgets/spending_heatmap.dart';
 import '../../widgets/trend_chart.dart';
 
 class AnalyticsScreen extends ConsumerStatefulWidget {
@@ -29,7 +30,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Analytics')),
       body: analytics.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const AnalyticsSkeleton(),
         error: (e, _) => Center(child: Text('$e')),
         data: (s) {
           // Drop the selection if that category isn't in the current range.
@@ -39,6 +40,9 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               : null;
           return ListView(
           padding: const EdgeInsets.fromLTRB(14, 6, 14, 28),
+          // Build charts a screen ahead so fast scrolling doesn't reveal blank
+          // gaps while the (heavy) chart widgets paint.
+          cacheExtent: 1000,
           children: [
             Align(alignment: Alignment.centerRight, child: const RangeSelector()),
             const SizedBox(height: 8),
@@ -69,6 +73,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               child: _DailyBar(
                   daily: s.dailyExpenseSeries, start: s.start, end: s.end),
             ),
+            const SizedBox(height: 14),
+            const SpendingHeatmap(),
             const SizedBox(height: 14),
             const TrendChart(),
             const SizedBox(height: 14),
@@ -101,7 +107,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               height: 280,
               child: _CategoryRadar(byCategory: s.byCategory),
             ),
-          ].animate(interval: 70.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+          ],
           );
         },
       ),
@@ -280,12 +286,12 @@ class _DailyBar extends StatelessWidget {
         show: true,
         drawVerticalLine: false,
         getDrawingHorizontalLine: (_) =>
-            FlLine(color: Colors.grey.withOpacity(0.12), strokeWidth: 1),
+            FlLine(color: Colors.grey.withValues(alpha: 0.12), strokeWidth: 1),
       ),
       borderData: FlBorderData(show: false),
       barTouchData: BarTouchData(
         touchTooltipData: BarTouchTooltipData(
-          tooltipBgColor: AerisColors.seed.withOpacity(0.92),
+          tooltipBgColor: AerisColors.seed.withValues(alpha: 0.92),
           tooltipRoundedRadius: 8,
           getTooltipItem: (group, _, rod, __) => BarTooltipItem(
             formatRupees(rod.toY, compact: true),
@@ -305,7 +311,7 @@ class _DailyBar extends StatelessWidget {
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
                 colors: [
-                  AerisColors.seed.withOpacity(0.55),
+                  AerisColors.seed.withValues(alpha: 0.55),
                   AerisColors.seed,
                 ],
               ),
@@ -380,7 +386,7 @@ class _IncomeVsExpense extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           child: LinearProgressIndicator(
             value: pct, minHeight: 14,
-            color: c, backgroundColor: c.withOpacity(0.12),
+            color: c, backgroundColor: c.withValues(alpha: 0.12),
           ),
         ),
       ],
@@ -399,7 +405,10 @@ class _TopMerchants extends StatelessWidget {
     if (top.isEmpty) return const Center(child: Text('No merchant data yet.'));
     final entries = top.entries.toList();
     final maxV = entries.first.value;
-    return ListView(
+    // A Column (not a ListView) so this card doesn't capture the page's scroll
+    // gesture — there are only ever ≤8 rows, which fit the card height.
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (var i = 0; i < entries.length; i++)
           Padding(
@@ -468,7 +477,7 @@ class _CumulativeLine extends StatelessWidget {
         show: true,
         drawVerticalLine: false,
         getDrawingHorizontalLine: (_) =>
-            FlLine(color: Colors.grey.withOpacity(0.12), strokeWidth: 1),
+            FlLine(color: Colors.grey.withValues(alpha: 0.12), strokeWidth: 1),
       ),
       borderData: FlBorderData(show: false),
       titlesData: FlTitlesData(
@@ -507,7 +516,7 @@ class _CumulativeLine extends StatelessWidget {
           barWidth: 3, color: AerisColors.seed,
           dotData: const FlDotData(show: false),
           belowBarData: BarAreaData(
-              show: true, color: AerisColors.seed.withOpacity(0.16)),
+              show: true, color: AerisColors.seed.withValues(alpha: 0.16)),
         ),
       ],
     ));
@@ -541,8 +550,8 @@ class _CategoryRadar extends StatelessWidget {
     }
     return RadarChart(RadarChartData(
       radarShape: RadarShape.polygon,
-      radarBorderData: BorderSide(color: Colors.grey.withOpacity(0.3)),
-      gridBorderData: BorderSide(color: Colors.grey.withOpacity(0.2)),
+      radarBorderData: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+      gridBorderData: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
       tickCount: 4,
       ticksTextStyle: TextStyle(
           fontSize: 8, color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -552,7 +561,7 @@ class _CategoryRadar extends StatelessWidget {
           text: Categories.byId(top[i].key).label.split(' ').first),
       dataSets: [
         RadarDataSet(
-          fillColor: AerisColors.seed.withOpacity(0.3),
+          fillColor: AerisColors.seed.withValues(alpha: 0.3),
           borderColor: AerisColors.seed,
           borderWidth: 2,
           entryRadius: 3,

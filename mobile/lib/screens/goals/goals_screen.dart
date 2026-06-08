@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/goals_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/skeleton.dart';
 
 class GoalsScreen extends ConsumerStatefulWidget {
   const GoalsScreen({super.key});
@@ -49,7 +50,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
         alignment: Alignment.topCenter,
         children: [
           goalsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const GoalsSkeleton(),
             error: (e, _) => Center(child: Text('$e')),
             data: (goals) {
               final totalSaved = goals.fold<double>(0, (s, g) => s + g.saved);
@@ -147,8 +148,8 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
               avatar: Text(b.$1),
               label: Text(b.$2, style: const TextStyle(fontSize: 12)),
               backgroundColor: b.$3
-                  ? AerisColors.seed.withOpacity(0.15)
-                  : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4),
+                  ? AerisColors.seed.withValues(alpha: 0.15)
+                  : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
             ),
           ),
       ],
@@ -158,7 +159,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
   // ── Explainer ─────────────────────────────────────────────
   Widget _explainer() {
     return Card(
-      color: AerisColors.seed.withOpacity(0.08),
+      color: AerisColors.seed.withValues(alpha: 0.08),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Row(
@@ -244,7 +245,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                   value: v,
                   minHeight: 12,
                   color: g.isComplete ? AerisColors.credit : AerisColors.seed,
-                  backgroundColor: AerisColors.seed.withOpacity(0.12),
+                  backgroundColor: AerisColors.seed.withValues(alpha: 0.12),
                 ),
               ),
             ),
@@ -347,7 +348,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                         onTap: () => setLocal(() => emoji = e),
                         child: CircleAvatar(
                           backgroundColor: emoji == e
-                              ? AerisColors.seed.withOpacity(0.25)
+                              ? AerisColors.seed.withValues(alpha: 0.25)
                               : Colors.transparent,
                           child: Text(e, style: const TextStyle(fontSize: 18)),
                         ),

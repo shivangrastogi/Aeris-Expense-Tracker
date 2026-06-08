@@ -6,6 +6,7 @@ import '../../core/routes.dart';
 import '../../models/category.dart';
 import '../../models/transaction.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/gamification_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
 
@@ -85,8 +86,17 @@ class SmsReviewScreen extends ConsumerWidget {
                             onPressed: () async {
                               final uid = ref.read(currentUserIdProvider);
                               if (uid == null) return;
+                              final messenger = ScaffoldMessenger.of(ctx);
                               await ref.read(firestoreServiceProvider)
                                   .updateTransaction(uid, t.copyWith(reviewed: true));
+                              final awarded = ref
+                                  .read(gamificationProvider.notifier)
+                                  .rewardCategorization(t.id);
+                              if (awarded > 0) {
+                                messenger.showSnackBar(SnackBar(
+                                    content: Text('+$awarded Aura for categorising 🎉'),
+                                    duration: const Duration(seconds: 2)));
+                              }
                             },
                             icon: const Icon(Icons.check, size: 18),
                             label: const Text('Looks good'),
@@ -162,7 +172,7 @@ class _ReviewSkeleton extends StatelessWidget {
   const _ReviewSkeleton();
   @override
   Widget build(BuildContext context) {
-    final base = Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4);
+    final base = Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4);
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
@@ -176,7 +186,7 @@ class _ReviewSkeleton extends StatelessWidget {
               .animate(onPlay: (c) => c.repeat())
               .shimmer(
                   duration: 1200.ms,
-                  color: Theme.of(context).colorScheme.surface.withOpacity(0.5)),
+                  color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.5)),
       ],
     );
   }

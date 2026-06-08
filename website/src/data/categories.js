@@ -3,19 +3,23 @@
 
 export const CATEGORIES = [
   { id: 'food', label: 'Food & Dining', icon: 'Utensils', color: '#F59E0B',
-    keywords: ['swiggy','zomato','mcdonald','starbucks','dominos','kfc','pizza','restaurant','cafe','dine','eat','burger','meal'] },
+    keywords: ['swiggy','zomato','mcdonald','starbucks','dominos','kfc','pizza','restaurant','cafe','dine','eat','burger','meal','dhaba','hotel','food court','canteen','bakery','tea','chai','coffee','juice','ice cream','biryani','thali'] },
   { id: 'groceries', label: 'Groceries', icon: 'ShoppingCart', color: '#22C55E',
-    keywords: ['bigbasket','blinkit','zepto','instamart','grofers','reliance fresh','dmart','grocery','supermart'] },
+    keywords: ['bigbasket','blinkit','zepto','instamart','grofers','reliance fresh','dmart','grocery','supermart','kirana','milk','dairy','eggs','bread','vegetable','veggies','fruit','paneer','curd','atta','rice','flour','sugar','snacks','biscuit','chips','pepsi','coke','cola','cold drink','soft drink','beverage','maggi','jiomart','more','spencer','star bazaar','provision','general store'] },
   { id: 'travel', label: 'Travel & Transport', icon: 'Car', color: '#3B82F6',
-    keywords: ['uber','ola','rapido','irctc','indigo','airindia','airline','metro','redbus','flight','train','fuel','petrol','diesel','hpcl','iocl','bharat petroleum'] },
+    keywords: ['uber','ola','rapido','irctc','indigo','airindia','airline','metro','redbus','flight','train','fuel','petrol','diesel','hpcl','iocl','bharat petroleum','indian oil','shell','petrol pump','fuel station','toll','fastag','parking','auto','rickshaw','cab','taxi','bus'] },
   { id: 'shopping', label: 'Shopping', icon: 'ShoppingBag', color: '#EC4899',
-    keywords: ['amazon','flipkart','myntra','ajio','nykaa','meesho','shopping','tata cliq','jiomart','snapdeal'] },
+    keywords: ['amazon','flipkart','myntra','ajio','nykaa','meesho','shopping','tata cliq','jiomart','snapdeal','clothes','apparel','footwear','electronics','decathlon','lifestyle'] },
   { id: 'bills', label: 'Bills & Utilities', icon: 'ReceiptText', color: '#8B5CF6',
-    keywords: ['electricity','water','gas','recharge','airtel','jio','vi ','bsnl','bill','dth','tata sky','broadband','wifi','postpaid'] },
+    keywords: ['electricity','water','gas','recharge','airtel','jio','vi ','bsnl','bill','dth','tata sky','broadband','wifi','postpaid','cylinder','lpg','indane','piped gas'] },
   { id: 'entertainment', label: 'Entertainment', icon: 'Clapperboard', color: '#A855F7',
-    keywords: ['netflix','prime','hotstar','spotify','jiocinema','sonyliv','bookmyshow','pvr','inox','youtube premium','disney'] },
+    keywords: ['netflix','prime','hotstar','spotify','jiocinema','sonyliv','bookmyshow','pvr','inox','youtube premium','disney','game','steam','playstation'] },
   { id: 'health', label: 'Health & Medical', icon: 'HeartPulse', color: '#EF4444',
-    keywords: ['pharmacy','apollo','medplus','1mg','pharmeasy','hospital','doctor','clinic','medical','health'] },
+    keywords: ['pharmacy','apollo','medplus','1mg','pharmeasy','hospital','doctor','clinic','medical','health','medicine','lab','diagnostic','gym','fitness'] },
+  { id: 'education', label: 'Education', icon: 'GraduationCap', color: '#6366F1',
+    keywords: ['school','college','university','tuition','fees','course','udemy','coursera','byju','unacademy','vedantu','books','stationery','exam','coaching'] },
+  { id: 'personal', label: 'Personal Care', icon: 'Sparkles', color: '#F472B6',
+    keywords: ['salon','barber','spa','parlour','parlor','cosmetics','grooming','haircut','beauty','urban company'] },
   { id: 'rent', label: 'Rent & Housing', icon: 'Home', color: '#14B8A6',
     keywords: ['rent','nobroker','housing','society','maintenance'] },
   { id: 'investment', label: 'Investment', icon: 'TrendingUp', color: '#06B6D4',
@@ -28,6 +32,10 @@ export const CATEGORIES = [
     keywords: ['atm','cash withdrawal','withdrawn'] },
   { id: 'other', label: 'Other', icon: 'MoreHorizontal', color: '#0EA5A4', keywords: [] },
 ];
+
+// Reserved budget id for the single overall "total monthly budget"
+// (must match Budget.totalId in the Flutter app — kept out of category lists).
+export const TOTAL_BUDGET_ID = '__total__';
 
 const _byId = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
 export const categoryById = (id) => _byId[id] || CATEGORIES[CATEGORIES.length - 1];

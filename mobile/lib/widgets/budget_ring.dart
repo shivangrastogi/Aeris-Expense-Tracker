@@ -24,7 +24,7 @@ class BudgetRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final track = Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5);
+    final track = Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
     return SizedBox(
       width: size,
       height: size,
@@ -79,7 +79,7 @@ class _RingPainter extends CustomPainter {
       ..shader = SweepGradient(
         startAngle: -math.pi / 2,
         endAngle: 3 * math.pi / 2,
-        colors: [color.withOpacity(0.65), color],
+        colors: [color.withValues(alpha: 0.65), color],
       ).createShader(Rect.fromCircle(center: center, radius: radius))
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth

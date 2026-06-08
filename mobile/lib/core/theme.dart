@@ -81,12 +81,12 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
     ),
     cardTheme: CardThemeData(
       elevation: 0,
-      color: scheme.surfaceVariant.withOpacity(0.40),
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.40),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: scheme.surfaceVariant.withOpacity(0.45),
+      fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
@@ -103,7 +103,7 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
       ),
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: scheme.surfaceVariant.withOpacity(0.6),
+      backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
       // Pin label + icon colour to the scheme — without this the label has no
       // colour and falls back to white (fine on dark, invisible on light).
       labelStyle: GoogleFonts.inter(
@@ -118,7 +118,7 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
       backgroundColor: brightness == Brightness.light
           ? Colors.white
           : const Color(0xFF101B1D),
-      indicatorColor: AerisColors.seed.withOpacity(0.16),
+      indicatorColor: AerisColors.seed.withValues(alpha: 0.16),
       elevation: 3,
       labelTextStyle: WidgetStateProperty.all(
         GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600),

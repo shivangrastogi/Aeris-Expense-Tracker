@@ -5,8 +5,10 @@ import '../../core/theme.dart';
 import '../../models/category.dart';
 import '../../models/transaction.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/gamification_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../services/category_rules.dart';
+import '../../services/merchant_directory.dart';
 import '../../utils/formatters.dart';
 
 class TransactionDetailScreen extends ConsumerStatefulWidget {
@@ -42,6 +44,14 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
     await _apply(_t.copyWith(categoryId: picked, reviewed: true));
     // Learn: future SMS from this merchant auto-tag to this category.
     await CategoryRules.instance.remember(_t.merchant, picked);
+    // Reward categorising this transaction (once per transaction).
+    final awarded =
+        ref.read(gamificationProvider.notifier).rewardCategorization(_t.id);
+    if (awarded > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('+$awarded Aura for categorising 🎉'),
+          duration: const Duration(seconds: 2)));
+    }
   }
 
   Future<void> _editAmount() async {
@@ -132,7 +142,7 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
           Row(children: [
             CircleAvatar(
               radius: 28,
-              backgroundColor: cat.color.withOpacity(0.18),
+              backgroundColor: cat.color.withValues(alpha: 0.18),
               child: Icon(cat.icon, color: cat.color),
             ),
             const SizedBox(width: 14),
@@ -174,6 +184,10 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
           _row('When', relativeDate(_t.timestamp),
               onTap: _editDate, trailingIcon: Icons.edit),
           if (_t.account != null) _row('Account', '••${_t.account}'),
+          if (MerchantDirectory.appFor(_t.upiVpa) != null)
+            _row('Paid via', MerchantDirectory.appFor(_t.upiVpa)!),
+          if (_t.upiVpa != null) _row('UPI ID', _t.upiVpa!),
+          if (_t.reference != null) _row('Reference', _t.reference!),
           _row('Source', _t.source.name),
           _row('Note', _t.note ?? 'Add a note',
               onTap: _editNote, trailingIcon: Icons.edit),

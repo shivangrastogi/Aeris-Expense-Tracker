@@ -30,7 +30,14 @@
     <!-- Biometric / device-credential app lock (local_auth) -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
+    <!-- Microphone for in-app voice transaction entry (native SpeechRecognizer). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <queries>
+        <!-- Speech recognition service lookup for SpeechRecognizer. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />

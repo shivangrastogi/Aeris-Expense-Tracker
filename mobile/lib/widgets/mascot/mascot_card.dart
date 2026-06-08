@@ -61,7 +61,7 @@ class _MascotCardState extends ConsumerState<MascotCard> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: scheme.surfaceVariant.withOpacity(0.5),
+                    color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(4),
                       topRight: Radius.circular(16),

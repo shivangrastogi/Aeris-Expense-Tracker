@@ -10,6 +10,7 @@ import Charts from './pages/Charts.jsx';
 import Budgets from './pages/Budgets.jsx';
 import Goals from './pages/Goals.jsx';
 import Assistant from './pages/Assistant.jsx';
+import Wrapped from './pages/Wrapped.jsx';
 import { Loader2 } from 'lucide-react';
 
 function Splash() {
@@ -39,6 +40,7 @@ export default function App() {
               <Route path="/charts" element={<Charts />} />
               <Route path="/budgets" element={<Budgets />} />
               <Route path="/goals" element={<Goals />} />
+              <Route path="/wrapped" element={<Wrapped />} />
               <Route path="/assistant" element={<Assistant />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/budgets_provider.dart';
+import '../../providers/insights_provider.dart';
+import '../../providers/transactions_provider.dart';
 import '../home/root_shell.dart';
 import '../splash_screen.dart';
 
@@ -18,22 +22,50 @@ class KeyGate extends ConsumerStatefulWidget {
 }
 
 class _KeyGateState extends ConsumerState<KeyGate> {
-  late Future<bool> _unlock;
+  late Future<bool> _boot;
 
   @override
   void initState() {
     super.initState();
-    _unlock = ref.read(authServiceProvider).ensureUnlocked(widget.uid);
+    _boot = _runBoot();
   }
 
+  /// Unlock the vault, then PRELOAD the dashboard's data while the splash is
+  /// still showing — so when the splash hands off, the Home screen paints
+  /// already populated instead of flashing skeletons. The splash also stays up
+  /// for a minimum so the "A.E.R.I.S" animation plays through.
+  Future<bool> _runBoot(
+      {Duration minSplash = const Duration(milliseconds: 2200)}) async {
+    final started = DateTime.now();
+    final unlocked =
+        await ref.read(authServiceProvider).ensureUnlocked(widget.uid);
+    if (unlocked) {
+      try {
+        // First transactions emission = decrypt is done; warm the derived
+        // dashboard providers off the back of it. Bounded so a slow network
+        // can't keep the splash up forever (skeletons remain the fallback).
+        await ref
+            .read(transactionsStreamProvider.future)
+            .timeout(const Duration(seconds: 6));
+        ref.read(analyticsProvider);
+        ref.read(budgetsStreamProvider);
+        ref.read(insightsProvider);
+      } catch (_) {/* reveal anyway; dashboard will show its skeleton */}
+    }
+    final elapsed = DateTime.now().difference(started);
+    if (elapsed < minSplash) await Future.delayed(minSplash - elapsed);
+    return unlocked;
+  }
+
+  // After a manual unlock, skip the long splash hold — go straight in.
   void _retry() => setState(() {
-        _unlock = ref.read(authServiceProvider).ensureUnlocked(widget.uid);
+        _boot = _runBoot(minSplash: Duration.zero);
       });
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<bool>(
-      future: _unlock,
+      future: _boot,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const SplashScreen();

@@ -114,7 +114,8 @@ class PredictionService {
       }
     }
     final out = <BudgetProjection>[];
-    for (final b in budgets.where((b) => b.monthlyCap > 0)) {
+    for (final b in budgets
+        .where((b) => b.monthlyCap > 0 && b.categoryId != Budget.totalId)) {
       final s = spent[b.categoryId] ?? 0;
       final dailyRate = dayIdx == 0 ? 0.0 : s / dayIdx;
       final projected = dailyRate * daysInMonth;
@@ -139,6 +140,67 @@ class PredictionService {
     out.sort((a, b) => (b.projectedMonthEnd / b.cap)
         .compareTo(a.projectedMonthEnd / a.cap));
     return out;
+  }
+
+  // ─ Cashflow runway ─────────────────────────────────────────
+
+  /// Project the current month's cash position: income seen (or the user's
+  /// declared monthly income, whichever is higher) minus expenses projected at
+  /// the current daily burn rate — and how many days the remaining money lasts.
+  Cashflow cashflowThisMonth(List<Transaction> txns, {double monthlyIncome = 0}) {
+    final now = DateTime.now();
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final dayIdx = now.day;
+    double inc = 0, exp = 0;
+    for (final t in txns) {
+      if (t.timestamp.year == now.year && t.timestamp.month == now.month) {
+        if (t.isCredit) {
+          inc += t.amount;
+        } else {
+          exp += t.amount;
+        }
+      }
+    }
+    final dailyBurn = dayIdx == 0 ? exp : exp / dayIdx;
+    final projectedExpense = dailyBurn * daysInMonth;
+    final available = math.max(inc, monthlyIncome);
+    final projectedNet = available - projectedExpense;
+    final remainingDays = daysInMonth - dayIdx;
+
+    int? runwayDays;
+    if (dailyBurn > 0 && available > 0) {
+      final left = available - exp;
+      runwayDays = left <= 0 ? 0 : (left / dailyBurn).floor();
+    }
+
+    String money(double v) => '₹${v.abs().toStringAsFixed(0)}';
+    InsightSeverity sev;
+    String message;
+    if (available <= 0) {
+      sev = InsightSeverity.info;
+      message = 'Set your monthly income to forecast cashflow.';
+    } else if (projectedNet >= 0) {
+      sev = InsightSeverity.positive;
+      message = 'On track to save ${money(projectedNet)} this month.';
+    } else {
+      final tight = runwayDays != null && runwayDays < remainingDays;
+      sev = tight ? InsightSeverity.alert : InsightSeverity.warning;
+      final runwayBit = tight
+          ? ' — funds run low in ~$runwayDays day${runwayDays == 1 ? '' : 's'}'
+          : '';
+      message = 'At this pace you\'ll overspend by ${money(projectedNet)}'
+          '$runwayBit.';
+    }
+
+    return Cashflow(
+      incomeSoFar: inc,
+      expenseSoFar: exp,
+      projectedExpense: projectedExpense,
+      projectedNet: projectedNet,
+      runwayDays: runwayDays,
+      severity: sev,
+      message: message,
+    );
   }
 
   // ─ Anomaly detection ───────────────────────────────────────

@@ -169,7 +169,7 @@ class _DonutPainter extends CustomPainter {
       final paint = Paint()
         ..color = (selected == null || isSel)
             ? s.color
-            : s.color.withOpacity(0.45)
+            : s.color.withValues(alpha: 0.45)
         ..style = PaintingStyle.stroke
         ..strokeWidth = thickness + (isSel ? 4 * pop.value : 0);
       canvas.drawArc(
@@ -214,12 +214,12 @@ class _DonutPainter extends CustomPainter {
       final dim = selected != null && i != selected;
 
       final linePaint = Paint()
-        ..color = s.color.withOpacity(dim ? 0.3 : 0.75)
+        ..color = s.color.withValues(alpha: dim ? 0.3 : 0.75)
         ..strokeWidth = i == selected ? 2 : 1.3
         ..style = PaintingStyle.stroke;
       canvas.drawLine(pOuter, pElbow, linePaint);
       canvas.drawLine(pElbow, pEnd, linePaint);
-      canvas.drawCircle(pEnd, 2.2, Paint()..color = s.color.withOpacity(dim ? 0.4 : 1));
+      canvas.drawCircle(pEnd, 2.2, Paint()..color = s.color.withValues(alpha: dim ? 0.4 : 1));
 
       _sideLabel(
         canvas,
@@ -229,7 +229,7 @@ class _DonutPainter extends CustomPainter {
         left: toRight,
         maxX: size.width,
         bold: i == selected,
-        color: labelColor.withOpacity(dim ? 0.45 : 1),
+        color: labelColor.withValues(alpha: dim ? 0.45 : 1),
       );
     }
   }

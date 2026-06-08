@@ -4,6 +4,7 @@ import '../core/routes.dart';
 import '../core/theme.dart';
 import '../models/category.dart';
 import '../models/transaction.dart';
+import '../services/merchant_directory.dart';
 import '../utils/formatters.dart';
 
 class TransactionTile extends StatelessWidget {
@@ -30,7 +31,7 @@ class TransactionTile extends StatelessWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: cat.color.withOpacity(0.18),
+                color: cat.color.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(cat.icon, color: cat.color, size: 20),
@@ -50,6 +51,7 @@ class TransactionTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     '${cat.label}  •  ${relativeDate(txn.timestamp)}'
+                    '${MerchantDirectory.appFor(txn.upiVpa) != null ? "  •  ${MerchantDirectory.appFor(txn.upiVpa)}" : ""}'
                     '${txn.account != null ? "  •  ••${txn.account}" : ""}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -80,7 +82,7 @@ class TransactionTile extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: AerisColors.warning.withOpacity(0.18),
+                          color: AerisColors.warning.withValues(alpha: 0.18),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text('REVIEW',

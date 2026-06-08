@@ -17,6 +17,7 @@ import {
 import { useData } from '../state/Data.jsx';
 import { byCategory, monthlySeries, topMerchants, dailySeries, thisMonth } from '../services/analytics.js';
 import { formatRupees } from '../data/categories.js';
+import SpendingHeatmap from '../components/SpendingHeatmap.jsx';
 
 const tip = {
   contentStyle: { background: '#0e1c1a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, color: '#eafff8' },
@@ -50,6 +51,12 @@ export default function Charts() {
         <div className="card text-center text-muted py-12">No data yet to chart.</div>
       ) : (
         <div className="grid lg:grid-cols-2 gap-5">
+          <div className="card lg:col-span-2">
+            <div className="font-display text-lg font-semibold">Spending heatmap</div>
+            <div className="text-xs text-muted mb-3">Last 18 weeks · hover a day</div>
+            <SpendingHeatmap txns={txns} />
+          </div>
+
           <Card title="Spending by category" sub="This month">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>

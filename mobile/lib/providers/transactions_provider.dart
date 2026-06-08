@@ -24,11 +24,15 @@ final transactionsStreamProvider = StreamProvider<List<Transaction>>((ref) {
 });
 
 /// Most-recent N transactions for the dashboard.
+///
+/// Derived in-memory from [transactionsStreamProvider] instead of opening a
+/// second Firestore listener for overlapping data — the full stream is already
+/// ordered newest-first, so we just take the first N.
 final recentTransactionsProvider =
-    StreamProvider.family<List<Transaction>, int>((ref, limit) {
-  final uid = ref.watch(currentUserIdProvider);
-  if (uid == null) return const Stream.empty();
-  return ref.read(firestoreServiceProvider).watchTransactions(uid, limit: limit);
+    Provider.family<AsyncValue<List<Transaction>>, int>((ref, limit) {
+  return ref
+      .watch(transactionsStreamProvider)
+      .whenData((list) => list.take(limit).toList());
 });
 
 /// Senders the user has blocked — their SMS are never imported.

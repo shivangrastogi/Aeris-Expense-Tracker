@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trash2, Loader2 } from 'lucide-react';
-import { CATEGORIES } from '../data/categories.js';
+import { CATEGORIES, classify } from '../data/categories.js';
 import { saveTransaction, deleteTransaction } from '../data/repo.js';
+import { learnedCategoryFor, rememberCategory } from '../data/categoryRules.js';
+import { lookupMerchant } from '../data/merchantDirectory.js';
 import { useVault } from '../state/Vault.jsx';
+import { useData } from '../state/Data.jsx';
 
 function toInputDate(d) {
   const p = (n) => String(n).padStart(2, '0');
@@ -12,15 +15,24 @@ function toInputDate(d) {
 
 export default function TxnModal({ open, initial, onClose }) {
   const { user, dek } = useVault();
+  const { txns } = useData();
   const editing = !!initial;
   const [amount, setAmount] = useState('');
   const [direction, setDirection] = useState('debit');
   const [categoryId, setCategoryId] = useState('other');
+  const [catTouched, setCatTouched] = useState(false);
   const [merchant, setMerchant] = useState('');
   const [note, setNote] = useState('');
   const [when, setWhen] = useState(toInputDate(new Date()));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+
+  // Distinct past merchants for the autofill datalist.
+  const knownMerchants = useMemo(() => {
+    const s = new Set();
+    for (const t of txns) if (t.merchant?.trim()) s.add(t.merchant.trim());
+    return [...s].sort();
+  }, [txns]);
 
   useEffect(() => {
     if (open) {
@@ -28,11 +40,24 @@ export default function TxnModal({ open, initial, onClose }) {
       setAmount(initial ? String(initial.amount) : '');
       setDirection(initial?.direction || 'debit');
       setCategoryId(initial?.categoryId || 'other');
+      setCatTouched(!!initial); // editing → don't auto-override their category
       setMerchant(initial?.merchant || '');
       setNote(initial?.note || '');
       setWhen(toInputDate(initial?.timestamp || new Date()));
     }
   }, [open, initial]);
+
+  // Auto-pick a category from the merchant: learned rule → directory → keyword.
+  // Stops once the user has manually chosen a category.
+  function onMerchantChange(v) {
+    setMerchant(v);
+    if (catTouched) return;
+    const m = v.trim();
+    if (!m) return;
+    const cat =
+      learnedCategoryFor(m) || lookupMerchant(m)?.categoryId || classify(m);
+    if (cat && cat !== 'other') setCategoryId(cat);
+  }
 
   async function save() {
     const amt = parseFloat(amount);
@@ -53,8 +78,13 @@ export default function TxnModal({ open, initial, onClose }) {
         smsBody: initial?.smsBody || null,
         smsSender: initial?.smsSender || null,
         reviewed: true,
+        // Preserve UPI enrichment the phone app wrote (don't drop on edit).
+        reference: initial?.reference || null,
+        upiVpa: initial?.upiVpa || null,
       };
       await saveTransaction(user.uid, dek, t);
+      // Teach the app this merchant → category for next time.
+      if (t.merchant) rememberCategory(t.merchant, categoryId);
       onClose();
     } catch (e) {
       setErr(e?.message || 'Could not save.');
@@ -120,13 +150,16 @@ export default function TxnModal({ open, initial, onClose }) {
               </div>
               <div>
                 <span className="text-xs text-muted ml-1">Category</span>
-                <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="field mt-1 appearance-none">
+                <select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setCatTouched(true); }} className="field mt-1 appearance-none">
                   {CATEGORIES.map((c) => <option key={c.id} value={c.id} className="bg-card">{c.label}</option>)}
                 </select>
               </div>
               <div>
                 <span className="text-xs text-muted ml-1">Merchant / description</span>
-                <input value={merchant} onChange={(e) => setMerchant(e.target.value)} className="field mt-1" placeholder="e.g. Swiggy" />
+                <input value={merchant} onChange={(e) => onMerchantChange(e.target.value)} className="field mt-1" placeholder="e.g. Swiggy" list="aeris-merchants" autoComplete="off" />
+                <datalist id="aeris-merchants">
+                  {knownMerchants.map((m) => <option key={m} value={m} />)}
+                </datalist>
               </div>
               <div>
                 <span className="text-xs text-muted ml-1">Date & time</span>

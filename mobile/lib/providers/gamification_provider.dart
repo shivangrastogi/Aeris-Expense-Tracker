@@ -24,6 +24,8 @@ class GamificationState {
   final Set<String> awardedKeys;
   final Set<String> hiddenCards; // dashboard cards the user hid
   final int? accent; // dashboard accent colour value
+  final int checkinStreak; // consecutive daily check-ins
+  final String? lastCheckinDay; // day-key of the most recent check-in
   final bool loaded;
 
   const GamificationState({
@@ -35,6 +37,8 @@ class GamificationState {
     this.awardedKeys = const {},
     this.hiddenCards = const {},
     this.accent,
+    this.checkinStreak = 0,
+    this.lastCheckinDay,
     this.loaded = false,
   });
 
@@ -50,6 +54,8 @@ class GamificationState {
     Set<String>? awardedKeys,
     Set<String>? hiddenCards,
     Object? accent = _noChange,
+    int? checkinStreak,
+    String? lastCheckinDay,
     bool? loaded,
   }) =>
       GamificationState(
@@ -61,6 +67,8 @@ class GamificationState {
         awardedKeys: awardedKeys ?? this.awardedKeys,
         hiddenCards: hiddenCards ?? this.hiddenCards,
         accent: accent == _noChange ? this.accent : accent as int?,
+        checkinStreak: checkinStreak ?? this.checkinStreak,
+        lastCheckinDay: lastCheckinDay ?? this.lastCheckinDay,
         loaded: loaded ?? this.loaded,
       );
 }
@@ -117,6 +125,8 @@ class GamificationController extends StateNotifier<GamificationState> {
       awardedKeys: (p.getStringList('gam_awarded') ?? const []).toSet(),
       hiddenCards: (p.getStringList('dash_hidden') ?? const []).toSet(),
       accent: accent,
+      checkinStreak: p.getInt('gam_checkin_streak') ?? 0,
+      lastCheckinDay: p.getString('gam_checkin_day'),
       challenges: (p.getStringList('gam_challenges') ?? const [])
           .map((s) => Challenge.fromJson(jsonDecode(s) as Map<String, dynamic>))
           .toList(),
@@ -133,6 +143,12 @@ class GamificationController extends StateNotifier<GamificationState> {
     await p.setString('gam_selected', state.selected);
     await p.setStringList('gam_awarded', state.awardedKeys.toList());
     await p.setStringList('dash_hidden', state.hiddenCards.toList());
+    await p.setInt('gam_checkin_streak', state.checkinStreak);
+    if (state.lastCheckinDay == null) {
+      await p.remove('gam_checkin_day');
+    } else {
+      await p.setString('gam_checkin_day', state.lastCheckinDay!);
+    }
     await p.setStringList(
         'gam_challenges', state.challenges.map((c) => jsonEncode(c.toJson())).toList());
     if (state.accent == null) {
@@ -163,8 +179,16 @@ class GamificationController extends StateNotifier<GamificationState> {
       if (g.isComplete) grant('goal_${g.id}', 200);
     }
 
-    // Completed months that stayed within the total budget cap.
-    final cap = budgets.fold<double>(0, (s, b) => s + b.monthlyCap);
+    // Completed months that stayed within the total budget cap — the explicit
+    // overall "total monthly budget" wins, else the sum of per-category caps.
+    final explicitTotal = budgets
+        .where((b) => b.categoryId == '__total__')
+        .fold<double>(0, (s, b) => s + b.monthlyCap);
+    final cap = explicitTotal > 0
+        ? explicitTotal
+        : budgets
+            .where((b) => b.categoryId != '__total__')
+            .fold<double>(0, (s, b) => s + b.monthlyCap);
     if (cap > 0) {
       final monthExp = <String, double>{};
       for (final t in txns) {
@@ -209,6 +233,55 @@ class GamificationController extends StateNotifier<GamificationState> {
       state = state.copyWith(earned: earned, awardedKeys: awarded);
       _persist();
     }
+  }
+
+  // ── Daily check-in ─────────────────────────────────────────
+  /// True if the user has already claimed today's check-in reward.
+  bool get checkedInToday =>
+      state.awardedKeys.contains('checkin_${_dayKey(DateTime.now())}');
+
+  /// Base aura granted for a daily check-in (before the streak bonus).
+  static const checkinBase = 15;
+
+  /// Claim today's check-in: grants a base reward once per calendar day plus a
+  /// growing (but capped) streak bonus for consecutive days. Returns the total
+  /// aura awarded, or 0 if already claimed today.
+  int checkIn() {
+    if (!state.loaded) return 0;
+    final now = DateTime.now();
+    final today = _dayKey(now);
+    if (state.awardedKeys.contains('checkin_$today')) return 0;
+    final yesterday = _dayKey(now.subtract(const Duration(days: 1)));
+    final streak = state.lastCheckinDay == yesterday ? state.checkinStreak + 1 : 1;
+    final bonus = ((streak - 1) * 5).clamp(0, 60); // grows with the streak, capped
+    final total = checkinBase + bonus;
+    state = state.copyWith(
+      earned: state.earned + total,
+      awardedKeys: {...state.awardedKeys, 'checkin_$today'},
+      checkinStreak: streak,
+      lastCheckinDay: today,
+    );
+    _persist();
+    return total;
+  }
+
+  // ── Categorisation reward ──────────────────────────────────
+  /// Aura granted the first time the user categorises/confirms a transaction.
+  static const categorizeReward = 5;
+
+  /// Reward the user once for categorising a given transaction. Idempotent —
+  /// re-categorising the same transaction won't grant again. Returns the aura
+  /// awarded (0 if it was already rewarded).
+  int rewardCategorization(String txnId) {
+    if (!state.loaded) return 0;
+    final key = 'cat_$txnId';
+    if (state.awardedKeys.contains(key)) return 0;
+    state = state.copyWith(
+      earned: state.earned + categorizeReward,
+      awardedKeys: {...state.awardedKeys, key},
+    );
+    _persist();
+    return categorizeReward;
   }
 
   // ── Store / avatar ─────────────────────────────────────────

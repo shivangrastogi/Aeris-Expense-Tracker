@@ -122,8 +122,18 @@ class AuthService {
     if (KeyVault.instance.isUnlocked) return true;
     if (await KeyVault.instance.loadCached(uid)) return true;
     // No keys doc at all → nothing to unlock (legacy account).
-    final keys = await FirestoreService.instance.fetchKeys(uid);
-    return keys == null;
+    // Bound the network read: when offline (or on a flaky connection) a
+    // Firestore .get() can hang indefinitely, which would freeze the splash
+    // forever. On timeout we fall through to the password unlock screen
+    // instead of leaving the user staring at a stuck loader.
+    try {
+      final keys = await FirestoreService.instance
+          .fetchKeys(uid)
+          .timeout(const Duration(seconds: 8));
+      return keys == null;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Recover access with the one-time recovery key, then re-wrap the DEK

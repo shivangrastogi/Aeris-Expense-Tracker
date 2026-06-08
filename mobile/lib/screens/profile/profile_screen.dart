@@ -59,6 +59,8 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 8),
+          _tile(context, Icons.auto_awesome, 'Your month in money · Wrapped',
+              () => Navigator.pushNamed(context, AppRoutes.wrapped)),
           _tile(context, Icons.videogame_asset, 'Aeris World · avatars, challenges & more',
               () => Navigator.pushNamed(context, AppRoutes.aerisWorld)),
           _tile(context, Icons.account_balance, 'Accounts',

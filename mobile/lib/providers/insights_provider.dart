@@ -14,6 +14,7 @@ class InsightsBundle {
   final List<Anomaly> anomalies;
   final List<RecurringPayment> recurring;
   final List<Recommendation> recommendations;
+  final Cashflow cashflow;
 
   const InsightsBundle({
     required this.monthEstimate,
@@ -22,6 +23,7 @@ class InsightsBundle {
     required this.anomalies,
     required this.recurring,
     required this.recommendations,
+    required this.cashflow,
   });
 }
 
@@ -45,6 +47,8 @@ final insightsProvider = Provider<AsyncValue<InsightsBundle>>((ref) {
       anomalies: pred.detectAnomalies(txns),
       recurring: pred.detectRecurring(txns),
       recommendations: rec,
+      cashflow: pred.cashflowThisMonth(txns,
+          monthlyIncome: profile.asData?.value?.monthlyIncome ?? 0),
     );
   });
 });

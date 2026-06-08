@@ -81,7 +81,7 @@ class SubscriptionsScreen extends ConsumerWidget {
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: cat.color.withOpacity(0.18),
+          backgroundColor: cat.color.withValues(alpha: 0.18),
           child: Icon(cat.icon, color: cat.color),
         ),
         title: Text(r.merchant as String,

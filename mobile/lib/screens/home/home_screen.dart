@@ -7,6 +7,7 @@ import '../../core/routes.dart';
 import '../../core/theme.dart';
 import '../../models/avatar_skin.dart';
 import '../../models/category.dart';
+import '../../models/insight.dart';
 import '../../models/transaction.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -25,7 +26,53 @@ import '../../widgets/greeting_header.dart';
 import '../../widgets/mascot/aeris_mascot.dart';
 import '../../widgets/quote_carousel.dart';
 import '../../widgets/range_selector.dart';
+import '../../widgets/skeleton.dart';
 import '../../widgets/transaction_tile.dart';
+
+/// Section ids whose entrance animation has already played this app session.
+final Set<String> _playedIntros = <String>{};
+
+/// Plays its child's entrance animation exactly once per app session — the
+/// first time the section actually mounts with real data — then renders the
+/// child statically forever after.
+///
+/// Because the "already played" flag lives in a session-level set (not in this
+/// State), the animation does NOT replay when the ListView disposes and
+/// re-mounts the card during scrolling, nor when a provider tick rebuilds it.
+/// And because [PlayOnce] is only built inside each section's `data:` branch,
+/// the entrance is naturally tied to data arrival rather than a fixed timer.
+class PlayOnce extends StatefulWidget {
+  final String id;
+  final Duration delay;
+  final Widget child;
+  const PlayOnce(
+      {super.key,
+      required this.id,
+      this.delay = Duration.zero,
+      required this.child});
+
+  @override
+  State<PlayOnce> createState() => _PlayOnceState();
+}
+
+class _PlayOnceState extends State<PlayOnce> {
+  late final bool _animate = !_playedIntros.contains(widget.id);
+
+  @override
+  void initState() {
+    super.initState();
+    if (_animate) _playedIntros.add(widget.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_animate) return widget.child;
+    return widget.child
+        .animate(delay: widget.delay)
+        .fadeIn(duration: 350.ms)
+        .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
+  }
+}
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -53,23 +100,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // This shell now watches only light, infrequently-changing state. The
+    // data-heavy, transaction-driven sections each watch their own providers
+    // (see the _DashboardCards / _AerisLevelCard / _ForecastCard /
+    // _RecentActivity widgets below), so a new transaction rebuilds just that
+    // section instead of the entire dashboard tree.
     final profile = ref.watch(userProfileProvider).asData?.value;
-    final analytics = ref.watch(analyticsProvider);
-    final recent = ref.watch(recentTransactionsProvider(8));
-    final budgets = ref.watch(budgetsStreamProvider).asData?.value ?? const [];
     final importProgress = ref.watch(importProgressProvider);
     final quote = ref.watch(quoteProvider);
-    final insights = ref.watch(insightsProvider).asData?.value;
     final hidden = ref.watch(gamificationProvider.select((s) => s.hiddenCards));
-    final aeris = ref.watch(avatarStatusProvider);
-    final gam = ref.watch(gamificationProvider);
-    final riskyBudgets = insights == null
-        ? 0
-        : insights.budgetProjections
-            .where((p) =>
-                p.alreadyOver ||
-                (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))
-            .length;
     final name = profile?.displayName?.split(' ').first ?? 'there';
 
     return Scaffold(
@@ -77,6 +116,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onRefresh: () async => ref.invalidate(transactionsStreamProvider),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+          // Keep the top cards alive across normal scrolling so they aren't
+          // disposed + rebuilt (which restarted animations / totals).
+          cacheExtent: 1200,
           children: [
             SafeArea(
               bottom: false,
@@ -121,172 +163,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: RangeSelector(),
               ),
             ),
+            const _DailyCheckinCard(),
             if (importProgress != null) ...[
               _importBanner(importProgress),
               const SizedBox(height: 10),
             ],
-            analytics.when(
-              data: (s) => Column(
-                children: [
-                  _heroCard(context, s)
-                      .animate()
-                      .fadeIn(duration: 350.ms)
-                      .slideY(begin: 0.08, end: 0),
-                  const SizedBox(height: 14),
-                  _budgetCard(context, s, budgets)
-                      .animate(delay: 80.ms)
-                      .fadeIn(duration: 350.ms)
-                      .slideY(begin: 0.08, end: 0),
-                ],
-              ),
-              loading: () => const _LoadingCards(),
-              error: (e, _) => Text('Could not load analytics: $e'),
-            ),
+            const _DashboardCards(),
             if (!hidden.contains('aeris')) ...[
               const SizedBox(height: 14),
-              GestureDetector(
-                onTap: () => Navigator.pushNamed(context, AppRoutes.aerisWorld),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      // Keep the skin's hue but stay dark enough that the white
-                      // text reads in BOTH light and dark mode (some skins, like
-                      // the default Spark, have a very light core).
-                      colors: [
-                        Color.lerp(aeris.skin.aura, Colors.black, 0.05)!,
-                        Color.lerp(aeris.skin.aura, Colors.black, 0.38)!,
-                      ],
-                    ),
-                  ),
-                  child: Row(children: [
-                    AerisAvatar(
-                        skin: aeris.skin,
-                        stage: aeris.stage,
-                        mood: aeris.mood,
-                        size: 62,
-                        animate: false),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Level ${aeris.level} · ${stageNames[aeris.stage]}',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 16)),
-                          const SizedBox(height: 6),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: LinearProgressIndicator(
-                              value: (gam.earned % auraPerLevel) / auraPerLevel,
-                              minHeight: 7,
-                              backgroundColor: Colors.white24,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                              '${gam.available} Aura · ${auraToNextLevel(gam.earned)} to level ${aeris.level + 1}',
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right, color: Colors.white),
-                  ]),
-                ),
-              ).animate(delay: 100.ms).fadeIn(duration: 350.ms),
+              const _AerisLevelCard(),
             ],
-            if (insights != null && !hidden.contains('forecast')) ...[
-              const SizedBox(height: 14),
-              Card(
-                color: riskyBudgets > 0
-                    ? AerisColors.warning.withOpacity(0.10)
-                    : AerisColors.info.withOpacity(0.08),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(children: [
-                    Icon(
-                        riskyBudgets > 0
-                            ? Icons.warning_amber_rounded
-                            : Icons.insights,
-                        color: riskyBudgets > 0
-                            ? AerisColors.warning
-                            : AerisColors.info),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(insights.monthEstimate.label,
-                              style: const TextStyle(fontSize: 12)),
-                          Text(formatRupees(insights.monthEstimate.estimate),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w800, fontSize: 18)),
-                          if (riskyBudgets > 0)
-                            Text(
-                                '$riskyBudgets budget${riskyBudgets == 1 ? '' : 's'} on track to exceed — see AI tab',
-                                style: const TextStyle(
-                                    fontSize: 12,
-                                    color: AerisColors.warning,
-                                    fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
-                  ]),
-                ),
-              ).animate(delay: 120.ms).fadeIn(duration: 350.ms),
-            ],
+            if (!hidden.contains('forecast')) const _ForecastCard(),
             if (!hidden.contains('quote')) ...[
               const SizedBox(height: 14),
               _quoteCard(quote),
             ],
             const SizedBox(height: 14),
             if (!hidden.contains('goals'))
-              Card(
-              child: ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AerisColors.seed.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text('🎯', style: TextStyle(fontSize: 18)),
-                ),
-                title: const Text('Goals & streaks',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: const Text('Set targets, keep your streak, earn badges'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.pushNamed(context, AppRoutes.goals),
-              ),
-            ).animate(delay: 160.ms).fadeIn(duration: 350.ms),
+              PlayOnce(
+                  id: 'goals', delay: 160.ms, child: _goalsCard(context)),
             const SizedBox(height: 10),
             if (!hidden.contains('subs'))
-              Card(
-              child: ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AerisColors.info.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text('🔁', style: TextStyle(fontSize: 18)),
-                ),
-                title: const Text('Subscriptions & bills',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle:
-                    const Text('See recurring payments detected from your spends'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () =>
-                    Navigator.pushNamed(context, AppRoutes.subscriptions),
-              ),
-            ).animate(delay: 200.ms).fadeIn(duration: 350.ms),
+              PlayOnce(id: 'subs', delay: 200.ms, child: _subsCard(context)),
             const SizedBox(height: 22),
             Row(
               children: [
@@ -304,31 +202,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            recent.when(
-              data: (list) {
-                if (list.isEmpty) return _emptyRecent(context);
-                return Column(
-                  children: [for (final t in list) TransactionTile(txn: t)],
-                ).animate().fadeIn(duration: 300.ms);
-              },
-              loading: () => Column(
-                children: [
-                  for (var i = 0; i < 4; i++)
-                    Container(
-                      height: 54,
-                      margin: const EdgeInsets.symmetric(vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surfaceVariant
-                            .withOpacity(0.4),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 1200.ms),
-                ],
-              ),
-              error: (e, _) => Text('Could not load: $e'),
-            ),
+            const _RecentActivity(),
           ],
         ),
       ),
@@ -339,7 +213,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _importBanner(({int done, int total}) p) {
     final pct = p.total == 0 ? null : p.done / p.total;
     return Card(
-      color: AerisColors.info.withOpacity(0.10),
+      color: AerisColors.info.withValues(alpha: 0.10),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
@@ -364,10 +238,173 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _quoteCard(AsyncValue<List<Quote>> q) {
     final quotes = q.asData?.value;
     if (quotes == null || quotes.isEmpty) return const SizedBox.shrink();
-    return QuoteCarousel(quotes: quotes).animate().fadeIn(duration: 400.ms);
+    return PlayOnce(id: 'quote', child: QuoteCarousel(quotes: quotes));
   }
 
-  // ── Hero "Spent" block (now holds avg/day, top category, MoM) ──
+  Widget _goalsCard(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AerisColors.seed.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Text('🎯', style: TextStyle(fontSize: 18)),
+        ),
+        title: const Text('Goals & streaks',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: const Text('Set targets, keep your streak, earn badges'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.pushNamed(context, AppRoutes.goals),
+      ),
+    );
+  }
+
+  Widget _subsCard(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AerisColors.info.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Text('🔁', style: TextStyle(fontSize: 18)),
+        ),
+        title: const Text('Subscriptions & bills',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        subtitle:
+            const Text('See recurring payments detected from your spends'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.pushNamed(context, AppRoutes.subscriptions),
+      ),
+    );
+  }
+
+  Future<void> _grantSmsIfNeeded() async {
+    final ok = await SmsService.instance.requestPermission();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ok
+            ? 'SMS reading enabled. Bank alerts will become transactions.'
+            : 'Permission denied. Grant SMS access from system settings.')));
+  }
+}
+
+// ── Daily check-in reward card ────────────────────────────────
+// Shows only until the user has claimed today's reward, then disappears so the
+// dashboard stays clean. Tapping claims the aura and advances the streak.
+class _DailyCheckinCard extends ConsumerWidget {
+  const _DailyCheckinCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final gam = ref.watch(gamificationProvider);
+    final ctrl = ref.read(gamificationProvider.notifier);
+    if (!gam.loaded || ctrl.checkedInToday) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    final streak = gam.checkinStreak;
+
+    void claim() {
+      final awarded = ctrl.checkIn();
+      if (awarded > 0) {
+        final s = ref.read(gamificationProvider).checkinStreak;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('+$awarded Aura claimed · $s-day streak 🔥'),
+          duration: const Duration(seconds: 2),
+        ));
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 2),
+      child: Material(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: claim,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AerisColors.warning.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.card_giftcard,
+                      color: AerisColors.warning, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Daily check-in',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 14)),
+                      const SizedBox(height: 1),
+                      Text(
+                        streak > 0
+                            ? 'Keep your $streak-day streak going 🔥'
+                            : 'Claim +${GamificationController.checkinBase} Aura & start a streak',
+                        style: TextStyle(
+                            fontSize: 12, color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.tonal(
+                  onPressed: claim,
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                  ),
+                  child: const Text('Claim'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0);
+  }
+}
+
+// ── Hero "Spent" block + budget ring ─────────────────────────
+// Watches analytics + budgets only, so a new transaction rebuilds just these
+// two cards rather than the whole dashboard.
+class _DashboardCards extends ConsumerWidget {
+  const _DashboardCards();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final analytics = ref.watch(analyticsProvider);
+    final budgets = ref.watch(budgetsStreamProvider).asData?.value ?? const [];
+    return analytics.when(
+      data: (s) => Column(
+        children: [
+          // The hero holds the animated count; isolate its repaints so the
+          // count-up never invalidates the rest of the list.
+          PlayOnce(id: 'hero', child: RepaintBoundary(child: _heroCard(context, s))),
+          const SizedBox(height: 14),
+          PlayOnce(
+              id: 'budget',
+              delay: 80.ms,
+              child: _budgetCard(context, s, budgets)),
+        ],
+      ),
+      loading: () => const DashboardCardsSkeleton(),
+      error: (e, _) => Text('Could not load analytics: $e'),
+    );
+  }
+
   Widget _heroCard(BuildContext context, AnalyticsSnapshot s) {
     final mom = _momChange(s);
     return GradientCard(
@@ -431,7 +468,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.18),
+        color: Colors.white.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -454,7 +491,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     String mk(DateTime d) =>
         '${d.year}-${d.month.toString().padLeft(2, '0')}';
     final cur = s.monthlyExpenseSeries[mk(now)] ?? s.monthExpense;
-    final last = s.monthlyExpenseSeries[mk(DateTime(now.year, now.month - 1, 1))] ?? 0;
+    final last =
+        s.monthlyExpenseSeries[mk(DateTime(now.year, now.month - 1, 1))] ?? 0;
     if (last <= 0) return null;
     final pct = (cur - last) / last * 100;
     return (pct: pct.abs(), down: cur < last);
@@ -468,7 +506,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.16),
+            color: Colors.white.withValues(alpha: 0.16),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
@@ -482,8 +520,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Text(label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style:
-                            const TextStyle(color: Colors.white70, fontSize: 11)),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 11)),
                     Text(value,
                         style: const TextStyle(
                             color: Colors.white,
@@ -499,9 +537,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // ── Budget ring card ──────────────────────────────────────
   Widget _budgetCard(BuildContext context, AnalyticsSnapshot s, List budgets) {
-    final target = budgets.fold<double>(0, (sum, b) => sum + (b.monthlyCap as double));
+    // An explicit overall "total monthly budget" (if set) wins; otherwise fall
+    // back to the sum of the per-category caps.
+    final explicitTotal = budgets
+        .where((b) => b.categoryId == '__total__')
+        .fold<double>(0, (sum, b) => sum + (b.monthlyCap as double));
+    final categorySum = budgets
+        .where((b) => b.categoryId != '__total__')
+        .fold<double>(0, (sum, b) => sum + (b.monthlyCap as double));
+    final target = explicitTotal > 0 ? explicitTotal : categorySum;
     final spent = s.monthExpense;
 
     if (target <= 0) {
@@ -594,6 +639,187 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  double _topCatTotal(AnalyticsSnapshot s) {
+    if (s.byCategory.isEmpty) return 0;
+    return s.byCategory.values.reduce((a, b) => a > b ? a : b);
+  }
+
+  String _topCatLabel(AnalyticsSnapshot s) {
+    if (s.byCategory.isEmpty) return 'Top cat';
+    final top =
+        s.byCategory.entries.reduce((a, b) => a.value > b.value ? a : b);
+    return Categories.byId(top.key).label;
+  }
+}
+
+// ── Aeris level / aura card ───────────────────────────────────
+class _AerisLevelCard extends ConsumerWidget {
+  const _AerisLevelCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final aeris = ref.watch(avatarStatusProvider);
+    final gam = ref.watch(gamificationProvider);
+    return PlayOnce(
+      id: 'aeris',
+      delay: 100.ms,
+      child: GestureDetector(
+        onTap: () => Navigator.pushNamed(context, AppRoutes.aerisWorld),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.lerp(aeris.skin.aura, Colors.black, 0.05)!,
+                Color.lerp(aeris.skin.aura, Colors.black, 0.38)!,
+              ],
+            ),
+          ),
+          child: Row(children: [
+            AerisAvatar(
+                skin: aeris.skin,
+                stage: aeris.stage,
+                mood: aeris.mood,
+                size: 62,
+                animate: false),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Level ${aeris.level} · ${stageNames[aeris.stage]}',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16)),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: (gam.earned % auraPerLevel) / auraPerLevel,
+                      minHeight: 7,
+                      backgroundColor: Colors.white24,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                      '${gam.available} Aura · ${auraToNextLevel(gam.earned)} to level ${aeris.level + 1}',
+                      style: const TextStyle(color: Colors.white, fontSize: 12)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Forecast / month-estimate card ────────────────────────────
+class _ForecastCard extends ConsumerWidget {
+  const _ForecastCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final insights = ref.watch(insightsProvider).asData?.value;
+    if (insights == null) return const SizedBox.shrink();
+    final riskyBudgets = insights.budgetProjections
+        .where((p) =>
+            p.alreadyOver ||
+            (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))
+        .length;
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: PlayOnce(
+        id: 'forecast',
+        delay: 120.ms,
+        child: Card(
+          color: riskyBudgets > 0
+              ? AerisColors.warning.withValues(alpha: 0.10)
+              : AerisColors.info.withValues(alpha: 0.08),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Icon(
+                  riskyBudgets > 0
+                      ? Icons.warning_amber_rounded
+                      : Icons.insights,
+                  color: riskyBudgets > 0
+                      ? AerisColors.warning
+                      : AerisColors.info),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(insights.monthEstimate.label,
+                        style: const TextStyle(fontSize: 12)),
+                    Text(formatRupees(insights.monthEstimate.estimate),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 18)),
+                    const SizedBox(height: 2),
+                    Text(insights.cashflow.message,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: switch (insights.cashflow.severity) {
+                              InsightSeverity.positive => AerisColors.credit,
+                              InsightSeverity.warning => AerisColors.warning,
+                              InsightSeverity.alert => AerisColors.debit,
+                              InsightSeverity.info =>
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            })),
+                    if (riskyBudgets > 0)
+                      Text(
+                          '$riskyBudgets budget${riskyBudgets == 1 ? '' : 's'} on track to exceed — see AI tab',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: AerisColors.warning,
+                              fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Recent activity list ──────────────────────────────────────
+class _RecentActivity extends ConsumerWidget {
+  const _RecentActivity();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recent = ref.watch(recentTransactionsProvider(8));
+    return recent.when(
+      data: (list) {
+        if (list.isEmpty) return _emptyRecent(context);
+        return PlayOnce(
+          id: 'recent',
+          child: Column(
+              children: [for (final t in list) TransactionTile(txn: t)]),
+        );
+      },
+      loading: () => Column(
+        children: [
+          for (var i = 0; i < 4; i++)
+            const SkeletonBox(
+                height: 54, radius: 12, margin: EdgeInsets.symmetric(vertical: 5)),
+        ],
+      ),
+      error: (e, _) => Text('Could not load: $e'),
+    );
+  }
+
   Widget _emptyRecent(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 30),
@@ -611,47 +837,5 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
-  }
-
-  double _topCatTotal(AnalyticsSnapshot s) {
-    if (s.byCategory.isEmpty) return 0;
-    return s.byCategory.values.reduce((a, b) => a > b ? a : b);
-  }
-
-  String _topCatLabel(AnalyticsSnapshot s) {
-    if (s.byCategory.isEmpty) return 'Top cat';
-    final top = s.byCategory.entries.reduce((a, b) => a.value > b.value ? a : b);
-    return Categories.byId(top.key).label;
-  }
-
-  Future<void> _grantSmsIfNeeded() async {
-    final ok = await SmsService.instance.requestPermission();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok
-            ? 'SMS reading enabled. Bank alerts will become transactions.'
-            : 'Permission denied. Grant SMS access from system settings.')));
-  }
-}
-
-class _LoadingCards extends StatelessWidget {
-  const _LoadingCards();
-  @override
-  Widget build(BuildContext context) {
-    return Column(children: [
-      for (final h in [180.0, 132.0])
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          child: Container(
-            height: h,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(18),
-            ),
-          ),
-        ).animate(onPlay: (c) => c.repeat()).shimmer(
-            duration: 1200.ms,
-            color: Theme.of(context).colorScheme.surface.withOpacity(0.4)),
-    ]);
   }
 }
