@@ -43,7 +43,8 @@ class SmsParser {
     RegExp(r'SLICE', caseSensitive: false),
     RegExp(r'NIYO', caseSensitive: false),
     RegExp(r'BHIM', caseSensitive: false),
-    RegExp(r'(MOBIKWIK|FREECHARGE|OLAMONEY|JIOPAY|LAZYPAY)', caseSensitive: false),
+    RegExp(r'(MOBIKWIK|FREECHARGE|OLAMONEY|JIOPAY|LAZYPAY)',
+        caseSensitive: false),
   ];
 
   /// Amount patterns — covers all the variants we've seen in real inboxes.
@@ -58,18 +59,45 @@ class SmsParser {
     caseSensitive: false,
   );
 
+  /// Fallback when no currency token is present — many SBI/UPI alerts say
+  /// "debited by 101.00" or "credited by 500" with no Rs/₹. Anchored to a
+  /// transaction verb so it doesn't grab a reference/account number.
+  static final _amountAltRe = RegExp(
+    r'(?:debited|credited|debit|credit|paid|sent|withdrawn|received|deducted|spent)\s+'
+    r'(?:by|for|of|with)?\s*(?:rs\.?|inr|₹)?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)',
+    caseSensitive: false,
+  );
+
   /// Direction signals (case-insensitive substring scan).
   // NOTE: bare 'debit'/'credit' are intentionally excluded — they match
   // "Debit Card"/"Credit Card" in non-transaction notices. We require the
   // verb forms ('debited'/'credited') etc.
   static const _debitWords = <String>[
-    'debited', 'spent', 'paid', 'withdrawn', 'purchase', 'sent',
-    'transferred to', 'txn of', 'has been used', 'charged', 'deducted',
-    'dr ', ' dr.', 'pos txn',
+    'debited',
+    'spent',
+    'paid',
+    'withdrawn',
+    'purchase',
+    'sent',
+    'transferred to',
+    'txn of',
+    'has been used',
+    'charged',
+    'deducted',
+    'dr ',
+    ' dr.',
+    'pos txn',
   ];
   static const _creditWords = <String>[
-    'credited', 'received', 'deposited', 'refund', 'reversed',
-    'cr ', ' cr.', 'salary credited', 'income',
+    'credited',
+    'received',
+    'deposited',
+    'refund',
+    'reversed',
+    'cr ',
+    ' cr.',
+    'salary credited',
+    'income',
   ];
 
   /// Account fragment — "A/c XX1234", "A/c ending 1234", "card xx1234".
@@ -94,7 +122,9 @@ class SmsParser {
   /// Reference / UTR / RRN number — "UPI Ref no 453812345678", "Ref 123456",
   /// "RRN 123456789012", "txn id 123456", "UPI:123456789012".
   static final _refRe = RegExp(
-    r'(?:upi(?:\s*ref(?:\s*no)?)?|ref(?:erence)?\s*(?:no\.?|number|id)?|rrn|utr|txn\s*(?:id|ref))[:\s#\-]*([0-9]{6,18})',
+    r'(?:transaction\s*reference(?:\s*(?:number|no))?|upi\s*ref(?:\s*no)?|'
+    r'reference\s*(?:number|no)?|ref(?:\s*no)?|rrn|utr|txn\s*(?:id|ref)|upi)'
+    r'[^0-9]{0,8}([0-9]{6,18})', // allow "no"/"is"/":" filler before the digits
     caseSensitive: false,
   );
 
@@ -109,11 +139,34 @@ class SmsParser {
     r'\b([0-3]?[0-9])[-\/]([0-1]?[0-9])[-\/](20[0-9]{2}|[0-9]{2})\b',
   );
 
+  /// Text-month date, no separators needed — e.g. "07Jun26", "7 Jun 2026".
+  static final _dateTextRe = RegExp(
+    r'\b([0-3]?[0-9])[-\s]?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-\s]?(20[0-9]{2}|[0-9]{2})\b',
+    caseSensitive: false,
+  );
+  static const _monthNames = {
+    'jan': 1,
+    'feb': 2,
+    'mar': 3,
+    'apr': 4,
+    'may': 5,
+    'jun': 6,
+    'jul': 7,
+    'aug': 8,
+    'sep': 9,
+    'oct': 10,
+    'nov': 11,
+    'dec': 12,
+  };
+
   /// Spam / promotional / phishing markers — short-circuit reject.
   static final _promoMarkers = <RegExp>[
-    RegExp(r'\b(otp|verification code|one time password)\b', caseSensitive: false),
-    RegExp(r'\b(offer|cashback|reward|discount|loan offer)\b', caseSensitive: false),
-    RegExp(r'\b(view statement|due date|minimum amount due)\b', caseSensitive: false),
+    RegExp(r'\b(otp|verification code|one time password)\b',
+        caseSensitive: false),
+    RegExp(r'\b(offer|cashback|reward|discount|loan offer)\b',
+        caseSensitive: false),
+    RegExp(r'\b(view statement|due date|minimum amount due)\b',
+        caseSensitive: false),
     // Lottery / prize / phishing scams that mimic bank wording.
     RegExp(
       r'\b(won|winner|win|prize|lottery|congratulation|congrats|claim|'
@@ -128,6 +181,17 @@ class SmsParser {
       r'(limit\s*/?\s*usage|usage permission|permission for (?:debit|credit)|'
       r'processed successfully|daily tran|contactless\s*:|pos\s*/\s*ecom|'
       r'request via|e-?mandate|standing instruction)',
+      caseSensitive: false,
+    ),
+    // Pre-debit / autopay / mandate REMINDERS — the money hasn't moved yet.
+    // These say the account *will be* debited on a future date (e.g. "For the
+    // upcoming mandate set for 16-06-26, your account will be debited with
+    // Rs.1000..."). Creating a spend here double-counts against the real debit
+    // alert that arrives when the mandate actually executes, so we reject them.
+    RegExp(
+      r'(upcoming mandate|mandate\s+(?:set|registered|created|is paused)|'
+      r'will\s+be\s+debited|account\s+will\s+be|scheduled\s+(?:for|debit)|'
+      r'auto\s*-?pay|auto\s*-?debit|e-?nach\b)',
       caseSensitive: false,
     ),
   ];
@@ -156,10 +220,10 @@ class SmsParser {
     // genuine bank debit/credit alert.
     if (!trusted && _urlRe.hasMatch(clean)) return null;
 
-    final amountMatch = _amountRe.firstMatch(clean);
+    final amountMatch =
+        _amountRe.firstMatch(clean) ?? _amountAltRe.firstMatch(clean);
     if (amountMatch == null) return null;
-    final amount = double.tryParse(
-        amountMatch.group(1)!.replaceAll(',', ''));
+    final amount = double.tryParse(amountMatch.group(1)!.replaceAll(',', ''));
     if (amount == null || amount <= 0) return null;
 
     final direction = _directionFrom(clean);
@@ -176,8 +240,8 @@ class SmsParser {
 
     // Enrich on-device: a known payee gets a friendly name + category; an
     // unknown one gets a cleaned-up name from its VPA prefix where readable.
-    final dirHit = MerchantDirectory.lookup(merchant) ??
-        MerchantDirectory.lookup(vpa);
+    final dirHit =
+        MerchantDirectory.lookup(merchant) ?? MerchantDirectory.lookup(vpa);
     merchant = MerchantDirectory.prettyName(vpa, merchant) ?? merchant;
     final categoryId = (dirHit != null && direction == TxnDirection.debit)
         ? dirHit.categoryId
@@ -219,7 +283,7 @@ class SmsParser {
         b.contains('vpa') ||
         b.contains('available balance') ||
         b.contains('avl bal') ||
-        b.contains('wallet') ||              // Amazon Pay / Mobikwik etc.
+        b.contains('wallet') || // Amazon Pay / Mobikwik etc.
         b.contains('debited for') ||
         b.contains('credited for') ||
         b.contains('transaction reference') ||
@@ -283,11 +347,20 @@ class SmsParser {
   }
 
   static DateTime _extractDate(String body, {required DateTime fallback}) {
+    int dd, mm, yy;
     final m = _dateRe.firstMatch(body);
-    if (m == null) return fallback;
-    final dd = int.tryParse(m.group(1)!) ?? fallback.day;
-    final mm = int.tryParse(m.group(2)!) ?? fallback.month;
-    var yy = int.tryParse(m.group(3)!) ?? fallback.year;
+    if (m != null) {
+      dd = int.tryParse(m.group(1)!) ?? fallback.day;
+      mm = int.tryParse(m.group(2)!) ?? fallback.month;
+      yy = int.tryParse(m.group(3)!) ?? fallback.year;
+    } else {
+      // Try a text-month date like "07Jun26".
+      final t = _dateTextRe.firstMatch(body);
+      if (t == null) return fallback;
+      dd = int.tryParse(t.group(1)!) ?? fallback.day;
+      mm = _monthNames[t.group(2)!.toLowerCase()] ?? fallback.month;
+      yy = int.tryParse(t.group(3)!) ?? fallback.year;
+    }
     if (yy < 100) yy += 2000;
     try {
       // Preserve receivedAt hour/min so we still know when it landed.

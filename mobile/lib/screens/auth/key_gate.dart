@@ -32,10 +32,11 @@ class _KeyGateState extends ConsumerState<KeyGate> {
 
   /// Unlock the vault, then PRELOAD the dashboard's data while the splash is
   /// still showing — so when the splash hands off, the Home screen paints
-  /// already populated instead of flashing skeletons. The splash also stays up
-  /// for a minimum so the "A.E.R.I.S" animation plays through.
+  /// already populated instead of flashing skeletons. The splash holds for a
+  /// short minimum only so the "A.E.R.I.S" word finishes typing (~0.6s);
+  /// real work (unlock + decrypt) is what normally decides how long it shows.
   Future<bool> _runBoot(
-      {Duration minSplash = const Duration(milliseconds: 2200)}) async {
+      {Duration minSplash = const Duration(milliseconds: 650)}) async {
     final started = DateTime.now();
     final unlocked =
         await ref.read(authServiceProvider).ensureUnlocked(widget.uid);

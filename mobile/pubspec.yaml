@@ -1,7 +1,7 @@
 name: aeris_expense
 description: >
   AERIS Expense — Android-first expense tracker that auto-reads bank/UPI SMS,
-  stores transactions in Firestore, renders 7+ chart types via fl_chart, and
+  stores transactions in Firestore, renders charts via Syncfusion, and
   surfaces on-device statistical predictions + cut-down recommendations.
 publish_to: 'none'
 version: 1.0.0+1
@@ -28,9 +28,6 @@ dependencies:
   # ── SMS + permissions (Android only)
   another_telephony: ^0.4.1
   permission_handler: ^11.3.0
-
-  # ── Charts
-  fl_chart: ^0.66.2
 
   # ── UI utilities
   google_fonts: ^6.1.0
@@ -89,8 +86,27 @@ dev_dependencies:
   flutter_lints: ^3.0.1
   riverpod_generator: ^2.4.0
   build_runner: ^2.4.8
+  flutter_launcher_icons: ^0.14.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/icons/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#15C0B4"
+  adaptive_icon_foreground: "assets/icons/app_icon_foreground.png"
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false
 
 flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/icons/
+    # Plus Jakarta Sans, bundled so the app never downloads fonts at runtime
+    # (google_fonts finds these by file name; see main.dart).
+    - assets/google_fonts/

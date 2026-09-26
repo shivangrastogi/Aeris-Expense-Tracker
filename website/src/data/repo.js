@@ -46,6 +46,7 @@ async function decodeTxn(id, data, dek) {
       reviewed: m.reviewed ?? true,
       reference: m.reference ?? null,
       upiVpa: m.upiVpa ?? null,
+      receipt: m.receipt === true,
     };
   }
   // Legacy plaintext doc.
@@ -84,6 +85,8 @@ async function encodeTxn(t, dek) {
     // Preserve UPI enrichment written by the phone app (don't drop on edit).
     reference: t.reference ?? null,
     upiVpa: t.upiVpa ?? null,
+    // Phone-attached receipt photo (users/{uid}/receipts/{id}) — keep the flag.
+    ...(t.receipt ? { receipt: true } : {}),
   };
   return {
     timestamp: Timestamp.fromDate(t.timestamp),

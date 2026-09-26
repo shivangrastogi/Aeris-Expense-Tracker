@@ -158,7 +158,7 @@ class _AccountCard extends ConsumerWidget {
                     style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
-                        color: bal >= 0 ? AerisColors.credit : AerisColors.debit)),
+                        color: bal >= 0 ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context))),
                 const SizedBox(height: 10),
               ] else
                 Padding(
@@ -175,11 +175,11 @@ class _AccountCard extends ConsumerWidget {
                 ),
               Row(
                 children: [
-                  _metric(context, 'Spent', account.spent, AerisColors.debit),
+                  _metric(context, 'Spent', account.spent, AerisColors.moneyOut(context)),
                   _metric(
-                      context, 'Received', account.received, AerisColors.credit),
+                      context, 'Received', account.received, AerisColors.moneyIn(context)),
                   _metric(context, 'Net', net,
-                      net >= 0 ? AerisColors.credit : AerisColors.debit),
+                      net >= 0 ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context)),
                 ],
               ),
             ],

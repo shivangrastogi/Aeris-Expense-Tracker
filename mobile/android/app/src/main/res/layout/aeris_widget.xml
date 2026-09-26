@@ -4,44 +4,75 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
+    android:padding="14dp"
     android:background="@drawable/aeris_widget_bg">
 
+    <!-- Streak section -->
+    <TextView
+        android:id="@+id/widget_streak_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0 day streak"
+        android:textColor="#FFFFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_streak_sub"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Start your streak today"
+        android:textColor="#CCFFFFFF"
+        android:textSize="11sp" />
+
+    <!-- Divider. NOTE: a plain <View> is NOT a RemoteViews-supported class, so
+         it makes the launcher fail with "error occurred when loading widget".
+         A TextView (1dp tall) is supported and renders identically. -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="8dp"
+        android:text=""
+        android:background="#33FFFFFF" />
+
+    <!-- Budget section -->
     <TextView
         android:id="@+id/widget_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Budget left"
         android:textColor="#CCFFFFFF"
-        android:textSize="12sp" />
+        android:textSize="11sp" />
 
     <TextView
         android:id="@+id/widget_amount"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
-        android:text="—"
+        android:text="--"
         android:textColor="#FFFFFF"
-        android:textSize="26sp"
+        android:textSize="22sp"
         android:textStyle="bold" />
 
     <ProgressBar
         android:id="@+id/widget_progress"
         style="@android:style/Widget.ProgressBar.Horizontal"
         android:layout_width="match_parent"
-        android:layout_height="8dp"
-        android:layout_marginTop="8dp"
+        android:layout_height="6dp"
+        android:layout_marginTop="6dp"
         android:max="100"
         android:progress="0"
-        android:progressTint="#FFFFFF"
-        android:progressBackgroundTint="#55FFFFFF" />
+        android:progressDrawable="@drawable/widget_progress_drawable" />
 
     <TextView
         android:id="@+id/widget_sub"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="5dp"
         android:text=""
         android:textColor="#CCFFFFFF"
-        android:textSize="11sp" />
+        android:textSize="10sp" />
+
 </LinearLayout>

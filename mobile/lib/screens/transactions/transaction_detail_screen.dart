@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +12,9 @@ import '../../providers/transactions_provider.dart';
 import '../../services/category_rules.dart';
 import '../../services/merchant_directory.dart';
 import '../../utils/formatters.dart';
+import '../../core/routes.dart';
+import '../../widgets/receipt_field.dart';
+import '../../widgets/txn_undo.dart';
 
 class TransactionDetailScreen extends ConsumerStatefulWidget {
   final Transaction txn;
@@ -54,62 +59,20 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
     }
   }
 
-  Future<void> _editAmount() async {
-    final v = await _promptText('Amount (₹)', _t.amount.toStringAsFixed(0));
-    if (v == null) return;
-    final amt = double.tryParse(v.replaceAll(',', ''));
-    if (amt == null || amt <= 0) return;
-    await _apply(_t.copyWith(amount: amt, reviewed: true));
+  /// Opens the full add/edit form pre-filled with this transaction — one
+  /// consistent editor instead of a pop-up per field.
+  Future<void> _openEditor() async {
+    final updated =
+        await Navigator.pushNamed(context, AppRoutes.addTxn, arguments: _t);
+    if (updated is Transaction && mounted) {
+      setState(() {
+        _t = updated;
+        _receiptFuture = null;
+      });
+    }
   }
 
-  Future<void> _editDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _t.timestamp,
-      firstDate: DateTime(2015),
-      lastDate: DateTime.now(),
-    );
-    if (picked == null) return;
-    final t = _t.timestamp;
-    await _apply(_t.copyWith(
-        timestamp:
-            DateTime(picked.year, picked.month, picked.day, t.hour, t.minute),
-        reviewed: true));
-  }
-
-  Future<String?> _promptText(String title, String? initial) {
-    final ctrl = TextEditingController(text: initial ?? '');
-    return showDialog<String>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(d, ctrl.text.trim()),
-              child: const Text('Save')),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _editMerchant() async {
-    final v = await _promptText('Merchant / payee', _t.merchant);
-    if (v == null || v.isEmpty) return;
-    await _apply(_t.copyWith(merchant: v, reviewed: true));
-  }
-
-  Future<void> _editNote() async {
-    final v = await _promptText('Note', _t.note);
-    if (v == null) return;
-    await _apply(_t.copyWith(note: v.isEmpty ? null : v, reviewed: true));
-  }
+  Future<List<int>?>? _receiptFuture;
 
   Future<void> _apply(Transaction updated) async {
     final uid = ref.read(currentUserIdProvider);
@@ -118,22 +81,28 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
     if (mounted) setState(() => _t = updated);
   }
 
+  /// Deletes straight away but offers UNDO on the next screen.
   Future<void> _delete() async {
-    final uid = ref.read(currentUserIdProvider);
-    if (uid == null) return;
-    await ref.read(firestoreServiceProvider).deleteTransaction(uid, _t.id);
+    await deleteTransactionsWithUndo(context, ref, [_t]);
     if (mounted) Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     final cat = Categories.byId(_t.categoryId);
-    final color = _t.isCredit ? AerisColors.credit : AerisColors.debit;
+    final color = _t.isCredit ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transaction'),
         actions: [
-          IconButton(icon: const Icon(Icons.delete_outline), onPressed: _delete),
+          IconButton(
+              tooltip: 'Edit',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: _openEditor),
+          IconButton(
+              tooltip: 'Delete',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: _delete),
         ],
       ),
       body: ListView(
@@ -156,7 +125,7 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
                           )),
                   const SizedBox(height: 4),
                   InkWell(
-                    onTap: _editAmount,
+                    onTap: _openEditor,
                     child: Row(
                       children: [
                         Text(
@@ -169,7 +138,8 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
                         const SizedBox(width: 8),
                         Icon(Icons.edit,
                             size: 16,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant),
                       ],
                     ),
                   ),
@@ -178,11 +148,12 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
             ),
           ]),
           const SizedBox(height: 28),
-          _row('Category', cat.label, onTap: _changeCategory, trailingIcon: Icons.edit),
+          _row('Category', cat.label,
+              onTap: _changeCategory, trailingIcon: Icons.edit),
           _row('Merchant', _t.merchant ?? 'Add merchant',
-              onTap: _editMerchant, trailingIcon: Icons.edit),
+              onTap: _openEditor, trailingIcon: Icons.edit),
           _row('When', relativeDate(_t.timestamp),
-              onTap: _editDate, trailingIcon: Icons.edit),
+              onTap: _openEditor, trailingIcon: Icons.edit),
           if (_t.account != null) _row('Account', '••${_t.account}'),
           if (MerchantDirectory.appFor(_t.upiVpa) != null)
             _row('Paid via', MerchantDirectory.appFor(_t.upiVpa)!),
@@ -190,7 +161,8 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
           if (_t.reference != null) _row('Reference', _t.reference!),
           _row('Source', _t.source.name),
           _row('Note', _t.note ?? 'Add a note',
-              onTap: _editNote, trailingIcon: Icons.edit),
+              onTap: _openEditor, trailingIcon: Icons.edit),
+          if (_t.hasReceipt) _receiptSection(),
           if (_t.smsBody != null) ...[
             const SizedBox(height: 16),
             Text('Original SMS',
@@ -208,6 +180,51 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
             Text('From: ${_t.smsSender ?? "unknown sender"}',
                 style: const TextStyle(fontSize: 11)),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _receiptSection() {
+    final uid = ref.read(currentUserIdProvider);
+    _receiptFuture ??= uid == null
+        ? Future.value(null)
+        : ref.read(firestoreServiceProvider).fetchReceipt(uid, _t.id);
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Receipt',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          FutureBuilder<List<int>?>(
+            future: _receiptFuture,
+            builder: (context, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return const SizedBox(
+                    height: 120,
+                    child: Center(child: CircularProgressIndicator()));
+              }
+              final data = snap.data;
+              if (data == null) {
+                return const Text(
+                    "Receipt isn't available offline on this device yet.");
+              }
+              final bytes = Uint8List.fromList(data);
+              return GestureDetector(
+                onTap: () => showReceiptViewer(context, bytes),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Image.memory(bytes,
+                      height: 180, width: double.infinity, fit: BoxFit.cover),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );

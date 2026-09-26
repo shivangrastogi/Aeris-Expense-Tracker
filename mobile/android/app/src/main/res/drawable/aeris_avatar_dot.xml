@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Teal avatar stand-in for the quick-capture widget. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <gradient
+        android:startColor="#19C2B6"
+        android:endColor="#0F766E"
+        android:angle="315" />
+</shape>

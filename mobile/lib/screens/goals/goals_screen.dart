@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../utils/motion.dart';
 import '../../core/theme.dart';
 import '../../models/goal.dart';
 import '../../providers/auth_provider.dart';
@@ -31,7 +32,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
     final uid = ref.read(currentUserIdProvider);
     if (uid == null) return;
     await ref.read(firestoreServiceProvider).setGoal(uid, g);
-    if (celebrate) _confetti.play();
+    if (celebrate && mounted && !reduceMotion(context)) _confetti.play();
   }
 
   @override
@@ -103,9 +104,11 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Text('🔥', style: TextStyle(fontSize: 34))
-                .animate(onPlay: (c) => c.repeat(reverse: true))
-                .scaleXY(end: 1.15, duration: 800.ms),
+            reduceMotion(context)
+                ? const Text('🔥', style: TextStyle(fontSize: 34))
+                : const Text('🔥', style: TextStyle(fontSize: 34))
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .scaleXY(end: 1.15, duration: 800.ms),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -221,7 +224,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                           fontSize: 16, fontWeight: FontWeight.w700)),
                 ),
                 if (g.isComplete)
-                  const Icon(Icons.verified, color: AerisColors.credit),
+                  Icon(Icons.verified, color: AerisColors.moneyIn(context)),
                 PopupMenuButton<String>(
                   onSelected: (v) {
                     if (v == 'edit') _editGoal(existing: g);
@@ -244,7 +247,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                 builder: (_, v, __) => LinearProgressIndicator(
                   value: v,
                   minHeight: 12,
-                  color: g.isComplete ? AerisColors.credit : AerisColors.seed,
+                  color: g.isComplete ? AerisColors.moneyIn(context) : AerisColors.seed,
                   backgroundColor: AerisColors.seed.withValues(alpha: 0.12),
                 ),
               ),
@@ -261,8 +264,8 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
                         color: g.isComplete
-                            ? AerisColors.credit
-                            : AerisColors.seed)),
+                            ? AerisColors.moneyIn(context)
+                            : AerisColors.ink(context))),
               ],
             ),
             if (!g.isComplete) ...[
@@ -280,7 +283,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                 padding: const EdgeInsets.only(top: 6),
                 child: Text('Completed — well done! 🎉',
                     style: TextStyle(
-                        color: AerisColors.credit,
+                        color: AerisColors.moneyIn(context),
                         fontWeight: FontWeight.w600)),
               ),
           ],

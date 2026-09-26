@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user_profile.dart';
 import 'crypto_service.dart';
@@ -17,8 +18,17 @@ class AuthService {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
 
+  // Tracks an in-progress unlock so ensureUnlocked can wait for it instead
+  // of racing to the manual-password screen on fresh logins.
+  Completer<void>? _unlockCompleter;
+
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  /// Sends a Firebase password-reset email. Note: this only resets the login
+  /// password — the encrypted vault still needs the recovery key to unlock.
+  Future<void> sendPasswordReset(String email) =>
+      _auth.sendPasswordResetEmail(email: email.trim());
 
   /// Creates the account AND bootstraps end-to-end encryption keys.
   /// Returns the one-time **recovery key** the UI must show the user once.
@@ -27,22 +37,31 @@ class AuthService {
     required String password,
     required String displayName,
   }) async {
-    final cred = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(), password: password);
-    final user = cred.user!;
-    await user.updateDisplayName(displayName);
-
-    final recoveryKey = await _bootstrapKeys(user.uid, password);
-
-    final profile = UserProfile(
-      uid: user.uid,
-      email: email.trim(),
-      displayName: displayName,
-      createdAt: DateTime.now(),
-    );
-    await _db.collection('users').doc(user.uid).set(
-        await _profileDoc(profile, deleteLegacy: false));
-    return recoveryKey;
+    final completer = Completer<void>();
+    _unlockCompleter = completer;
+    try {
+      final cred = await _auth.createUserWithEmailAndPassword(
+          email: email.trim(), password: password);
+      final user = cred.user!;
+      await user.updateDisplayName(displayName);
+      final recoveryKey = await _bootstrapKeys(user.uid, password);
+      if (!completer.isCompleted) completer.complete();
+      final profile = UserProfile(
+        uid: user.uid,
+        email: email.trim(),
+        displayName: displayName,
+        createdAt: DateTime.now(),
+      );
+      await _db
+          .collection('users')
+          .doc(user.uid)
+          .set(await _profileDoc(profile, deleteLegacy: false));
+      return recoveryKey;
+    } catch (e) {
+      if (!completer.isCompleted)
+        completer.completeError(e, StackTrace.current);
+      rethrow;
+    }
   }
 
   /// Builds the Firestore profile map with `monthlyIncome` encrypted into an
@@ -54,8 +73,8 @@ class AuthService {
     final dek = KeyVault.instance.dek;
     if (dek == null) return m; // vault locked — keep plaintext fallback
     m.remove('monthlyIncome');
-    m['incomeEnc'] =
-        await CryptoService.instance.encryptJson({'income': p.monthlyIncome}, dek);
+    m['incomeEnc'] = await CryptoService.instance
+        .encryptJson({'income': p.monthlyIncome}, dek);
     if (deleteLegacy) m['monthlyIncome'] = FieldValue.delete();
 
     // Profile picture — encrypt the image BYTES (never a clear URL or the raw
@@ -64,7 +83,8 @@ class AuthService {
     // a name-only edit (merge write) keeps the existing picture.
     m.remove('photoUrl');
     if (p.photoBytes != null) {
-      m['photoEnc'] = await CryptoService.instance.encryptBytes(p.photoBytes!, dek);
+      m['photoEnc'] =
+          await CryptoService.instance.encryptBytes(p.photoBytes!, dek);
       if (deleteLegacy) m['photoUrl'] = FieldValue.delete();
     } else if (p.photoCleared) {
       m['photoEnc'] = FieldValue.delete();
@@ -77,10 +97,19 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final cred = await _auth.signInWithEmailAndPassword(
-        email: email.trim(), password: password);
-    await unlockWithPassword(cred.user!.uid, password);
-    return cred;
+    final completer = Completer<void>();
+    _unlockCompleter = completer;
+    try {
+      final cred = await _auth.signInWithEmailAndPassword(
+          email: email.trim(), password: password);
+      await unlockWithPassword(cred.user!.uid, password);
+      if (!completer.isCompleted) completer.complete();
+      return cred;
+    } catch (e) {
+      if (!completer.isCompleted)
+        completer.completeError(e, StackTrace.current);
+      rethrow;
+    }
   }
 
   // ── End-to-end encryption key handling ─────────────────────
@@ -120,6 +149,16 @@ class AuthService {
   /// storage. Returns true if the vault is ready.
   Future<bool> ensureUnlocked(String uid) async {
     if (KeyVault.instance.isUnlocked) return true;
+    // If signInWithEmail is still running its unlockWithPassword step, wait
+    // for it to finish before deciding whether we need a manual unlock.
+    final pending = _unlockCompleter;
+    if (pending != null) {
+      try {
+        await pending.future;
+      } catch (_) {}
+      if (KeyVault.instance.isUnlocked) return true;
+      // Unlock didn't happen (failed or legacy account) — fall through below.
+    }
     if (await KeyVault.instance.loadCached(uid)) return true;
     // No keys doc at all → nothing to unlock (legacy account).
     // Bound the network read: when offline (or on a flaky connection) a
@@ -201,8 +240,16 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    _unlockCompleter = null;
     final uid = _auth.currentUser?.uid;
     if (uid != null) await KeyVault.instance.clear(uid);
+    // Clear the keys the background SMS isolate uses, so it can't write to the
+    // signed-out account on the next incoming SMS.
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove('current_uid');
+      await p.remove('blocked_senders');
+    } catch (_) {}
     await _auth.signOut();
   }
 

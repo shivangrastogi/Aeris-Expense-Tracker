@@ -1,19 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Design tokens for AERIS Expense.
-///
-/// Colours are intentionally tuned for a "personal-finance" mood — calm
-/// teals and slate, with green/red reserved STRICTLY for credit/debit so
-/// they read as money signal, not chrome.
+/// Design tokens for AERIS Expense — "Flow" design language.
 class AerisColors {
   AerisColors._();
   static const seed = Color(0xFF0EA5A4);
-  static const credit = Color(0xFF22C55E);   // money in
-  static const debit = Color(0xFFEF4444);    // money out
-  static const warning = Color(0xFFF59E0B);
+
+  /// Deep teal for teal *text* on light surfaces. [seed] is only ~3:1 on
+  /// white (fails WCAG AA for small text); this is ~5.5:1. Keep [seed] for
+  /// fills, icons and buttons.
+  static const seedInk = Color(0xFF0F766E);
+
+  /// Teal for text: [seedInk] in light mode, [seed] in dark mode (where the
+  /// bright teal already reads well and the deep one would be too dim).
+  static Color ink(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? seed : seedInk;
+
+  /// Money-in / money-out colours for the current brightness. Use these for
+  /// every amount so income and spend look the same on every screen.
+  static Color moneyIn(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? creditDark : credit;
+  static Color moneyOut(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? debitDark : debit;
+
+  static const credit = Color(0xFF15A24A); // money in — #15A24A light
+  static const creditDark = Color(0xFF34D27B); // money in — dark
+  static const debit = Color(0xFFE5484D); // money out
+  static const debitDark = Color(0xFFFF6B6F); // money out — dark
+  static const warning = Color(0xFFE08C00);
   static const info = Color(0xFF3B82F6);
-  static const surfaceTintLight = Color(0xFFF7FAFA);
+  static const surfaceTintLight = Color(0xFFF2F7F6);
   static const surfaceTintDark = Color(0xFF0B1416);
 
   // Mascot / status moods — also reused for delight accents.
@@ -53,42 +69,80 @@ class AerisColors {
   ];
 }
 
+/// Equal-width digits app-wide: amounts line up in lists and totals don't
+/// jiggle while counting up. Explicit `TextStyle(...)`s inherit this through
+/// DefaultTextStyle unless they set their own fontFeatures.
+TextTheme _tabular(TextTheme t) {
+  const f = [FontFeature.tabularFigures()];
+  TextStyle? s(TextStyle? x) => x?.copyWith(fontFeatures: f);
+  return t.copyWith(
+    displayLarge: s(t.displayLarge),
+    displayMedium: s(t.displayMedium),
+    displaySmall: s(t.displaySmall),
+    headlineLarge: s(t.headlineLarge),
+    headlineMedium: s(t.headlineMedium),
+    headlineSmall: s(t.headlineSmall),
+    titleLarge: s(t.titleLarge),
+    titleMedium: s(t.titleMedium),
+    titleSmall: s(t.titleSmall),
+    bodyLarge: s(t.bodyLarge),
+    bodyMedium: s(t.bodyMedium),
+    bodySmall: s(t.bodySmall),
+    labelLarge: s(t.labelLarge),
+    labelMedium: s(t.labelMedium),
+    labelSmall: s(t.labelSmall),
+  );
+}
+
 ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
   final scheme = ColorScheme.fromSeed(
     seedColor: seed ?? AerisColors.seed,
     brightness: brightness,
   );
-  final base = brightness == Brightness.light ? ThemeData.light() : ThemeData.dark();
+  final base =
+      brightness == Brightness.light ? ThemeData.light() : ThemeData.dark();
   return base.copyWith(
     colorScheme: scheme,
     scaffoldBackgroundColor: brightness == Brightness.light
         ? AerisColors.surfaceTintLight
         : AerisColors.surfaceTintDark,
-    textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
-      bodyColor: scheme.onSurface,
-      displayColor: scheme.onSurface,
+    textTheme: _tabular(
+      GoogleFonts.plusJakartaSansTextTheme(base.textTheme).apply(
+        bodyColor: scheme.onSurface,
+        displayColor: scheme.onSurface,
+      ),
     ),
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       foregroundColor: scheme.onSurface,
       elevation: 0,
       centerTitle: false,
-      titleTextStyle: GoogleFonts.inter(
+      titleTextStyle: GoogleFonts.plusJakartaSans(
         fontSize: 20,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w800,
         color: scheme.onSurface,
+        letterSpacing: -0.5,
       ),
     ),
     cardTheme: CardThemeData(
       elevation: 0,
-      color: scheme.surfaceContainerHighest.withValues(alpha: 0.40),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: brightness == Brightness.light
+          ? Colors.white
+          : const Color(0xFF14221F),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(
+          color: brightness == Brightness.light
+              ? const Color(0x170E1A18)
+              : const Color(0x17FFFFFF),
+        ),
+      ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -99,35 +153,32 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
         foregroundColor: scheme.onPrimary,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
+        textStyle: GoogleFonts.plusJakartaSans(
+            fontSize: 15, fontWeight: FontWeight.w700),
       ),
     ),
     chipTheme: ChipThemeData(
       backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-      // Pin label + icon colour to the scheme — without this the label has no
-      // colour and falls back to white (fine on dark, invisible on light).
-      labelStyle: GoogleFonts.inter(
-          fontSize: 12, fontWeight: FontWeight.w500, color: scheme.onSurface),
-      secondaryLabelStyle: GoogleFonts.inter(
-          fontSize: 12, fontWeight: FontWeight.w500, color: scheme.onSurface),
+      labelStyle: GoogleFonts.plusJakartaSans(
+          fontSize: 12, fontWeight: FontWeight.w600, color: scheme.onSurface),
+      secondaryLabelStyle: GoogleFonts.plusJakartaSans(
+          fontSize: 12, fontWeight: FontWeight.w600, color: scheme.onSurface),
       iconTheme: IconThemeData(color: scheme.onSurfaceVariant, size: 18),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       side: BorderSide.none,
     ),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: brightness == Brightness.light
+    bottomAppBarTheme: BottomAppBarThemeData(
+      color: brightness == Brightness.light
           ? Colors.white
-          : const Color(0xFF101B1D),
-      indicatorColor: AerisColors.seed.withValues(alpha: 0.16),
-      elevation: 3,
-      labelTextStyle: WidgetStateProperty.all(
-        GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600),
-      ),
-      iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(
-            color: states.contains(WidgetState.selected)
-                ? AerisColors.seed
-                : scheme.onSurfaceVariant,
-          )),
+          : const Color(0xFF0D1518),
+      elevation: 8,
+      shadowColor: Colors.black.withValues(alpha: 0.12),
+    ),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: AerisColors.seed,
+      foregroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 6,
     ),
     pageTransitionsTheme: const PageTransitionsTheme(builders: {
       TargetPlatform.android: ZoomPageTransitionsBuilder(),

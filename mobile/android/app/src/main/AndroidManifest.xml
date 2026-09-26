@@ -47,7 +47,7 @@
     <application
         android:label="AERIS Expense"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/launcher_icon"
         android:enableOnBackInvokedCallback="true">
 
         <activity
@@ -78,7 +78,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Home-screen widget (budget left), updated via home_widget plugin. -->
+        <!-- Home-screen widget (streak + budget), updated via home_widget. -->
         <receiver
             android:name=".AerisWidgetProvider"
             android:exported="true">
@@ -88,6 +88,90 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/aeris_widget_info" />
+        </receiver>
+
+        <!-- Compact 2x2 budget-only widget. -->
+        <receiver
+            android:name=".AerisBudgetWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aeris_budget_widget_info" />
+        </receiver>
+
+        <!-- 4x1 quick-capture widget (add / voice shortcuts). -->
+        <receiver
+            android:name=".AerisQuickWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aeris_quick_widget_info" />
+        </receiver>
+
+        <!-- 2x2 month-spend widget. -->
+        <receiver
+            android:name=".AerisSpentWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aeris_spent_widget_info" />
+        </receiver>
+
+        <!-- 2x2 village widget. -->
+        <receiver
+            android:name=".AerisVillageWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aeris_village_widget_info" />
+        </receiver>
+
+        <!-- 1x1 today widget. -->
+        <receiver
+            android:name=".AerisTodayWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aeris_today_widget_info" />
+        </receiver>
+
+        <!-- 2x1 streak-mini widget. -->
+        <receiver
+            android:name=".AerisStreakMiniWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aeris_streakmini_widget_info" />
+        </receiver>
+
+        <!-- 4x2 streak widget (orange, week dots). -->
+        <receiver
+            android:name=".AerisStreakWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aeris_streak_widget_info" />
         </receiver>
 
         <meta-data

@@ -69,7 +69,7 @@ class StatCard extends StatelessWidget {
                 Icon(
                   deltaPct! >= 0 ? Icons.north_east : Icons.south_east,
                   size: 12,
-                  color: deltaPct! >= 0 ? AerisColors.credit : AerisColors.debit,
+                  color: deltaPct! >= 0 ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context),
                 ),
                 const SizedBox(width: 2),
                 Text(
@@ -78,7 +78,7 @@ class StatCard extends StatelessWidget {
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color:
-                        deltaPct! >= 0 ? AerisColors.credit : AerisColors.debit,
+                        deltaPct! >= 0 ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context),
                   ),
                 ),
                 const SizedBox(width: 6),

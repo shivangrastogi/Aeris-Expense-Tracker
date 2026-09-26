@@ -79,27 +79,55 @@ class _SkinCard extends StatelessWidget {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: selected
-            ? BorderSide(color: skin.aura, width: 2)
-            : BorderSide.none,
+        side:
+            selected ? BorderSide(color: skin.aura, width: 2) : BorderSide.none,
       ),
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: Column(
           children: [
             Expanded(
-              child: Opacity(
-                opacity: unlocked ? 1 : 0.55,
-                child: AerisAvatar(
-                    skin: skin,
-                    stage: stage,
-                    mood: AvatarMood.happy,
-                    size: 110,
-                    animate: false),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Center(
+                    child: Opacity(
+                      opacity: unlocked ? 1 : 0.55,
+                      child: AerisAvatar(
+                          skin: skin,
+                          stage: stage,
+                          mood: AvatarMood.happy,
+                          size: 110,
+                          animate: true),
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: skin.rarity.color,
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(color: Colors.white, width: 1.2),
+                      ),
+                      child: Text(
+                        skin.rarity.label,
+                        style: const TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.2),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             Text(skin.name,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                style:
+                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             Text(skin.tagline,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -111,7 +139,8 @@ class _SkinCard extends StatelessWidget {
               child: selected
                   ? const FilledButton(onPressed: null, child: Text('Selected'))
                   : unlocked
-                      ? OutlinedButton(onPressed: onSelect, child: const Text('Use'))
+                      ? OutlinedButton(
+                          onPressed: onSelect, child: const Text('Use'))
                       : FilledButton.icon(
                           onPressed: onUnlock,
                           icon: const Icon(Icons.lock_open, size: 16),

@@ -28,6 +28,10 @@ class InsightsScreen extends ConsumerWidget {
         ],
       ),
       body: b.when(
+        // Keep showing the previous insights while a recompute is running —
+        // without this the whole tab flashes back to skeletons on every
+        // transaction/budget change.
+        skipLoadingOnReload: true,
         loading: () => const InsightsSkeleton(),
         error: (e, _) => Center(child: Text('$e')),
         data: (bundle) => ListView(
@@ -46,25 +50,31 @@ class InsightsScreen extends ConsumerWidget {
             _SectionTitle('Recommendations'),
             ...bundle.recommendations.map(_RecCard.new),
             if (bundle.recommendations.isEmpty)
-              const Card(child: Padding(padding: EdgeInsets.all(14),
-                  child: Text('Nothing to flag yet — keep using the app, '
-                      'I\'ll have tips once you have a few weeks of data.'))),
+              const Card(
+                  child: Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Text('Nothing to flag yet — keep using the app, '
+                          'I\'ll have tips once you have a few weeks of data.'))),
             const SizedBox(height: 16),
             _SectionTitle('Next month: per-category forecast'),
             ...bundle.categoryForecasts.take(6).map(
-              (p) => _PredictionCard(p: p),
-            ),
+                  (p) => _PredictionCard(p: p),
+                ),
             const SizedBox(height: 16),
             _SectionTitle('Recurring payments detected'),
             if (bundle.recurring.isEmpty)
-              const Card(child: Padding(padding: EdgeInsets.all(14),
-                  child: Text('No recurring patterns detected yet.'))),
+              const Card(
+                  child: Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Text('No recurring patterns detected yet.'))),
             for (final r in bundle.recurring) _RecurringCard(r: r),
             const SizedBox(height: 16),
             _SectionTitle('Recent anomalies'),
             if (bundle.anomalies.isEmpty)
-              const Card(child: Padding(padding: EdgeInsets.all(14),
-                  child: Text('Nothing anomalous in recent activity.'))),
+              const Card(
+                  child: Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Text('Nothing anomalous in recent activity.'))),
             for (final a in bundle.anomalies) _AnomalyCard(a: a),
           ],
         ),
@@ -101,28 +111,31 @@ class _PredictionCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Icon(p.categoryId == null
-                  ? Icons.trending_up
-                  : Categories.byId(p.categoryId!).icon,
-                color: p.categoryId == null
-                    ? AerisColors.info
-                    : Categories.byId(p.categoryId!).color),
+              Icon(
+                  p.categoryId == null
+                      ? Icons.trending_up
+                      : Categories.byId(p.categoryId!).icon,
+                  color: p.categoryId == null
+                      ? AerisColors.info
+                      : Categories.byId(p.categoryId!).color),
               const SizedBox(width: 8),
-              Expanded(child: Text(p.label,
-                  style: const TextStyle(fontWeight: FontWeight.w700))),
+              Expanded(
+                  child: Text(p.label,
+                      style: const TextStyle(fontWeight: FontWeight.w700))),
               Text(formatRupees(p.estimate),
                   style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: hero ? 20 : 16)),
+                      fontWeight: FontWeight.w800, fontSize: hero ? 20 : 16)),
             ]),
             const SizedBox(height: 4),
-            Text('Range: ${formatRupees(p.low, compact: true)} – '
+            Text(
+                'Range: ${formatRupees(p.low, compact: true)} – '
                 '${formatRupees(p.high, compact: true)}',
                 style: const TextStyle(fontSize: 12)),
             const SizedBox(height: 2),
-            Text(p.basis, style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            Text(p.basis,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ],
         ),
       ),
@@ -138,16 +151,25 @@ class _BudgetProjectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cat = Categories.byId(bp.categoryId);
     final (Color color, IconData icon, String status) = bp.alreadyOver
-        ? (AerisColors.debit, Icons.error_outline,
-            'Over budget by ${formatRupees(bp.spentSoFar - bp.cap, compact: true)}')
+        ? (
+            AerisColors.moneyOut(context),
+            Icons.error_outline,
+            'Over budget by ${formatRupees(bp.spentSoFar - bp.cap, compact: true)}'
+          )
         : bp.willExceed
-            ? (AerisColors.warning, Icons.trending_up,
+            ? (
+                AerisColors.warning,
+                Icons.trending_up,
                 bp.daysUntilExceed != null
                     ? 'On pace to exceed in ~${bp.daysUntilExceed} day${bp.daysUntilExceed == 1 ? '' : 's'} '
                         '(≈${formatRupees(bp.projectedMonthEnd, compact: true)} by month-end)'
-                    : 'Projected ≈${formatRupees(bp.projectedMonthEnd, compact: true)} by month-end')
-            : (AerisColors.credit, Icons.check_circle_outline,
-                'On track — projected ≈${formatRupees(bp.projectedMonthEnd, compact: true)} of ${formatRupees(bp.cap, compact: true)}');
+                    : 'Projected ≈${formatRupees(bp.projectedMonthEnd, compact: true)} by month-end'
+              )
+            : (
+                AerisColors.moneyIn(context),
+                Icons.check_circle_outline,
+                'On track — projected ≈${formatRupees(bp.projectedMonthEnd, compact: true)} of ${formatRupees(bp.cap, compact: true)}'
+              );
     final pct = bp.cap <= 0 ? 0.0 : (bp.spentSoFar / bp.cap).clamp(0.0, 1.0);
     return Card(
       child: Padding(
@@ -183,7 +205,9 @@ class _BudgetProjectionCard extends StatelessWidget {
               Expanded(
                 child: Text(status,
                     style: TextStyle(
-                        fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+                        fontSize: 12,
+                        color: color,
+                        fontWeight: FontWeight.w600)),
               ),
             ]),
           ],
@@ -200,9 +224,9 @@ class _RecCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (r.severity) {
-      InsightSeverity.alert => AerisColors.debit,
+      InsightSeverity.alert => AerisColors.moneyOut(context),
       InsightSeverity.warning => AerisColors.warning,
-      InsightSeverity.positive => AerisColors.credit,
+      InsightSeverity.positive => AerisColors.moneyIn(context),
       InsightSeverity.info => AerisColors.info,
     };
     return Card(
@@ -214,21 +238,23 @@ class _RecCard extends StatelessWidget {
             Row(children: [
               Container(width: 4, height: 18, color: color),
               const SizedBox(width: 8),
-              Expanded(child: Text(r.title,
-                  style: const TextStyle(fontWeight: FontWeight.w700))),
+              Expanded(
+                  child: Text(r.title,
+                      style: const TextStyle(fontWeight: FontWeight.w700))),
               if (r.potentialSaving != null && r.potentialSaving! > 0)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: AerisColors.credit.withValues(alpha: 0.15),
+                    color: AerisColors.moneyIn(context).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     'Save ${formatRupees(r.potentialSaving!, compact: true)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: AerisColors.credit),
+                        color: AerisColors.moneyIn(context)),
                   ),
                 ),
             ]),
@@ -285,7 +311,8 @@ class _AnomalyCard extends StatelessWidget {
     return Card(
       color: AerisColors.warning.withValues(alpha: 0.06),
       child: ListTile(
-        leading: const Icon(Icons.warning_amber_rounded, color: AerisColors.warning),
+        leading:
+            const Icon(Icons.warning_amber_rounded, color: AerisColors.warning),
         title: Text(a.merchant ?? 'Unknown',
             style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(a.reason),

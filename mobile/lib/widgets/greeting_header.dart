@@ -19,8 +19,18 @@ enum _Sky { morning, afternoon, evening, night }
 class _GreetingHeaderState extends State<GreetingHeader>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(seconds: 6))
-        ..repeat();
+      AnimationController(vsync: this, duration: const Duration(seconds: 6));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // "Calm by default": the sky icon animates for two loops when the header
+    // appears, then rests. A forever-loop kept the screen drawing at 120 fps
+    // while idle. Honors the system "remove animations" switch.
+    if (_c.isAnimating || _c.value > 0) return;
+    if (MediaQuery.disableAnimationsOf(context)) return;
+    _c.repeat(count: 2);
+  }
 
   ({_Sky sky, String label}) _now() {
     final h = DateTime.now().hour;

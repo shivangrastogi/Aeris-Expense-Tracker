@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/routes.dart';
 import '../../core/theme.dart';
+import '../../models/budget.dart';
 import '../../models/category.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/budgets_provider.dart';
@@ -11,15 +12,49 @@ import '../../utils/formatters.dart';
 /// Each budgeted category is a "boss". Your budget is the shield; spending
 /// chips it away. Keep spend under the cap all month → you defeat the boss.
 class BossesScreen extends ConsumerWidget {
-  const BossesScreen({super.key});
+  /// Body-only (no Scaffold) so it can be embedded in the Quests tab.
+  final bool embed;
+  const BossesScreen({super.key, this.embed = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final analytics = ref.watch(analyticsProvider).valueOrNull;
     final budgets = (ref.watch(budgetsStreamProvider).valueOrNull ?? const [])
-        .where((b) => b.monthlyCap > 0 && b.categoryId != '__total__')
+        .where((b) => b.monthlyCap > 0 && b.categoryId != Budget.totalId)
         .toList();
     final byCat = analytics?.byCategory ?? const {};
+
+    if (embed) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (budgets.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Text(
+                'No bosses yet — set a goal (a category cap) and it becomes a '
+                'boss you fight all month by staying under it.',
+                style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            )
+          else
+            for (final b in budgets)
+              _BossCard(
+                categoryId: b.categoryId,
+                cap: b.monthlyCap,
+                spent: (byCat[b.categoryId] ?? 0).toDouble(),
+              ),
+          const SizedBox(height: 4),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.budgetEdit),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New boss battle'),
+          ),
+        ],
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Boss battles')),
@@ -78,10 +113,10 @@ class _BossCard extends StatelessWidget {
     final shield = (remaining / cap).clamp(0.0, 1.0);
     final broken = spent >= cap;
     final color = broken
-        ? AerisColors.debit
+        ? AerisColors.moneyOut(context)
         : shield < 0.25
             ? AerisColors.warning
-            : AerisColors.credit;
+            : AerisColors.moneyIn(context);
 
     return Card(
       child: Padding(
@@ -102,7 +137,10 @@ class _BossCard extends StatelessWidget {
                     Text('${cat.label} Beast',
                         style: const TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 16)),
-                    Text(broken ? 'Broke through your shield 💥' : 'Shield holding 🛡️',
+                    Text(
+                        broken
+                            ? 'Broke through your shield 💥'
+                            : 'Shield holding 🛡️',
                         style: TextStyle(fontSize: 12, color: color)),
                   ],
                 ),
@@ -118,7 +156,7 @@ class _BossCard extends StatelessWidget {
                 value: shield,
                 minHeight: 12,
                 color: color,
-                backgroundColor: AerisColors.debit.withValues(alpha: 0.18),
+                backgroundColor: AerisColors.moneyOut(context).withValues(alpha: 0.18),
               ),
             ),
             const SizedBox(height: 6),

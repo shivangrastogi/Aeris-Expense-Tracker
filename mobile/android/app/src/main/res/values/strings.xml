@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Shows your streak and monthly budget left</string>
+    <string name="widget_budget_description">Your monthly budget left at a glance</string>
+    <string name="widget_quick_description">Quickly add an expense or use voice capture</string>
+    <string name="widget_spent_description">How much you have spent this month</string>
+    <string name="widget_village_description">Your Aeris village at a glance</string>
+    <string name="widget_today_description">Today’s spend in a compact tile</string>
+    <string name="widget_streakmini_description">Your check-in streak, compact</string>
+    <string name="widget_streak_description">Your check-in streak with the weekly dots</string>
+</resources>

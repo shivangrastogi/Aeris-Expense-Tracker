@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../utils/motion.dart';
+
 /// A single shimmering placeholder block.
 ///
 /// Compose these to mirror the *shape* of the real content while it loads, so
@@ -31,9 +33,8 @@ class SkeletonBox extends StatelessWidget {
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(radius),
       ),
-    )
-        .animate(onPlay: (c) => c.repeat())
-        .shimmer(duration: 1100.ms, color: scheme.surface.withValues(alpha: 0.55));
+    ).shimmerLoop(context,
+        duration: 1100.ms, color: scheme.surface.withValues(alpha: 0.55));
   }
 }
 

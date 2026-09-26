@@ -37,7 +37,8 @@ class SmsImportService {
   Future<void> _ensureLoaded() async {
     if (_loaded) return;
     final p = await SharedPreferences.getInstance();
-    final ms = p.getInt(_hwmKey) ?? p.getInt(_legacyKey); // seed from legacy once
+    final ms =
+        p.getInt(_hwmKey) ?? p.getInt(_legacyKey); // seed from legacy once
     if (ms != null) _hwm = DateTime.fromMillisecondsSinceEpoch(ms);
     _recent
       ..clear()
@@ -62,8 +63,8 @@ class SmsImportService {
     await p.setStringList(_recentKey, _recent.toList());
   }
 
-  /// Deterministic signature for a parsed SMS — fed to an HMAC for the
-  /// opaque dedupe id. Must stay identical across live + backfill paths.
+  /// LEGACY signature — kept only so previously-imported messages are still
+  /// recognised as duplicates (don't change it).
   String _raw(ParsedSms p) {
     final t = p.txn;
     return '${t.smsSender ?? "?"}|${(t.smsBody ?? "").length}|${t.amount}|'
@@ -71,8 +72,19 @@ class SmsImportService {
         '${t.timestamp.hour}${t.timestamp.minute}';
   }
 
-  Future<String> _hashOf(ParsedSms p) =>
-      CryptoService.instance.dedupeTag(_raw(p), KeyVault.instance.dek ?? const []);
+  /// Current signature. When a reference/UTR is present it's the strongest
+  /// unique key — using it stops distinct same-amount templated alerts (e.g.
+  /// several ₹20 Amazon Pay wallet debits) from colliding into one dedupe id
+  /// and being dropped. Falls back to the legacy signature when there's no ref.
+  String _raw2(ParsedSms p) {
+    final t = p.txn;
+    final ref = (t.reference ?? '').trim();
+    if (ref.isNotEmpty) return '${t.smsSender ?? "?"}|${t.amount}|$ref';
+    return _raw(p);
+  }
+
+  Future<String> _hashOf(ParsedSms p) => CryptoService.instance
+      .dedupeTag(_raw2(p), KeyVault.instance.dek ?? const []);
 
   /// Persist one parsed SMS (skips blocked senders + already-imported).
   /// Returns true if a new transaction was written. Used by the live listener.
@@ -93,7 +105,12 @@ class SmsImportService {
     final sender = p.txn.smsSender;
     if (sender != null && blocked.contains(sender)) return false;
     final fs = FirestoreService.instance;
-    if (await fs.alreadyImported(uid, hash)) {
+    // Check the current hash AND the legacy hash, so messages imported before
+    // this dedupe change aren't re-imported as duplicates.
+    final legacy = await CryptoService.instance
+        .dedupeTag(_raw(p), KeyVault.instance.dek ?? const []);
+    if (await fs.alreadyImported(uid, hash) ||
+        (legacy != hash && await fs.alreadyImported(uid, legacy))) {
       _remember(hash); // cache it so we never query Firestore for it again
       _advanceHwm(p.txn.timestamp);
       return false;
@@ -153,8 +170,10 @@ class SmsImportService {
     var saved = 0;
     for (var i = 0; i < fresh.length; i++) {
       onProgress?.call(i, fresh.length);
-      if (await _persistChecked(uid, fresh[i].p, fresh[i].hash, blocked)) saved++;
-      if (i % 8 == 7) await Future<void>.delayed(Duration.zero); // keep UI alive
+      if (await _persistChecked(uid, fresh[i].p, fresh[i].hash, blocked))
+        saved++;
+      if (i % 8 == 7)
+        await Future<void>.delayed(Duration.zero); // keep UI alive
     }
     if (fresh.isNotEmpty) onProgress?.call(fresh.length, fresh.length);
 

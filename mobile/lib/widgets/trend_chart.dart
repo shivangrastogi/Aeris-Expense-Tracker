@@ -40,7 +40,7 @@ class _TrendChartState extends ConsumerState<TrendChart> {
   Widget build(BuildContext context) {
     final txns = ref.watch(transactionsStreamProvider).valueOrNull ?? const [];
     final data = _series(txns, _rangeDays, _balance);
-    final color = _balance ? AerisColors.seed : AerisColors.debit;
+    final color = _balance ? AerisColors.seed : AerisColors.moneyOut(context);
 
     return Card(
       child: Padding(

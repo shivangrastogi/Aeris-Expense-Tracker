@@ -19,11 +19,11 @@ final mascotProvider = Provider<MascotState>((ref) {
   final analytics = ref.watch(analyticsProvider).asData?.value;
   final budgets = ref.watch(budgetsStreamProvider).asData?.value ?? const [];
   final profile = ref.watch(userProfileProvider).asData?.value;
-  final insights = ref.watch(insightsProvider).asData?.value;
+  final insights = ref.watch(insightsProvider).valueOrNull;
 
   if (analytics == null) {
-    return const MascotState(
-        MascotMood.neutral, "Hi, I'm Aeris! Add or import a few transactions and I'll start helping.");
+    return const MascotState(MascotMood.neutral,
+        "Hi, I'm Aeris! Add or import a few transactions and I'll start helping.");
   }
 
   final now = DateTime.now();
@@ -71,9 +71,11 @@ final mascotProvider = Provider<MascotState>((ref) {
   final line = rec?.title ??
       switch (mood) {
         MascotMood.happy => "Nice work — you're keeping more than you spend!",
-        MascotMood.celebrate => "Incredible month! You're crushing your savings. 🎉",
+        MascotMood.celebrate =>
+          "Incredible month! You're crushing your savings. 🎉",
         MascotMood.worried => "Heads up — spending's running hot this month.",
-        MascotMood.neutral => "All steady. I'll flag anything that needs your eye.",
+        MascotMood.neutral =>
+          "All steady. I'll flag anything that needs your eye.",
       };
 
   return MascotState(mood, line);

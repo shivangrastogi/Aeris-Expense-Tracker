@@ -18,6 +18,16 @@ class AerisWidgetProvider : HomeWidgetProvider() {
     ) {
         appWidgetIds.forEach { widgetId ->
             val views = RemoteViews(context.packageName, R.layout.aeris_widget).apply {
+                // Streak row
+                setTextViewText(
+                    R.id.widget_streak_text,
+                    widgetData.getString("streak_text", "🔥 0 days") ?: "🔥 0 days"
+                )
+                setTextViewText(
+                    R.id.widget_streak_sub,
+                    widgetData.getString("streak_sub", "Start your streak today") ?: "Start your streak today"
+                )
+                // Budget row
                 setTextViewText(
                     R.id.widget_title,
                     widgetData.getString("title", "Budget left") ?: "Budget left"

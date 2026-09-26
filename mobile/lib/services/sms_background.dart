@@ -24,14 +24,15 @@ Future<void> smsBackgroundHandler(SmsMessage message) async {
         options: DefaultFirebaseOptions.currentPlatform);
 
     final prefs = await SharedPreferences.getInstance();
-    final uid =
-        prefs.getString('current_uid') ?? FirebaseAuth.instance.currentUser?.uid;
+    final uid = prefs.getString('current_uid') ??
+        FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
     // Restore the data key from the device keystore (set at login). Without it
     // we can't encrypt-write, so bail and let the next app-open backfill catch
     // this message.
-    if (!KeyVault.instance.isUnlocked && !await KeyVault.instance.loadCached(uid)) {
+    if (!KeyVault.instance.isUnlocked &&
+        !await KeyVault.instance.loadCached(uid)) {
       return;
     }
 
@@ -44,6 +45,12 @@ Future<void> smsBackgroundHandler(SmsMessage message) async {
     );
     if (parsed == null) return;
 
-    await SmsImportService.instance.persistOne(uid, parsed, const {});
-  } catch (_) {/* background best-effort; foreground backfill is the fallback */}
+    // Respect blocked senders even in the background (the app mirrors the set
+    // into prefs so this isolate doesn't need a Firestore read).
+    final blocked =
+        (prefs.getStringList('blocked_senders') ?? const []).toSet();
+    await SmsImportService.instance.persistOne(uid, parsed, blocked);
+  } catch (_) {
+    /* background best-effort; foreground backfill is the fallback */
+  }
 }

@@ -3,13 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/gamification_provider.dart';
 
-/// Card ids that the Home screen honours for show/hide.
+/// Card ids that the Home screen honours for show/hide (see the
+/// `kHomeCard*` constants in home_screen.dart).
 const dashboardCards = <(String, String)>[
-  ('aeris', 'Aeris World progress card'),
-  ('forecast', 'Month-end forecast banner'),
-  ('goals', 'Goals & streaks card'),
-  ('subs', 'Subscriptions & bills card'),
-  ('quote', 'Daily motivational quote'),
+  ('categories', 'Top spending categories'),
+  ('forecast', 'Month-end forecast'),
+  ('checkin', 'Daily check-in reminder'),
 ];
 
 const _accents = <int>[

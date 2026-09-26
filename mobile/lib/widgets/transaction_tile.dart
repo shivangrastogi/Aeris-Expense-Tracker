@@ -17,7 +17,7 @@ class TransactionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cat = Categories.byId(txn.categoryId);
     final theme = Theme.of(context);
-    final color = txn.isCredit ? AerisColors.credit : AerisColors.debit;
+    final color = txn.isCredit ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context);
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),

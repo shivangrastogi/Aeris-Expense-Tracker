@@ -6,19 +6,20 @@ enum TxnSource { sms, manual, recurring, imported }
 
 class Transaction {
   final String id;
-  final double amount;            // always positive; direction held separately
+  final double amount; // always positive; direction held separately
   final TxnDirection direction;
   final DateTime timestamp;
   final String? merchant;
-  final String? account;          // last-4 or masked acct
+  final String? account; // last-4 or masked acct
   final String categoryId;
   final String? note;
   final TxnSource source;
-  final String? smsBody;          // original SMS for audit/review
+  final String? smsBody; // original SMS for audit/review
   final String? smsSender;
-  final bool reviewed;            // user has confirmed an auto-parsed txn
-  final String? reference;        // UPI Ref / UTR / RRN from the SMS
-  final String? upiVpa;           // payee/payer UPI ID e.g. name@okhdfcbank
+  final bool reviewed; // user has confirmed an auto-parsed txn
+  final String? reference; // UPI Ref / UTR / RRN from the SMS
+  final String? upiVpa; // payee/payer UPI ID e.g. name@okhdfcbank
+  final bool hasReceipt; // an encrypted photo lives at receipts/{id}
 
   const Transaction({
     required this.id,
@@ -35,6 +36,7 @@ class Transaction {
     this.reviewed = true,
     this.reference,
     this.upiVpa,
+    this.hasReceipt = false,
   });
 
   bool get isDebit => direction == TxnDirection.debit;
@@ -55,9 +57,11 @@ class Transaction {
         'reviewed': reviewed,
         'reference': reference,
         'upiVpa': upiVpa,
+        if (hasReceipt) 'receipt': true,
       };
 
-  factory Transaction.fromMap(String id, Map<String, dynamic> map) => Transaction(
+  factory Transaction.fromMap(String id, Map<String, dynamic> map) =>
+      Transaction(
         id: id,
         amount: (map['amount'] as num?)?.toDouble() ?? 0,
         direction: _dirFrom(map['direction'] as String?),
@@ -72,6 +76,7 @@ class Transaction {
         reviewed: map['reviewed'] as bool? ?? true,
         reference: map['reference'] as String?,
         upiVpa: map['upiVpa'] as String?,
+        hasReceipt: map['receipt'] as bool? ?? false,
       );
 
   Transaction copyWith({
@@ -82,7 +87,9 @@ class Transaction {
     String? categoryId,
     String? note,
     bool? reviewed,
-  }) => Transaction(
+    bool? hasReceipt,
+  }) =>
+      Transaction(
         id: id,
         amount: amount ?? this.amount,
         direction: direction ?? this.direction,
@@ -97,6 +104,7 @@ class Transaction {
         reviewed: reviewed ?? this.reviewed,
         reference: reference,
         upiVpa: upiVpa,
+        hasReceipt: hasReceipt ?? this.hasReceipt,
       );
 
   static TxnDirection _dirFrom(String? s) {
@@ -105,10 +113,14 @@ class Transaction {
 
   static TxnSource _srcFrom(String? s) {
     switch (s) {
-      case 'sms': return TxnSource.sms;
-      case 'recurring': return TxnSource.recurring;
-      case 'imported': return TxnSource.imported;
-      default: return TxnSource.manual;
+      case 'sms':
+        return TxnSource.sms;
+      case 'recurring':
+        return TxnSource.recurring;
+      case 'imported':
+        return TxnSource.imported;
+      default:
+        return TxnSource.manual;
     }
   }
 }

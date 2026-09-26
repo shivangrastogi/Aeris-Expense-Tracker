@@ -24,7 +24,7 @@ class _MascotCardState extends ConsumerState<MascotCard> {
   Widget build(BuildContext context) {
     final state = ref.watch(mascotProvider);
     final recs =
-        ref.watch(insightsProvider).asData?.value?.recommendations ?? const [];
+        ref.watch(insightsProvider).valueOrNull?.recommendations ?? const [];
     final scheme = Theme.of(context).colorScheme;
 
     // The pool of things Aeris can say: the live mood line, each
@@ -61,7 +61,8 @@ class _MascotCardState extends ConsumerState<MascotCard> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    color:
+                        scheme.surfaceContainerHighest.withValues(alpha: 0.5),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(4),
                       topRight: Radius.circular(16),

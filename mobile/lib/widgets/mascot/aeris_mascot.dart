@@ -28,7 +28,27 @@ class _AerisMascotState extends State<AerisMascot>
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 2600),
-  )..repeat();
+  );
+
+  /// "Alive on touch, calm by default": a few idle loops when the mascot
+  /// appears or reacts, then it rests — a forever-loop kept the whole screen
+  /// rendering every frame. Honors the system "remove animations" switch.
+  void _liven() {
+    if (!mounted || MediaQuery.disableAnimationsOf(context)) return;
+    _c.repeat(count: 3);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_c.isAnimating && _c.value == 0) _liven();
+  }
+
+  @override
+  void didUpdateWidget(AerisMascot old) {
+    super.didUpdateWidget(old);
+    if (old.mood != widget.mood || old.reactKey != widget.reactKey) _liven();
+  }
 
   @override
   void dispose() {

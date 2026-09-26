@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class Budget {
   /// Reserved category id for the single overall "total monthly budget"
   /// (stored as one budget doc, kept out of the per-category lists/sums).
-  static const totalId = '__total__';
+  static const totalId = 'total_monthly';
 
   final String id;
   final String categoryId;

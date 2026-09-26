@@ -27,28 +27,33 @@ class InsightsBundle {
   });
 }
 
-final insightsProvider = Provider<AsyncValue<InsightsBundle>>((ref) {
-  final tx = ref.watch(transactionsStreamProvider);
-  final budgets = ref.watch(budgetsStreamProvider);
-  final profile = ref.watch(userProfileProvider);
+// A FutureProvider (not a sync Provider) on purpose: the prediction pass
+// scans the full transaction list several times. Running it synchronously
+// inside the Firestore stream notification used to land in the same frame as
+// whatever animation was playing (sheet close, IME hide) and caused visible
+// jank. The small delay lets the triggering frame finish first, and also
+// coalesces rapid bursts of stream emissions into one recompute.
+final insightsProvider = FutureProvider<InsightsBundle>((ref) async {
+  final txns = await ref.watch(transactionsStreamProvider.future);
+  final budgetList = ref.watch(budgetsStreamProvider).valueOrNull ?? const [];
+  final profile = ref.watch(userProfileProvider).valueOrNull;
 
-  return tx.whenData((txns) {
-    final pred = PredictionService.instance;
-    final budgetList = budgets.asData?.value ?? const [];
-    final rec = RecommendationService.instance.recommend(
-      txns: txns,
-      budgets: budgetList,
-      profile: profile.asData?.value,
-    );
-    return InsightsBundle(
-      monthEstimate: pred.predictCurrentMonth(txns),
-      categoryForecasts: pred.predictPerCategoryNextMonth(txns),
-      budgetProjections: pred.projectBudgets(txns, budgetList),
-      anomalies: pred.detectAnomalies(txns),
-      recurring: pred.detectRecurring(txns),
-      recommendations: rec,
-      cashflow: pred.cashflowThisMonth(txns,
-          monthlyIncome: profile.asData?.value?.monthlyIncome ?? 0),
-    );
-  });
+  await Future<void>.delayed(const Duration(milliseconds: 250));
+
+  final pred = PredictionService.instance;
+  final rec = RecommendationService.instance.recommend(
+    txns: txns,
+    budgets: budgetList,
+    profile: profile,
+  );
+  return InsightsBundle(
+    monthEstimate: pred.predictCurrentMonth(txns),
+    categoryForecasts: pred.predictPerCategoryNextMonth(txns),
+    budgetProjections: pred.projectBudgets(txns, budgetList),
+    anomalies: pred.detectAnomalies(txns),
+    recurring: pred.detectRecurring(txns),
+    recommendations: rec,
+    cashflow: pred.cashflowThisMonth(txns,
+        monthlyIncome: profile?.monthlyIncome ?? 0),
+  );
 });

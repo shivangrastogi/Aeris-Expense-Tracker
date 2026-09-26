@@ -4,9 +4,12 @@ import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 
 import '../models/budget.dart';
 import '../models/goal.dart';
+import '../models/loan.dart';
+import '../models/subscription.dart';
 import '../models/transaction.dart';
 import 'crypto_service.dart';
 import 'key_vault.dart';
+import 'sync_outbox.dart';
 
 /// Per-user Firestore data layer. Layout:
 ///   users/{uid}                       — UserProfile
@@ -18,6 +21,10 @@ class FirestoreService {
   static final FirestoreService instance = FirestoreService._();
 
   final _db = FirebaseFirestore.instance;
+
+  /// Every user-data write goes through the outbox: tracked + size-bounded
+  /// while offline, and never blocks the caller waiting for a server ack.
+  SyncOutbox get _out => SyncOutbox.instance;
 
   // Cache of decrypted transactions keyed by doc id → (encBlob, txn). Firestore
   // re-emits the whole query on any single change; without this we'd re-decrypt
@@ -33,6 +40,49 @@ class FirestoreService {
       _db.collection('users').doc(uid).collection('processed_sms');
   CollectionReference<Map<String, dynamic>> _blockedCol(String uid) =>
       _db.collection('users').doc(uid).collection('blocked_senders');
+  DocumentReference<Map<String, dynamic>> _gamDoc(String uid) =>
+      _db.collection('users').doc(uid).collection('meta').doc('gamification');
+
+  // ─ Gamification (streak / aura) cloud backup ───────────────
+  // Not encrypted on purpose: it's non-sensitive (streak counts, award keys)
+  // and must be restorable on a fresh install BEFORE the vault is unlocked.
+
+  Future<Map<String, dynamic>?> fetchGamification(String uid) async =>
+      (await _gamDoc(uid).get()).data();
+
+  Future<void> saveGamification(String uid, Map<String, dynamic> data) =>
+      _out.set(
+        _gamDoc(uid),
+        {...data, 'updatedAt': SyncOutbox.serverTimestamp},
+        merge: true,
+      );
+
+  // ─ Daily usage tracking ────────────────────────────────────
+  // One small doc per active day at users/{uid}/usage/{yyyy-MM-dd}. Uses
+  // FieldValue.increment so it's atomic + offline-safe, and is cheap to query
+  // by date range (active-day streaks, monthly heatmaps, retention).
+
+  CollectionReference<Map<String, dynamic>> _usageCol(String uid) =>
+      _db.collection('users').doc(uid).collection('usage');
+
+  /// Records one app-open for [day] (local date, format yyyy-MM-dd).
+  Future<void> recordDailyUsage(String uid, String day) =>
+      _usageCol(uid).doc(day).set({
+        'date': day,
+        'opens': FieldValue.increment(1),
+        'lastActive': FieldValue.serverTimestamp(),
+        'firstOpen': FieldValue.serverTimestamp(), // only sticks on create
+      }, SetOptions(merge: true));
+
+  /// Active-day docs in a date range (inclusive), for streaks / heatmaps.
+  Future<List<Map<String, dynamic>>> fetchUsage(
+      String uid, String fromDay, String toDay) async {
+    final snap = await _usageCol(uid)
+        .where('date', isGreaterThanOrEqualTo: fromDay)
+        .where('date', isLessThanOrEqualTo: toDay)
+        .get();
+    return snap.docs.map((d) => d.data()).toList();
+  }
 
   // ─ Transactions ────────────────────────────────────────────
 
@@ -82,21 +132,26 @@ class FirestoreService {
           results[i] = Transaction.fromMap(docs[i].id, docs[i].data());
           continue;
         }
-        m['timestamp'] =
-            Timestamp.fromMillisecondsSinceEpoch((m['timestamp'] as num).toInt());
+        m['timestamp'] = Timestamp.fromMillisecondsSinceEpoch(
+            (m['timestamp'] as num).toInt());
         final txn = Transaction.fromMap(docs[i].id, m);
         _txCache[docs[i].id] = (enc: pendingBlobs[j], txn: txn);
         results[i] = txn;
       }
     }
-    return [for (final t in results) if (t != null) t];
+    return [
+      for (final t in results)
+        if (t != null) t
+    ];
   }
 
   Future<List<Transaction>> fetchTransactions(String uid,
       {DateTime? since, int? limit}) async {
-    Query<Map<String, dynamic>> q = _txCol(uid).orderBy('timestamp', descending: true);
+    Query<Map<String, dynamic>> q =
+        _txCol(uid).orderBy('timestamp', descending: true);
     if (since != null) {
-      q = q.where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(since));
+      q = q.where('timestamp',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(since));
     }
     if (limit != null) q = q.limit(limit);
     final snap = await q.get();
@@ -108,17 +163,59 @@ class FirestoreService {
   }
 
   Future<void> addTransaction(String uid, Transaction t) async {
-    await _txCol(uid).doc(t.id).set(await _encodeTxn(t));
+    await _out.set(_txCol(uid).doc(t.id), await _encodeTxn(t));
   }
 
   Future<void> updateTransaction(String uid, Transaction t) async {
     // Full rewrite — an encrypted blob can't be partially merged.
-    await _txCol(uid).doc(t.id).set(await _encodeTxn(t));
+    await _out.set(_txCol(uid).doc(t.id), await _encodeTxn(t));
   }
 
   Future<void> deleteTransaction(String uid, String id) async {
-    await _txCol(uid).doc(id).delete();
+    await _out.delete(_txCol(uid).doc(id));
   }
+
+  // ─ Receipt photos (encrypted, one doc per transaction) ─────
+  // Stored in Firestore rather than Storage so they ride the same offline
+  // outbox + E2E encryption. Images are downscaled before this (≈100–250 KB),
+  // well under Firestore's 1 MiB doc limit.
+
+  DocumentReference<Map<String, dynamic>> _receiptDoc(
+          String uid, String txnId) =>
+      _db.collection('users').doc(uid).collection('receipts').doc(txnId);
+
+  Future<void> setReceipt(String uid, String txnId, List<int> jpeg) async {
+    final dek = KeyVault.instance.dek;
+    if (dek == null) throw StateError('Vault is locked');
+    await _out.set(_receiptDoc(uid, txnId), {
+      'enc': await CryptoService.instance.encryptBytes(jpeg, dek),
+      'v': 1,
+    });
+  }
+
+  /// Decrypted JPEG bytes, or null if there's no receipt (or it can't be read
+  /// yet — e.g. offline and never cached on this device).
+  Future<List<int>?> fetchReceipt(String uid, String txnId) async {
+    final dek = KeyVault.instance.dek;
+    if (dek == null) return null;
+    DocumentSnapshot<Map<String, dynamic>> snap;
+    try {
+      snap = await _receiptDoc(uid, txnId).get();
+    } catch (_) {
+      try {
+        snap = await _receiptDoc(uid, txnId)
+            .get(const GetOptions(source: Source.cache));
+      } catch (_) {
+        return null;
+      }
+    }
+    final enc = snap.data()?['enc'];
+    if (enc is! String) return null;
+    return CryptoService.instance.decryptBytes(enc, dek);
+  }
+
+  Future<void> deleteReceipt(String uid, String txnId) =>
+      _out.delete(_receiptDoc(uid, txnId));
 
   // ─ Transaction encryption (envelope, AES-256-GCM) ──────────
   // Stored doc shape: { timestamp (plaintext, for ordering), enc (blob), v }.
@@ -166,11 +263,11 @@ class FirestoreService {
 
   Future<void> setBudget(String uid, Budget b) async {
     // Doc id == categoryId so each category has exactly one budget.
-    await _budgetCol(uid).doc(b.categoryId).set(await _encodeBudget(b));
+    await _out.set(_budgetCol(uid).doc(b.categoryId), await _encodeBudget(b));
   }
 
   Future<void> deleteBudget(String uid, String categoryId) =>
-      _budgetCol(uid).doc(categoryId).delete();
+      _out.delete(_budgetCol(uid).doc(categoryId));
 
   // The monthly cap is encrypted; the doc id (categoryId) is just a label.
   Future<Map<String, dynamic>> _encodeBudget(Budget b) async {
@@ -197,7 +294,8 @@ class FirestoreService {
         monthlyCap: (m['monthlyCap'] as num?)?.toDouble() ?? 0,
         updatedAt: m['updatedAt'] == null
             ? DateTime.now()
-            : DateTime.fromMillisecondsSinceEpoch((m['updatedAt'] as num).toInt()),
+            : DateTime.fromMillisecondsSinceEpoch(
+                (m['updatedAt'] as num).toInt()),
       );
     }
     return Budget.fromMap(id, doc);
@@ -210,8 +308,8 @@ class FirestoreService {
     return doc.exists;
   }
 
-  Future<void> markImported(String uid, String smsHash) =>
-      _processedCol(uid).doc(smsHash).set({'at': FieldValue.serverTimestamp()});
+  Future<void> markImported(String uid, String smsHash) => _out
+      .set(_processedCol(uid).doc(smsHash), {'at': SyncOutbox.serverTimestamp});
 
   // ─ Blocked senders ─────────────────────────────────────────
   // Senders the user has flagged as junk. Future SMS from them are never
@@ -225,13 +323,13 @@ class FirestoreService {
           s.docs.map((d) => (d.data()['sender'] as String?) ?? d.id).toSet());
 
   Future<void> blockSender(String uid, String sender) =>
-      _blockedCol(uid).doc(_senderKey(sender)).set({
+      _out.set(_blockedCol(uid).doc(_senderKey(sender)), {
         'sender': sender,
-        'at': FieldValue.serverTimestamp(),
+        'at': SyncOutbox.serverTimestamp,
       });
 
   Future<void> unblockSender(String uid, String sender) =>
-      _blockedCol(uid).doc(_senderKey(sender)).delete();
+      _out.delete(_blockedCol(uid).doc(_senderKey(sender)));
 
   // ─ E2E key material ────────────────────────────────────────
   // Stores ONLY wrapped (encrypted) keys + salt — never the raw data key.
@@ -278,13 +376,14 @@ class FirestoreService {
     final enc = snap.data()?['enc'];
     if (enc is String) {
       try {
-        current.addAll(
-            _decodeBalances(await CryptoService.instance.decryptJson(enc, dek)));
+        current.addAll(_decodeBalances(
+            await CryptoService.instance.decryptJson(enc, dek)));
       } catch (_) {/* start fresh */}
     }
     current[accountKey] = amount;
-    await _balancesDoc(uid).set({
-      'enc': await CryptoService.instance.encryptJson({'balances': current}, dek),
+    await _out.set(_balancesDoc(uid), {
+      'enc':
+          await CryptoService.instance.encryptJson({'balances': current}, dek),
       'v': 1,
     });
   }
@@ -296,7 +395,7 @@ class FirestoreService {
     final tx = await _txCol(uid).get();
     for (final d in tx.docs) {
       if (d.data()['enc'] is String) continue;
-      await _txCol(uid).doc(d.id).set(
+      await _out.set(_txCol(uid).doc(d.id),
           await _encodeTxn(Transaction.fromMap(d.id, d.data())));
     }
     final bg = await _budgetCol(uid).get();
@@ -340,11 +439,88 @@ class FirestoreService {
             'enc': await CryptoService.instance.encryptJson(g.toMap(), dek),
             'v': 1,
           };
-    await _goalsCol(uid).doc(g.id).set(doc);
+    await _out.set(_goalsCol(uid).doc(g.id), doc);
   }
 
   Future<void> deleteGoal(String uid, String id) =>
-      _goalsCol(uid).doc(id).delete();
+      _out.delete(_goalsCol(uid).doc(id));
+
+  // ─ Loans / money lent to friends (encrypted like goals) ─────
+
+  CollectionReference<Map<String, dynamic>> _loansCol(String uid) =>
+      _db.collection('users').doc(uid).collection('loans');
+
+  Stream<List<Loan>> watchLoans(String uid) {
+    return _loansCol(uid)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .asyncMap((s) async {
+      final out = <Loan>[];
+      for (final d in s.docs) {
+        final dek = KeyVault.instance.dek;
+        final enc = d.data()['enc'];
+        if (enc is String && dek != null) {
+          out.add(Loan.fromMap(
+              d.id, await CryptoService.instance.decryptJson(enc, dek)));
+        } else {
+          out.add(Loan.fromMap(d.id, d.data()));
+        }
+      }
+      return out;
+    });
+  }
+
+  Future<void> setLoan(String uid, Loan l) async {
+    final dek = KeyVault.instance.dek;
+    final doc = dek == null
+        ? l.toMap()
+        : {
+            'createdAt': Timestamp.fromDate(l.createdAt),
+            'enc': await CryptoService.instance.encryptJson(l.toMap(), dek),
+            'v': 1,
+          };
+    await _out.set(_loansCol(uid).doc(l.id), doc);
+  }
+
+  Future<void> deleteLoan(String uid, String id) =>
+      _out.delete(_loansCol(uid).doc(id));
+
+  // ─ Subscriptions / recurring bills (encrypted like loans) ───
+
+  CollectionReference<Map<String, dynamic>> _subsCol(String uid) =>
+      _db.collection('users').doc(uid).collection('subscriptions');
+
+  Stream<List<Subscription>> watchSubscriptions(String uid) {
+    return _subsCol(uid).snapshots().asyncMap((s) async {
+      final out = <Subscription>[];
+      for (final d in s.docs) {
+        final dek = KeyVault.instance.dek;
+        final enc = d.data()['enc'];
+        if (enc is String && dek != null) {
+          out.add(Subscription.fromMap(
+              d.id, await CryptoService.instance.decryptJson(enc, dek)));
+        } else {
+          out.add(Subscription.fromMap(d.id, d.data()));
+        }
+      }
+      out.sort((a, b) => a.day.compareTo(b.day));
+      return out;
+    });
+  }
+
+  Future<void> setSubscription(String uid, Subscription s) async {
+    final dek = KeyVault.instance.dek;
+    final doc = dek == null
+        ? s.toMap()
+        : {
+            'enc': await CryptoService.instance.encryptJson(s.toMap(), dek),
+            'v': 1,
+          };
+    await _out.set(_subsCol(uid).doc(s.id), doc);
+  }
+
+  Future<void> deleteSubscription(String uid, String id) =>
+      _out.delete(_subsCol(uid).doc(id));
 }
 
 /// Top-level so it can run inside `Isolate.run`. Decrypts a batch of `enc`

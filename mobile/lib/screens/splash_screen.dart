@@ -1,142 +1,189 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import '../core/theme.dart';
+import '../models/avatar_skin.dart';
+import '../widgets/aeris_avatar.dart';
 
-/// Animated AERIS launch screen.
-///
-/// Shows a glowing wallet mark, then types out the "A.E.R.I.S" wordmark one
-/// glyph at a time, a tagline, and a slim indeterminate progress bar with a
-/// "please wait" line — so the cold-start wait reads as a deliberate loader
-/// rather than a frozen spinner.
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
-  // The wordmark, split so each glyph (and dot) can animate in on its own beat.
-  static const _glyphs = ['A', '.', 'E', '.', 'R', '.', 'I', '.', 'S'];
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  static const _word = 'A.E.R.I.S';
+  int _n = 0;
+  bool _cursorVisible = true;
+  late final Timer _typeTimer;
+  late final Timer _cursorTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Type one character every 65ms — the word completes in ~0.6s, inside the
+    // KeyGate's minimum splash hold, so it never gets cut off mid-word.
+    _typeTimer = Timer.periodic(const Duration(milliseconds: 65), (t) {
+      if (_n < _word.length) {
+        setState(() => _n++);
+      } else {
+        t.cancel();
+      }
+    });
+    // Blink the cursor at 500ms interval
+    _cursorTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (mounted) setState(() => _cursorVisible = !_cursorVisible);
+    });
+  }
+
+  @override
+  void dispose() {
+    _typeTimer.cancel();
+    _cursorTimer.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final defaultSkin = Avatars.byId('sprout');
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // Soft radial wash behind everything for depth.
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0, -0.25),
-                  radius: 1.1,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const RadialGradient(
+                  center: Alignment(-0.7, -0.8),
+                  radius: 1.2,
                   colors: [
-                    AerisColors.seed.withValues(alpha: dark ? 0.22 : 0.14),
-                    Colors.transparent,
+                    Color(0xFF16201F),
+                    Color(0xFF0C1212),
+                    Color(0xFF080C0C)
                   ],
+                  stops: [0.0, 0.6, 1.0],
+                )
+              : const RadialGradient(
+                  center: Alignment(-0.7, -0.8),
+                  radius: 1.2,
+                  colors: [
+                    Color(0xFFE0F7F5),
+                    Color(0xFFF4FFFE),
+                    Color(0xFFFFFFFF)
+                  ],
+                  stops: [0.0, 0.5, 1.0],
                 ),
-              ),
-            ),
-          ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // ── Glowing logo mark ──────────────────────────────
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    gradient: AerisColors.heroGradient,
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AerisColors.seed.withValues(alpha: 0.45),
-                        blurRadius: 40,
-                        spreadRadius: 2,
+        ),
+        child: Stack(
+          children: [
+            // Centered main content
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Aeris mascot ──────────────────────────────
+                  AerisAvatar(
+                    skin: defaultSkin,
+                    stage: 1,
+                    mood: AvatarMood.happy,
+                    size: 150,
+                    animate: true,
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // ── Typewriter wordmark ───────────────────────
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        _word.substring(0, _n),
+                        style: TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.04 * 34,
+                          color:
+                              isDark ? Colors.white : const Color(0xFF0D1C1C),
+                        ),
                       ),
+                      if (_n < _word.length || _cursorVisible)
+                        AnimatedOpacity(
+                          opacity: _n < _word.length
+                              ? 1.0
+                              : (_cursorVisible ? 1.0 : 0.0),
+                          duration: const Duration(milliseconds: 120),
+                          child: Text(
+                            '|',
+                            style: TextStyle(
+                              fontSize: 34,
+                              fontWeight: FontWeight.w800,
+                              color: AerisColors.seed,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
-                  child: const Icon(Icons.account_balance_wallet_rounded,
-                      size: 48, color: Colors.white),
-                )
-                    .animate()
-                    .fadeIn(duration: 600.ms)
-                    .scale(
-                        begin: const Offset(0.8, 0.8),
-                        end: const Offset(1, 1),
-                        curve: Curves.easeOutBack)
-                    .slideY(begin: 0.3, end: 0, curve: Curves.easeOutCubic),
 
-                const SizedBox(height: 30),
+                  const SizedBox(height: 10),
 
-                // ── Typed "A.E.R.I.S" wordmark ─────────────────────
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    for (var i = 0; i < _glyphs.length; i++)
-                      Text(
-                        _glyphs[i],
-                        style: TextStyle(
-                          fontSize: _glyphs[i] == '.' ? 26 : 36,
-                          height: 1,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1,
-                          color: _glyphs[i] == '.'
-                              ? AerisColors.seed
-                              : scheme.onSurface,
-                        ),
-                      )
-                          .animate()
-                          .fadeIn(
-                              delay: (250 + i * 110).ms, duration: 280.ms)
-                          .slideX(begin: 0.4, end: 0, curve: Curves.easeOutBack),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-                Text(
-                  'Your money, beautifully understood',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: scheme.onSurfaceVariant,
-                    letterSpacing: 0.2,
-                  ),
-                ).animate().fadeIn(delay: 1500.ms, duration: 500.ms),
-
-                const SizedBox(height: 40),
-
-                // ── Slim indeterminate progress bar ───────────────
-                SizedBox(
-                  width: 180,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      minHeight: 4,
-                      backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                      valueColor:
-                          const AlwaysStoppedAnimation(AerisColors.seed),
+                  // ── Tagline ───────────────────────────────────
+                  Text(
+                    'Private money, beautifully simple.',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.55)
+                          : const Color(0xFF0D1C1C).withValues(alpha: 0.55),
                     ),
                   ),
-                ).animate().fadeIn(delay: 1300.ms, duration: 400.ms),
-
-                const SizedBox(height: 14),
-                Text(
-                  'Please wait — decrypting your vault',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                )
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .fadeIn(delay: 1300.ms)
-                    .then()
-                    .fade(begin: 1, end: 0.45, duration: 900.ms),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+
+            // ── Bottom progress ───────────────────────────────
+            Positioned(
+              bottom: 56,
+              left: 0,
+              right: 0,
+              child: Column(
+                children: [
+                  Center(
+                    child: SizedBox(
+                      width: MediaQuery.sizeOf(context).width * 0.7,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: LinearProgressIndicator(
+                          minHeight: 4,
+                          backgroundColor: isDark
+                              ? Colors.white.withValues(alpha: 0.10)
+                              : AerisColors.seed.withValues(alpha: 0.15),
+                          valueColor:
+                              const AlwaysStoppedAnimation(AerisColors.seed),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Decrypting your vault · please wait',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.35)
+                          : const Color(0xFF0D1C1C).withValues(alpha: 0.40),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

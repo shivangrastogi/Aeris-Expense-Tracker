@@ -15,7 +15,8 @@ class CategoryDonut extends StatefulWidget {
   /// Fired when a real category slice is tapped (drill-down). The aggregate
   /// "Other" slice doesn't fire it.
   final void Function(String categoryId)? onCategorySelected;
-  const CategoryDonut({super.key, required this.byCategory, this.onCategorySelected});
+  const CategoryDonut(
+      {super.key, required this.byCategory, this.onCategorySelected});
 
   @override
   State<CategoryDonut> createState() => _CategoryDonutState();
@@ -38,16 +39,31 @@ class _CategoryDonutState extends State<CategoryDonut>
   }
 
   void _rebuildSlices() {
-    final sorted = widget.byCategory.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final slices = <_Slice>[];
-    for (final e in sorted.take(7)) {
-      final c = Categories.byId(e.key);
-      slices.add(_Slice(c.label.split(' ').first, e.value, c.color, e.key));
+    // Normalise category ids first: unknown/legacy ids resolve to 'other', so
+    // we never end up with two separate "Other" slices.
+    final merged = <String, double>{};
+    for (final e in widget.byCategory.entries) {
+      final id = Categories.byId(e.key).id;
+      merged[id] = (merged[id] ?? 0) + e.value;
     }
-    if (sorted.length > 7) {
-      final rest = sorted.skip(7).fold<double>(0, (s, e) => s + e.value);
-      if (rest > 0) slices.add(_Slice('Other', rest, Colors.grey, null));
+    // The explicit "other" always joins the single Other bucket.
+    var otherSum = merged.remove('other') ?? 0;
+    final sorted = merged.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    const maxNamed = 6;
+    final slices = <_Slice>[];
+    for (var i = 0; i < sorted.length; i++) {
+      if (i < maxNamed) {
+        final c = Categories.byId(sorted[i].key);
+        slices.add(_Slice(
+            c.label.split(' ').first, sorted[i].value, c.color, sorted[i].key));
+      } else {
+        otherSum += sorted[i].value; // fold the long tail into Other
+      }
+    }
+    if (otherSum > 0) {
+      slices.add(_Slice('Other', otherSum, const Color(0xFF94A3B8), null));
     }
     _slices = slices;
     _total = slices.fold<double>(0, (s, e) => s + e.value);
@@ -132,6 +148,28 @@ class _Slice {
   const _Slice(this.label, this.value, this.color, this.id);
 }
 
+/// A mutable label placement used by the donut's de-collision pass.
+class _Lbl {
+  final int index;
+  final Color color;
+  final String label;
+  final double frac;
+  final Offset pOuter;
+  final bool right;
+  final double tipX; // x of the radial tip — follows the slice angle
+  double y; // adjusted to avoid overlapping neighbours
+  _Lbl({
+    required this.index,
+    required this.color,
+    required this.label,
+    required this.frac,
+    required this.pOuter,
+    required this.right,
+    required this.tipX,
+    required this.y,
+  });
+}
+
 class _DonutPainter extends CustomPainter {
   final List<_Slice> slices;
   final double total;
@@ -196,7 +234,9 @@ class _DonutPainter extends CustomPainter {
               fontSize: 16, fontWeight: FontWeight.w800, color: labelColor));
     }
 
-    // Leader-line labels (skip the very tiny ones to avoid clutter).
+    // Outside labels with vertical de-collision so adjacent thin slices don't
+    // stack their labels on top of each other.
+    final lbls = <_Lbl>[];
     startAngle = -math.pi / 2;
     for (var i = 0; i < slices.length; i++) {
       final s = slices[i];
@@ -204,31 +244,66 @@ class _DonutPainter extends CustomPainter {
       final sweep = frac * 2 * math.pi;
       final mid = startAngle + sweep / 2;
       startAngle += sweep;
-      if (frac < 0.025) continue;
-
+      if (frac < 0.02) continue;
       final dir = Offset(math.cos(mid), math.sin(mid));
-      final pOuter = center + dir * r;
-      final pElbow = center + dir * (r + 12);
-      final toRight = dir.dx >= 0;
-      final pEnd = Offset(pElbow.dx + (toRight ? 14 : -14), pElbow.dy);
-      final dim = selected != null && i != selected;
+      // Tip of the radial leader line — extends beyond the ring edge
+      final tip = center + dir * (r + 22);
+      lbls.add(_Lbl(
+        index: i,
+        color: s.color,
+        label: s.label,
+        frac: frac,
+        pOuter: center + dir * (r + 1),
+        right: dir.dx >= 0,
+        tipX: tip.dx,
+        y: tip.dy,
+      ));
+    }
 
+    const minGap = 15.0;
+    final botBound = size.height - 8.0;
+    for (final right in [false, true]) {
+      final col = lbls.where((l) => l.right == right).toList()
+        ..sort((a, b) => a.y.compareTo(b.y));
+      for (var k = 1; k < col.length; k++) {
+        if (col[k].y - col[k - 1].y < minGap) col[k].y = col[k - 1].y + minGap;
+      }
+      if (col.isNotEmpty && col.last.y > botBound) {
+        final shift = col.last.y - botBound;
+        for (final l in col) {
+          l.y -= shift;
+        }
+        for (var k = 1; k < col.length; k++) {
+          if (col[k].y - col[k - 1].y < minGap)
+            col[k].y = col[k - 1].y + minGap;
+        }
+      }
+    }
+
+    for (final l in lbls) {
+      final dim = selected != null && l.index != selected;
+      // Radial tip (follows slice angle), then a short horizontal stub
+      final tip = Offset(l.tipX, l.y);
+      const stubLen = 10.0;
+      final stubEnd = Offset(tip.dx + (l.right ? stubLen : -stubLen), l.y);
       final linePaint = Paint()
-        ..color = s.color.withValues(alpha: dim ? 0.3 : 0.75)
-        ..strokeWidth = i == selected ? 2 : 1.3
+        ..color = l.color.withValues(alpha: dim ? 0.3 : 0.75)
+        ..strokeWidth = l.index == selected ? 2 : 1.3
         ..style = PaintingStyle.stroke;
-      canvas.drawLine(pOuter, pElbow, linePaint);
-      canvas.drawLine(pElbow, pEnd, linePaint);
-      canvas.drawCircle(pEnd, 2.2, Paint()..color = s.color.withValues(alpha: dim ? 0.4 : 1));
-
+      // Angled radial leg from ring edge → tip
+      canvas.drawLine(l.pOuter, tip, linePaint);
+      // Short horizontal stub tip → stubEnd
+      canvas.drawLine(tip, stubEnd, linePaint);
+      canvas.drawCircle(stubEnd, 2.2,
+          Paint()..color = l.color.withValues(alpha: dim ? 0.4 : 1));
       _sideLabel(
         canvas,
-        Offset(pEnd.dx + (toRight ? 6 : -6), pEnd.dy),
-        s.label,
-        '${(frac * 100).toStringAsFixed(0)}%',
-        left: toRight,
+        Offset(stubEnd.dx + (l.right ? 4 : -4), l.y),
+        l.label,
+        '${(l.frac * 100).toStringAsFixed(0)}%',
+        left: l.right,
         maxX: size.width,
-        bold: i == selected,
+        bold: l.index == selected,
         color: labelColor.withValues(alpha: dim ? 0.45 : 1),
       );
     }
@@ -240,7 +315,8 @@ class _DonutPainter extends CustomPainter {
       text: TextSpan(text: primary, style: primaryStyle),
       textDirection: TextDirection.ltr,
     )..layout();
-    amt.paint(canvas, Offset(anchor.dx - amt.width / 2, anchor.dy - amt.height));
+    amt.paint(
+        canvas, Offset(anchor.dx - amt.width / 2, anchor.dy - amt.height));
     final sub = TextPainter(
       text: TextSpan(
           text: secondary, style: TextStyle(fontSize: 10.5, color: subColor)),

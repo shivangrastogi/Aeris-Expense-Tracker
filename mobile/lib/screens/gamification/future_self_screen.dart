@@ -9,7 +9,10 @@ import '../../utils/formatters.dart';
 import '../../widgets/aeris_avatar.dart';
 
 class FutureSelfScreen extends ConsumerStatefulWidget {
-  const FutureSelfScreen({super.key});
+  /// When true, returns just the scrollable body (no Scaffold/AppBar) so it can
+  /// be embedded as the "Future" segment of the Insights tab.
+  final bool embed;
+  const FutureSelfScreen({super.key, this.embed = false});
   @override
   ConsumerState<FutureSelfScreen> createState() => _FutureSelfScreenState();
 }
@@ -41,10 +44,8 @@ class _FutureSelfScreenState extends ConsumerState<FutureSelfScreen> {
   Widget build(BuildContext context) {
     final status = ref.watch(avatarStatusProvider);
     final p = _savings ?? 5000;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Future Self')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+    final list = ListView(
+        padding: EdgeInsets.fromLTRB(16, widget.embed ? 4 : 8, 16, 28),
         children: [
           Center(
             child: AerisAvatar(
@@ -69,7 +70,9 @@ class _FutureSelfScreenState extends ConsumerState<FutureSelfScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   Slider(
                     value: p.clamp(0, 200000).toDouble(),
-                    min: 0, max: 200000, divisions: 200,
+                    min: 0,
+                    max: 200000,
+                    divisions: 200,
                     label: formatRupees(p, compact: true),
                     onChanged: (v) => setState(() => _savings = v),
                   ),
@@ -93,8 +96,12 @@ class _FutureSelfScreenState extends ConsumerState<FutureSelfScreen> {
             'consistency.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
-        ],
-      ),
+        ]);
+
+    if (widget.embed) return list;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Future Self')),
+      body: list,
     );
   }
 }

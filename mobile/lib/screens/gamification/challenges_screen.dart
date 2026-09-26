@@ -9,7 +9,9 @@ import '../../providers/gamification_provider.dart';
 import '../../providers/transactions_provider.dart';
 
 class ChallengesScreen extends ConsumerWidget {
-  const ChallengesScreen({super.key});
+  /// Body-only (no Scaffold/AppBar/FAB) so it can be embedded in the Quests tab.
+  final bool embed;
+  const ChallengesScreen({super.key, this.embed = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,6 +21,38 @@ class ChallengesScreen extends ConsumerWidget {
     final ctrl = ref.read(gamificationProvider.notifier);
 
     final items = [...g.challenges]..sort((a, b) => b.start.compareTo(a.start));
+    final cards = <Widget>[
+      for (final c in items)
+        _ChallengeCard(
+          challenge: c,
+          status: c.evaluate(txns, now),
+          onDelete: () => ctrl.removeChallenge(c.id),
+        ),
+    ];
+
+    if (embed) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (items.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Text(
+              'No challenges yet — start one and AERIS verifies it automatically '
+              'from your bank SMS.',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          )
+        else
+          ...cards,
+        const SizedBox(height: 4),
+        OutlinedButton.icon(
+          onPressed: () => _newChallenge(context, ctrl),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('New challenge'),
+        ),
+      ]);
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Challenges')),
@@ -40,14 +74,7 @@ class ChallengesScreen extends ConsumerWidget {
             )
           : ListView(
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 90),
-              children: [
-                for (final c in items)
-                  _ChallengeCard(
-                    challenge: c,
-                    status: c.evaluate(txns, now),
-                    onDelete: () => ctrl.removeChallenge(c.id),
-                  ),
-              ],
+              children: cards,
             ),
     );
   }
@@ -78,9 +105,13 @@ class ChallengesScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               SegmentedButton<ChallengeType>(
                 segments: const [
-                  ButtonSegment(value: ChallengeType.noSpend, label: Text('No-spend')),
-                  ButtonSegment(value: ChallengeType.dailyCap, label: Text('Daily cap')),
-                  ButtonSegment(value: ChallengeType.noCategory, label: Text('No category')),
+                  ButtonSegment(
+                      value: ChallengeType.noSpend, label: Text('No-spend')),
+                  ButtonSegment(
+                      value: ChallengeType.dailyCap, label: Text('Daily cap')),
+                  ButtonSegment(
+                      value: ChallengeType.noCategory,
+                      label: Text('No category')),
                 ],
                 selected: {type},
                 onSelectionChanged: (s) => setS(() => type = s.first),
@@ -91,7 +122,9 @@ class ChallengesScreen extends ConsumerWidget {
                 Expanded(
                   child: Slider(
                     value: days.toDouble(),
-                    min: 1, max: 30, divisions: 29,
+                    min: 1,
+                    max: 30,
+                    divisions: 29,
                     label: '$days days',
                     onChanged: (v) => setS(() => days = v.round()),
                   ),
@@ -102,14 +135,16 @@ class ChallengesScreen extends ConsumerWidget {
                 TextField(
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                      labelText: 'Daily cap (₹)', prefixIcon: Icon(Icons.currency_rupee)),
+                      labelText: 'Daily cap (₹)',
+                      prefixIcon: Icon(Icons.currency_rupee)),
                   onChanged: (v) => cap = double.tryParse(v) ?? cap,
                 ),
               if (type == ChallengeType.noCategory)
                 DropdownButtonFormField<String>(
                   value: categoryId,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Avoid category'),
+                  decoration:
+                      const InputDecoration(labelText: 'Avoid category'),
                   items: [
                     for (final c in Categories.all)
                       DropdownMenuItem(value: c.id, child: Text(c.label)),
@@ -148,7 +183,8 @@ class ChallengesScreen extends ConsumerWidget {
                       start: start,
                       end: end,
                       param: type == ChallengeType.dailyCap ? cap : 0,
-                      categoryId: type == ChallengeType.noCategory ? categoryId : null,
+                      categoryId:
+                          type == ChallengeType.noCategory ? categoryId : null,
                       reward: reward(),
                     ));
                     Navigator.pop(ctx);
@@ -177,8 +213,8 @@ class _ChallengeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (Color color, IconData icon) = switch (status.state) {
-      ChallengeState.won => (AerisColors.credit, Icons.emoji_events),
-      ChallengeState.failed => (AerisColors.debit, Icons.heart_broken),
+      ChallengeState.won => (AerisColors.moneyIn(context), Icons.emoji_events),
+      ChallengeState.failed => (AerisColors.moneyOut(context), Icons.heart_broken),
       ChallengeState.active => (AerisColors.info, Icons.bolt),
       ChallengeState.upcoming => (AerisColors.warning, Icons.schedule),
     };

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
@@ -17,8 +18,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _phone = TextEditingController();
   final _income = TextEditingController();
   bool _busy = false;
-
-  Uint8List? _photo;     // current picture bytes (existing or newly picked)
+  Uint8List? _photo;
   bool _photoRemoved = false;
 
   @override
@@ -28,7 +28,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     if (p != null) {
       _name.text = p.displayName ?? '';
       _phone.text = p.phone ?? '';
-      _income.text = p.monthlyIncome > 0 ? p.monthlyIncome.toStringAsFixed(0) : '';
+      _income.text =
+          p.monthlyIncome > 0 ? p.monthlyIncome.toStringAsFixed(0) : '';
       _photo = p.photoBytes;
     }
   }
@@ -47,7 +48,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         source: source,
         maxWidth: 512,
         maxHeight: 512,
-        imageQuality: 80, // keeps the encrypted blob small (~20-50 KB)
+        imageQuality: 80,
       );
       if (x == null) return;
       final bytes = await x.readAsBytes();
@@ -59,8 +60,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Couldn\'t pick image: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Couldn\'t pick image: $e')));
       }
     }
   }
@@ -76,12 +77,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Choose from gallery'),
-              onTap: () { Navigator.pop(context); _pick(ImageSource.gallery); },
+              onTap: () {
+                Navigator.pop(context);
+                _pick(ImageSource.gallery);
+              },
             ),
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
               title: const Text('Take a photo'),
-              onTap: () { Navigator.pop(context); _pick(ImageSource.camera); },
+              onTap: () {
+                Navigator.pop(context);
+                _pick(ImageSource.camera);
+              },
             ),
             if (_photo != null)
               ListTile(
@@ -90,7 +97,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     style: TextStyle(color: Colors.red)),
                 onTap: () {
                   Navigator.pop(context);
-                  setState(() { _photo = null; _photoRemoved = true; });
+                  setState(() {
+                    _photo = null;
+                    _photoRemoved = true;
+                  });
                 },
               ),
           ],
@@ -126,75 +136,265 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = dark ? const Color(0xFF122120) : Colors.white;
+
+    final initials = _initials(_name.text.isNotEmpty ? _name.text : 'A');
+
     return Scaffold(
       appBar: AppBar(title: const Text('Edit profile')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: ListView(children: [
-          // ── Avatar with edit badge ──
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 32),
+        children: [
+          // ── Avatar circle with camera badge ──────────────────
+          const SizedBox(height: 12),
           Center(
             child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                CircleAvatar(
-                  radius: 52,
-                  backgroundColor: scheme.surfaceContainerHighest,
-                  backgroundImage: _photo != null ? MemoryImage(_photo!) : null,
-                  child: _photo == null
-                      ? Icon(Icons.person, size: 48, color: scheme.onSurfaceVariant)
-                      : null,
+                GestureDetector(
+                  onTap: _photoSheet,
+                  child: Container(
+                    width: 86,
+                    height: 86,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient:
+                          _photo == null ? AerisColors.heroGradient : null,
+                      color: _photo != null ? Colors.transparent : null,
+                    ),
+                    child: _photo != null
+                        ? ClipOval(
+                            child: Image.memory(_photo!, fit: BoxFit.cover))
+                        : Align(
+                            alignment: Alignment.center,
+                            child: Text(initials,
+                                style: const TextStyle(
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white)),
+                          ),
+                  ),
                 ),
                 Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Material(
-                    color: scheme.primary,
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: _photoSheet,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Icon(Icons.camera_alt,
-                            size: 18, color: scheme.onPrimary),
+                  right: -2,
+                  bottom: -2,
+                  child: GestureDetector(
+                    onTap: _photoSheet,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AerisColors.seed,
+                        border: Border.all(color: scheme.surface, width: 3),
                       ),
+                      child: const Icon(Icons.camera_alt,
+                          size: 15, color: Colors.white),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 6),
-          Center(
-            child: Text('Tap to change · stored end-to-end encrypted',
-                style: Theme.of(context).textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 24),
+
+          // ── Fields ───────────────────────────────────────────
+          _Field(
+            label: 'Full name',
+            icon: Icons.person_outline,
+            controller: _name,
+            cardBg: cardBg,
+            scheme: scheme,
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 14),
+          _Field(
+            label: 'Phone',
+            icon: Icons.phone_outlined,
+            controller: _phone,
+            cardBg: cardBg,
+            scheme: scheme,
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: 14),
+          _Field(
+            label: 'Monthly income',
+            icon: Icons.payments_outlined,
+            prefix: '₹',
+            controller: _income,
+            cardBg: cardBg,
+            scheme: scheme,
+            keyboardType: TextInputType.number,
           ),
           const SizedBox(height: 22),
 
-          TextField(controller: _name, decoration: const InputDecoration(
-              labelText: 'Display name', prefixIcon: Icon(Icons.person_outline))),
-          const SizedBox(height: 12),
-          TextField(controller: _phone, decoration: const InputDecoration(
-              labelText: 'Phone', prefixIcon: Icon(Icons.phone_outlined)),
-              keyboardType: TextInputType.phone),
-          const SizedBox(height: 12),
-          TextField(
-              controller: _income,
-              decoration: const InputDecoration(
-                  labelText: 'Monthly income (₹)',
-                  prefixIcon: Icon(Icons.currency_rupee),
-                  helperText: 'Used for saving-rate recommendations'),
-              keyboardType: TextInputType.number),
-          const SizedBox(height: 20),
-          ElevatedButton(
+          // ── Save button ──────────────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
               onPressed: _busy ? null : _save,
+              style: FilledButton.styleFrom(
+                backgroundColor: AerisColors.seed,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                textStyle:
+                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15)),
+              ),
               child: _busy
                   ? const SizedBox(
-                      height: 22, width: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Save')),
-        ]),
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('Save changes'),
+            ),
+          ),
+
+          // ── Remove photo ─────────────────────────────────────
+          if (_photo != null) ...[
+            const SizedBox(height: 14),
+            TextButton(
+              onPressed: () => setState(() {
+                _photo = null;
+                _photoRemoved = true;
+              }),
+              child: Text('Remove photo',
+                  style: TextStyle(color: AerisColors.moneyOut(context), fontSize: 13.5)),
+            ),
+          ],
+        ],
       ),
+    );
+  }
+
+  static String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[1].isNotEmpty) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    if (parts[0].isNotEmpty) return parts[0][0].toUpperCase();
+    return 'A';
+  }
+}
+
+// ── Styled field ──────────────────────────────────────────────────────────────
+
+class _Field extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final String? prefix;
+  final TextEditingController controller;
+  final Color cardBg;
+  final ColorScheme scheme;
+  final TextInputType? keyboardType;
+  final ValueChanged<String>? onChanged;
+
+  const _Field({
+    required this.label,
+    required this.icon,
+    required this.controller,
+    required this.cardBg,
+    required this.scheme,
+    this.prefix,
+    this.keyboardType,
+    this.onChanged,
+  });
+
+  @override
+  State<_Field> createState() => _FieldState();
+}
+
+class _FieldState extends State<_Field> {
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = widget.scheme;
+    final focused = _focus.hasFocus;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(widget.label,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: scheme.onSurface.withValues(alpha: 0.5))),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            color: widget.cardBg,
+            border: Border.all(
+                color: focused
+                    ? AerisColors.seed.withValues(alpha: 0.6)
+                    : scheme.onSurface.withValues(alpha: 0.12),
+                width: focused ? 1.5 : 1),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          padding: const EdgeInsets.fromLTRB(15, 9, 9, 9),
+          child: Row(
+            children: [
+              Icon(widget.icon,
+                  size: 19, color: scheme.onSurface.withValues(alpha: 0.5)),
+              const SizedBox(width: 10),
+              // ── greyish rectangle behind the input (right of the icon) ──
+              Expanded(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: scheme.onSurface
+                        .withValues(alpha: focused ? 0.10 : 0.05),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Row(
+                    children: [
+                      if (widget.prefix != null) ...[
+                        Text(widget.prefix!,
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color:
+                                    scheme.onSurface.withValues(alpha: 0.5))),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: TextField(
+                          controller: widget.controller,
+                          focusNode: _focus,
+                          keyboardType: widget.keyboardType,
+                          onChanged: widget.onChanged,
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

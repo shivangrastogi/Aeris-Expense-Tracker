@@ -193,8 +193,8 @@ class SpendingHeatmap extends ConsumerWidget {
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               trailing: Text(
                 total > 0 ? formatRupees(total) : '—',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w800, color: AerisColors.debit),
+                style: TextStyle(
+                    fontWeight: FontWeight.w800, color: AerisColors.moneyOut(context)),
               ),
             ),
             if (items.isEmpty)

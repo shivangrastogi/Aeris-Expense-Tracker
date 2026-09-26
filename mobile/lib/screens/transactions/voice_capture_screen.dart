@@ -355,7 +355,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
           Text(
             '${income ? '+' : '−'} ${formatRupees(r.amount ?? 0)}',
             style: TextStyle(
-                color: income ? AerisColors.credit : Colors.white,
+                color: income ? AerisColors.moneyIn(context) : Colors.white,
                 fontWeight: FontWeight.w800),
           ),
           IconButton(

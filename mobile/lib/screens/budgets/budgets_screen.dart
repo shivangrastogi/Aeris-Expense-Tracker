@@ -8,6 +8,7 @@ import '../../models/category.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/budgets_provider.dart';
+import '../../providers/privacy_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../services/prediction_service.dart';
 import '../../utils/formatters.dart';
@@ -18,6 +19,7 @@ class BudgetsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(amountHiddenProvider);
     final budgets = ref.watch(budgetsStreamProvider);
     final analytics = ref.watch(analyticsProvider);
     return Scaffold(
@@ -40,7 +42,9 @@ class BudgetsScreen extends ConsumerWidget {
           final monthSpent = snap?.monthExpense ?? 0;
           final total =
               list.where((b) => b.categoryId == Budget.totalId).firstOrNull;
-          final allCats = Categories.all.where((c) => c.id != 'salary' && c.id != 'transfer').toList();
+          final allCats = Categories.all
+              .where((c) => c.id != 'salary' && c.id != 'transfer')
+              .toList();
           return ListView(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 80),
             children: [
@@ -76,7 +80,7 @@ class BudgetsScreen extends ConsumerWidget {
                             child: LinearProgressIndicator(
                               value: pct > 1.0 ? 1.0 : pct,
                               minHeight: 6,
-                              color: overflow ? AerisColors.debit : c.color,
+                              color: overflow ? AerisColors.moneyOut(context) : c.color,
                               backgroundColor: c.color.withValues(alpha: 0.15),
                             ),
                           ),
@@ -84,7 +88,8 @@ class BudgetsScreen extends ConsumerWidget {
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.pushNamed(
-                        context, AppRoutes.budgetEdit, arguments: c.id),
+                        context, AppRoutes.budgetEdit,
+                        arguments: c.id),
                   ),
                 );
               }),
@@ -143,7 +148,7 @@ class BudgetsScreen extends ConsumerWidget {
                 child: LinearProgressIndicator(
                   value: pct,
                   minHeight: 10,
-                  color: over ? AerisColors.debit : AerisColors.seed,
+                  color: over ? AerisColors.moneyOut(context) : AerisColors.seed,
                   backgroundColor: AerisColors.seed.withValues(alpha: 0.15),
                 ),
               ),
@@ -154,7 +159,7 @@ class BudgetsScreen extends ConsumerWidget {
                     : '${formatRupees(spent)} of ${formatRupees(cap)} · ${formatRupees(left < 0 ? 0 : left)} left',
                 style: TextStyle(
                     fontSize: 13,
-                    color: over ? AerisColors.debit : null,
+                    color: over ? AerisColors.moneyOut(context) : null,
                     fontWeight: FontWeight.w600),
               ),
             ] else
@@ -174,6 +179,7 @@ class BudgetsScreen extends ConsumerWidget {
 
   Future<void> _editTotal(
       BuildContext context, WidgetRef ref, double current) async {
+    final messenger = ScaffoldMessenger.of(context);
     final ctrl = TextEditingController(
         text: current > 0 ? current.toStringAsFixed(0) : '');
     final v = await showDialog<String>(
@@ -200,14 +206,19 @@ class BudgetsScreen extends ConsumerWidget {
     final amt = double.tryParse(v.replaceAll(',', ''));
     final uid = ref.read(currentUserIdProvider);
     if (uid == null || amt == null || amt <= 0) return;
-    await ref.read(firestoreServiceProvider).setBudget(
-          uid,
-          Budget(
-              id: Budget.totalId,
-              categoryId: Budget.totalId,
-              monthlyCap: amt,
-              updatedAt: DateTime.now()),
-        );
+    try {
+      await ref.read(firestoreServiceProvider).setBudget(
+            uid,
+            Budget(
+                id: Budget.totalId,
+                categoryId: Budget.totalId,
+                monthlyCap: amt,
+                updatedAt: DateTime.now()),
+          );
+    } catch (e) {
+      messenger
+          .showSnackBar(SnackBar(content: Text('Could not save budget: $e')));
+    }
   }
 
   // Round a raw forecast up to a tidy cap (₹100/₹500/₹1000 steps).
@@ -277,8 +288,9 @@ class BudgetsScreen extends ConsumerWidget {
                             ? selected.add(s.cat)
                             : selected.remove(s.cat)),
                         secondary: CircleAvatar(
-                          backgroundColor:
-                              Categories.byId(s.cat).color.withValues(alpha: 0.18),
+                          backgroundColor: Categories.byId(s.cat)
+                              .color
+                              .withValues(alpha: 0.18),
                           child: Icon(Categories.byId(s.cat).icon,
                               color: Categories.byId(s.cat).color, size: 20),
                         ),
@@ -317,14 +329,12 @@ class BudgetsScreen extends ConsumerWidget {
       await fs.setBudget(
           uid,
           Budget(
-              id: s.cat,
-              categoryId: s.cat,
-              monthlyCap: s.cap,
-              updatedAt: now));
+              id: s.cat, categoryId: s.cat, monthlyCap: s.cap, updatedAt: now));
       n++;
     }
     messenger.showSnackBar(SnackBar(
-        content: Text('Set $n budget${n == 1 ? '' : 's'} from your spending 🎯')));
+        content:
+            Text('Set $n budget${n == 1 ? '' : 's'} from your spending 🎯')));
   }
 }
 
