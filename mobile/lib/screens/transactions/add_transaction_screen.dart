@@ -399,11 +399,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final income = _dir == TxnDirection.credit;
-    final money = income
-        ? (dark ? AerisColors.creditDark : AerisColors.moneyIn(context))
-        : (dark ? AerisColors.debitDark : AerisColors.moneyOut(context));
+    // Red/green only marks the direction (sign + header tab); everything else
+    // stays in the app's own colours so the screen doesn't change family.
+    final money =
+        income ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context);
     final now = DateTime.now();
     final yesterday = now.subtract(const Duration(days: 1));
     final customDay = !_sameDay(_when, now) && !_sameDay(_when, yesterday);
@@ -432,7 +432,8 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                       controller: _amount,
                       focusNode: _amountFocus,
                       formatter: _formatter,
-                      color: money,
+                      signColor: money,
+                      sign: income ? '+' : '−',
                       autofocus: !_editing,
                       error: _amountError,
                       onChanged: () {
@@ -494,10 +495,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                               label: Text(_short(c.label)),
                               selected: c.id == _categoryId,
                               showCheckmark: false,
-                              selectedColor: c.color.withValues(alpha: 0.18),
+                              selectedColor:
+                                  scheme.primary.withValues(alpha: 0.14),
                               side: BorderSide(
                                   color: c.id == _categoryId
-                                      ? c.color
+                                      ? scheme.primary
                                       : scheme.outlineVariant),
                               onSelected: (_) => _pickCategory(c.id),
                             ),
@@ -636,7 +638,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                 label: _editing
                     ? 'Update'
                     : (income ? 'Save income' : 'Save expense'),
-                color: money,
+                color: scheme.primary,
                 busy: _busy,
                 onSave: _save,
               ),
@@ -946,7 +948,8 @@ class _AmountField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final TextInputFormatter formatter;
-  final Color color;
+  final Color signColor;
+  final String sign;
   final bool autofocus;
   final bool error;
   final VoidCallback onChanged;
@@ -958,7 +961,8 @@ class _AmountField extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.formatter,
-    required this.color,
+    required this.signColor,
+    required this.sign,
     required this.autofocus,
     required this.error,
     required this.onChanged,
@@ -969,12 +973,14 @@ class _AmountField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final border = error ? scheme.error : color.withValues(alpha: 0.35);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final border =
+        error ? scheme.error : scheme.outlineVariant.withValues(alpha: 0.6);
     return TextFieldTapRegion(
       child: Container(
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.06),
+          color: theme.cardTheme.color ?? scheme.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: border, width: error ? 1.6 : 1),
         ),
@@ -995,7 +1001,7 @@ class _AmountField extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.w700,
-                  color: color,
+                  color: scheme.onSurface,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
                 decoration: InputDecoration(
@@ -1011,18 +1017,19 @@ class _AmountField extends StatelessWidget {
                       color: scheme.onSurfaceVariant.withValues(alpha: 0.4)),
                   prefixIcon: Padding(
                     padding: const EdgeInsets.only(right: 6),
-                    child: Text(kCurrency.symbol.trim(),
+                    child: Text('$sign ${kCurrency.symbol.trim()}',
                         style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w700,
-                            color: scheme.onSurfaceVariant)),
+                            color: signColor)),
                   ),
                   prefixIconConstraints:
                       const BoxConstraints(minWidth: 0, minHeight: 0),
                 ),
               ),
             ),
-            Divider(height: 1, color: color.withValues(alpha: 0.18)),
+            Divider(
+                height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
               child: Row(
@@ -1033,7 +1040,7 @@ class _AmountField extends StatelessWidget {
                   Expanded(
                     child: _ResultText(
                       controller: controller,
-                      color: color,
+                      color: scheme.primary,
                       error: error,
                       onCollapse: onCollapse,
                       fallback: helper,
@@ -1060,7 +1067,7 @@ class _OpKey extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: Material(
-        color: scheme.surface,
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           canRequestFocus: false, // keep focus (and the keyboard) on amount

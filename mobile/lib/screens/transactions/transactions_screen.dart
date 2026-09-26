@@ -17,6 +17,7 @@ import '../../utils/motion.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/transaction_tile.dart';
 import '../../widgets/txn_undo.dart';
+import '../loans/loans_screen.dart';
 import '../subscriptions/subscriptions_screen.dart';
 
 // ── Sort options ─────────────────────────────────────────────
@@ -1416,7 +1417,7 @@ class _LentTab extends ConsumerWidget {
                 _LentTile(
                     loan: l,
                     isDark: isDark,
-                    onTap: () => _detailSheet(context, ref, l)),
+                    onTap: () => showLoanDetailSheet(context, ref, l)),
             ],
             if (settled.isNotEmpty) ...[
               const SizedBox(height: 18),
@@ -1435,184 +1436,11 @@ class _LentTab extends ConsumerWidget {
                 _LentTile(
                     loan: l,
                     isDark: isDark,
-                    onTap: () => _detailSheet(context, ref, l)),
+                    onTap: () => showLoanDetailSheet(context, ref, l)),
             ],
           ],
         );
       },
-    );
-  }
-
-  void _detailSheet(BuildContext context, WidgetRef ref, Loan l) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-            title: Text(l.person,
-                style:
-                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-            subtitle: Text(
-                '${l.borrowed ? 'You borrowed' : 'You lent'} ${formatRupees(l.amount)}'
-                '${l.note.isNotEmpty ? ' · ${l.note}' : ''}'),
-          ),
-          if (!l.isSettled) ...[
-            if (l.paid > 0)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      Text(
-                          '${formatRupees(l.paid)} of ${formatRupees(l.amount)} back',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant)),
-                      const Spacer(),
-                      Text('${(l.paid / l.amount * 100).round()}%',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: AerisColors.ink(context))),
-                    ]),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(99),
-                      child: LinearProgressIndicator(
-                        value: (l.paid / l.amount).clamp(0.0, 1.0),
-                        minHeight: 6,
-                        backgroundColor: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
-                        color: AerisColors.seed,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0x3315A24A),
-                child: Icon(Icons.check, color: Color(0xFF15A24A)),
-              ),
-              title:
-                  Text(l.borrowed ? 'Mark as paid back' : 'Mark as received'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final uid = ref.read(currentUserIdProvider);
-                if (uid == null) return;
-                await ref.read(firestoreServiceProvider).setLoan(
-                    uid, l.copyWith(paid: l.amount, settledAt: DateTime.now()));
-              },
-            ),
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0x330EA5A4),
-                child: Icon(Icons.add_card, color: AerisColors.seed),
-              ),
-              title: const Text('Record partial repayment'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _recordPartial(context, ref, l);
-              },
-            ),
-          ] else
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0x33F59E0B),
-                child: Icon(Icons.undo, color: Color(0xFFF59E0B)),
-              ),
-              title: const Text('Mark as pending'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final uid = ref.read(currentUserIdProvider);
-                if (uid == null) return;
-                await ref
-                    .read(firestoreServiceProvider)
-                    .setLoan(uid, l.copyWith(paid: 0, settledAt: null));
-              },
-            ),
-          ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: Color(0x33EF4444),
-              child: Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
-            ),
-            title: const Text('Delete'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              final uid = ref.read(currentUserIdProvider);
-              if (uid == null) return;
-              await ref.read(firestoreServiceProvider).deleteLoan(uid, l.id);
-            },
-          ),
-        ]),
-      ),
-    );
-  }
-
-  void _recordPartial(BuildContext context, WidgetRef ref, Loan l) {
-    final ctrl = TextEditingController();
-    showDialog<void>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: const Text('Record repayment',
-            style: TextStyle(fontWeight: FontWeight.w800)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Outstanding: ${formatRupees(l.outstanding)}',
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Amount received',
-                prefixText: '₹ ',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () async {
-              final entered = double.tryParse(ctrl.text.trim()) ?? 0;
-              Navigator.pop(d);
-              if (entered <= 0) return;
-              final uid = ref.read(currentUserIdProvider);
-              if (uid == null) return;
-              final newPaid = (l.paid + entered).clamp(0.0, l.amount);
-              final fully = newPaid >= l.amount;
-              await ref.read(firestoreServiceProvider).setLoan(
-                    uid,
-                    l.copyWith(
-                      paid: newPaid,
-                      settledAt: fully ? DateTime.now() : null,
-                    ),
-                  );
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(fully
-                        ? 'Settled in full 🎉'
-                        : 'Recorded ${formatRupees(entered)}')));
-              }
-            },
-            child: const Text('Record'),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -13,6 +13,7 @@ import '../../services/category_rules.dart';
 import '../../services/merchant_directory.dart';
 import '../../utils/formatters.dart';
 import '../../core/routes.dart';
+import '../../widgets/field_editor.dart';
 import '../../widgets/receipt_field.dart';
 import '../../widgets/txn_undo.dart';
 
@@ -28,24 +29,8 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
   late Transaction _t = widget.txn;
 
   Future<void> _changeCategory() async {
-    final picked = await showDialog<String>(
-      context: context,
-      builder: (_) => SimpleDialog(
-        title: const Text('Pick a category'),
-        children: [
-          for (final c in Categories.all)
-            SimpleDialogOption(
-              child: Row(children: [
-                Icon(c.icon, color: c.color, size: 20),
-                const SizedBox(width: 12),
-                Text(c.label),
-              ]),
-              onPressed: () => Navigator.pop(context, c.id),
-            ),
-        ],
-      ),
-    );
-    if (picked == null) return;
+    final picked = await editCategoryField(context, selected: _t.categoryId);
+    if (picked == null || picked == _t.categoryId) return;
     await _apply(_t.copyWith(categoryId: picked, reviewed: true));
     // Learn: future SMS from this merchant auto-tag to this category.
     await CategoryRules.instance.remember(_t.merchant, picked);
@@ -59,8 +44,90 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
     }
   }
 
-  /// Opens the full add/edit form pre-filled with this transaction — one
-  /// consistent editor instead of a pop-up per field.
+  // Each row edits just its own field in a small sheet — tapping "Note"
+  // never opens the whole add form.
+
+  Future<void> _editAmount() async {
+    final v = await editAmountField(context,
+        title: _t.isCredit ? 'Income amount' : 'Expense amount',
+        initialInr: _t.amount);
+    if (v == null || v == _t.amount) return;
+    await _apply(_t.copyWith(amount: v));
+  }
+
+  Future<void> _editMerchant() async {
+    final v = await editTextField(context,
+        title: _t.isCredit ? 'Payer / source' : 'Merchant / payee',
+        initial: _t.merchant ?? '',
+        icon: Icons.storefront_rounded,
+        maxLength: 80,
+        capitalization: TextCapitalization.words);
+    if (v == null || v == (_t.merchant ?? '')) return;
+    await _apply(v.isEmpty
+        ? _t.copyWith(clearMerchant: true)
+        : _t.copyWith(merchant: v));
+  }
+
+  Future<void> _editNote() async {
+    final v = await editTextField(context,
+        title: 'Note',
+        initial: _t.note ?? '',
+        hint: 'e.g. dinner with friends',
+        icon: Icons.notes_rounded,
+        multiline: true);
+    if (v == null || v == (_t.note ?? '')) return;
+    await _apply(
+        v.isEmpty ? _t.copyWith(clearNote: true) : _t.copyWith(note: v));
+  }
+
+  Future<void> _editWhen() async {
+    final v = await editDateTimeField(context, initial: _t.timestamp);
+    if (v == null || v == _t.timestamp) return;
+    await _apply(_t.copyWith(timestamp: v));
+  }
+
+  Future<void> _editType() async {
+    final picked = await showModalBottomSheet<TxnDirection>(
+      context: context,
+      showDragHandle: true,
+      builder: (s) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (d, label, icon, color) in [
+              (
+                TxnDirection.debit,
+                'Expense (money out)',
+                Icons.south_west_rounded,
+                AerisColors.moneyOut(context)
+              ),
+              (
+                TxnDirection.credit,
+                'Income (money in)',
+                Icons.north_east_rounded,
+                AerisColors.moneyIn(context)
+              ),
+            ])
+              ListTile(
+                leading: Icon(icon, color: color),
+                title: Text(label),
+                trailing: d == _t.direction
+                    ? Icon(Icons.check_rounded,
+                        color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () => Navigator.pop(s, d),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == _t.direction) return;
+    await _apply(_t.copyWith(direction: picked));
+  }
+
+  /// Opens the full form — only from the app bar's "Edit all details",
+  /// for things without their own row (account, receipt…).
   Future<void> _openEditor() async {
     final updated =
         await Navigator.pushNamed(context, AppRoutes.addTxn, arguments: _t);
@@ -77,8 +144,23 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
   Future<void> _apply(Transaction updated) async {
     final uid = ref.read(currentUserIdProvider);
     if (uid == null) return;
-    await ref.read(firestoreServiceProvider).updateTransaction(uid, updated);
-    if (mounted) setState(() => _t = updated);
+    final previous = _t;
+    setState(() => _t = updated);
+    try {
+      await ref.read(firestoreServiceProvider).updateTransaction(uid, updated);
+    } catch (err) {
+      if (!mounted) return;
+      setState(() => _t = previous);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not save: $err')));
+      return;
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+            content: Text('Saved'), duration: Duration(seconds: 1)));
+    }
   }
 
   /// Deletes straight away but offers UNDO on the next screen.
@@ -96,7 +178,7 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
         title: const Text('Transaction'),
         actions: [
           IconButton(
-              tooltip: 'Edit',
+              tooltip: 'Edit all details',
               icon: const Icon(Icons.edit_outlined),
               onPressed: _openEditor),
           IconButton(
@@ -125,7 +207,7 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
                           )),
                   const SizedBox(height: 4),
                   InkWell(
-                    onTap: _openEditor,
+                    onTap: _editAmount,
                     child: Row(
                       children: [
                         Text(
@@ -150,10 +232,17 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
           const SizedBox(height: 28),
           _row('Category', cat.label,
               onTap: _changeCategory, trailingIcon: Icons.edit),
-          _row('Merchant', _t.merchant ?? 'Add merchant',
-              onTap: _openEditor, trailingIcon: Icons.edit),
-          _row('When', relativeDate(_t.timestamp),
-              onTap: _openEditor, trailingIcon: Icons.edit),
+          _row('Type', _t.isCredit ? 'Income' : 'Expense',
+              onTap: _editType, trailingIcon: Icons.edit),
+          _row(_t.isCredit ? 'Payer' : 'Merchant',
+              _t.merchant ?? (_t.isCredit ? 'Add payer' : 'Add merchant'),
+              onTap: _editMerchant, trailingIcon: Icons.edit),
+          _row(
+              'When',
+              '${relativeDate(_t.timestamp)} · '
+                  '${TimeOfDay.fromDateTime(_t.timestamp).format(context)}',
+              onTap: _editWhen,
+              trailingIcon: Icons.edit),
           if (_t.account != null) _row('Account', '••${_t.account}'),
           if (MerchantDirectory.appFor(_t.upiVpa) != null)
             _row('Paid via', MerchantDirectory.appFor(_t.upiVpa)!),
@@ -161,7 +250,7 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
           if (_t.reference != null) _row('Reference', _t.reference!),
           _row('Source', _t.source.name),
           _row('Note', _t.note ?? 'Add a note',
-              onTap: _openEditor, trailingIcon: Icons.edit),
+              onTap: _editNote, trailingIcon: Icons.edit),
           if (_t.hasReceipt) _receiptSection(),
           if (_t.smsBody != null) ...[
             const SizedBox(height: 16),

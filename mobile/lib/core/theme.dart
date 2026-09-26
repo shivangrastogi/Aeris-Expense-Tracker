@@ -159,6 +159,8 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
     ),
     chipTheme: ChipThemeData(
       backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+      selectedColor: scheme.primary.withValues(alpha: 0.14),
+      checkmarkColor: scheme.primary,
       labelStyle: GoogleFonts.plusJakartaSans(
           fontSize: 12, fontWeight: FontWeight.w600, color: scheme.onSurface),
       secondaryLabelStyle: GoogleFonts.plusJakartaSans(
