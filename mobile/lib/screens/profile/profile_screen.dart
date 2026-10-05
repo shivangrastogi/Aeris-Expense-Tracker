@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/routes.dart';
@@ -10,6 +9,7 @@ import '../../models/user_profile.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/gamification_provider.dart';
 import '../../providers/transactions_provider.dart';
+import '../../providers/village_provider.dart';
 import '../../services/sync_outbox.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/aeris_avatar.dart';
@@ -616,4 +616,7 @@ Future<void> _signOut(BuildContext context, WidgetRef ref) async {
     if (go != true) return;
   }
   await ref.read(authServiceProvider).signOut();
+  // The village lives in memory too; drop it so the next account doesn't
+  // see this one's town.
+  ref.invalidate(villageProvider);
 }

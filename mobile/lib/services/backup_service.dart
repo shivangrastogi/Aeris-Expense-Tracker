@@ -6,11 +6,17 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/budget.dart';
+import '../models/goal.dart';
+import '../models/loan.dart';
+import '../models/subscription.dart';
 import '../models/transaction.dart';
 import 'crypto_service.dart';
 import 'firestore_service.dart';
 
-/// Encrypted, off-device backup of the user's transactions.
+/// Encrypted, off-device backup of the user's data: transactions, budgets,
+/// goals, lent/borrowed entries and subscriptions (v2; v1 files held only
+/// transactions and still restore).
 ///
 /// The backup file is a small JSON wrapper `{app, v, createdAt, count, salt,
 /// enc}` where `enc` is the transaction list encrypted (AES-256-GCM) under a
@@ -34,13 +40,33 @@ class BackupService {
       return m;
     }).toList();
 
+    final fs = FirestoreService.instance;
+    final budgets = await fs.watchBudgets(uid).first;
+    final goals = await fs.watchGoals(uid).first;
+    final loans = await fs.watchLoans(uid).first;
+    final subs = await fs.watchSubscriptions(uid).first;
+
     final salt = cs.randomBytes(16);
     final kek = await cs.deriveKek(passphrase, salt);
-    final enc = await cs.encryptJson({'transactions': list}, kek);
+    final enc = await cs.encryptJson({
+      'transactions': list,
+      'budgets': [
+        for (final b in budgets)
+          {
+            'id': b.id,
+            'categoryId': b.categoryId,
+            'monthlyCap': b.monthlyCap,
+            'updatedAt': b.updatedAt.millisecondsSinceEpoch,
+          }
+      ],
+      'goals': [for (final g in goals) {...g.toMap(), 'id': g.id}],
+      'loans': [for (final l in loans) {...l.toMap(), 'id': l.id}],
+      'subscriptions': [for (final s in subs) {...s.toMap(), 'id': s.id}],
+    }, kek);
 
     final wrapper = jsonEncode({
       'app': 'aeris',
-      'v': 1,
+      'v': 2,
       'createdAt': DateTime.now().toIso8601String(),
       'count': list.length,
       'salt': base64Encode(salt),
@@ -90,6 +116,32 @@ class BackupService {
       // Doc id == transaction id → re-import is idempotent (no duplicates).
       await fs.addTransaction(uid, Transaction.fromMap(id, m));
       n++;
+    }
+
+    // v2 extras — each keeps its original id, so restoring twice is safe.
+    List<Map<String, dynamic>> rows(String key) => [
+          for (final r in (data[key] as List?) ?? const [])
+            if (r is Map && r['id'] is String) Map<String, dynamic>.from(r)
+        ];
+    for (final m in rows('budgets')) {
+      await fs.setBudget(
+          uid,
+          Budget(
+            id: m['id'] as String,
+            categoryId: m['categoryId'] as String? ?? 'other',
+            monthlyCap: (m['monthlyCap'] as num?)?.toDouble() ?? 0,
+            updatedAt: DateTime.fromMillisecondsSinceEpoch(
+                (m['updatedAt'] as num?)?.toInt() ?? 0),
+          ));
+    }
+    for (final m in rows('goals')) {
+      await fs.setGoal(uid, Goal.fromMap(m['id'] as String, m));
+    }
+    for (final m in rows('loans')) {
+      await fs.setLoan(uid, Loan.fromMap(m['id'] as String, m));
+    }
+    for (final m in rows('subscriptions')) {
+      await fs.setSubscription(uid, Subscription.fromMap(m['id'] as String, m));
     }
     return n;
   }

@@ -12,9 +12,9 @@ class KeyVault {
   KeyVault._();
   static final KeyVault instance = KeyVault._();
 
-  static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  // flutter_secure_storage v10 ignores the old encryptedSharedPreferences
+  // flag and migrates existing values to its own ciphers on first read.
+  static const _storage = FlutterSecureStorage();
 
   List<int>? _dek;
 

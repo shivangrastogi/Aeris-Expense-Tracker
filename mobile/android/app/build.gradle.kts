@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,6 +8,20 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
     // FlutterFire requires this — added after `flutterfire configure`
     id("com.google.gms.google-services")
+}
+
+// Release signing: put your upload key's details in android/key.properties
+// (git-ignored — never commit it):
+//   storePassword=…
+//   keyPassword=…
+//   keyAlias=upload
+//   storeFile=/absolute/path/to/upload-keystore.jks
+// Without that file, release builds fall back to the debug key so local
+// `flutter build apk --release` still works — but those can't go to Play.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -32,9 +49,23 @@ android {
         multiDexEnabled = true
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")  // replace with real key for Play Store
+            signingConfig = if (keystorePropertiesFile.exists())
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

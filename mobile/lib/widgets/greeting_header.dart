@@ -115,7 +115,7 @@ class _SkyPainter extends CustomPainter {
     final r = size.width * 0.22;
     // glow
     canvas.drawCircle(c, r * 1.7,
-        Paint()..color = core.withOpacity(0.18 + 0.06 * math.sin(t * 2 * math.pi)));
+        Paint()..color = core.withValues(alpha: 0.18 + 0.06 * math.sin(t * 2 * math.pi)));
     // rotating rays
     final rayPaint = Paint()
       ..color = ray
