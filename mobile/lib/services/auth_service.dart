@@ -7,9 +7,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user_profile.dart';
+import 'category_rules.dart';
 import 'crypto_service.dart';
 import 'firestore_service.dart';
 import 'key_vault.dart';
+import 'sms_import_service.dart';
 
 class AuthService {
   AuthService._();
@@ -58,8 +60,9 @@ class AuthService {
           .set(await _profileDoc(profile, deleteLegacy: false));
       return recoveryKey;
     } catch (e) {
-      if (!completer.isCompleted)
+      if (!completer.isCompleted) {
         completer.completeError(e, StackTrace.current);
+      }
       rethrow;
     }
   }
@@ -71,7 +74,13 @@ class AuthService {
       {required bool deleteLegacy}) async {
     final m = p.toMap();
     final dek = KeyVault.instance.dek;
-    if (dek == null) return m; // vault locked — keep plaintext fallback
+    if (dek == null) {
+      // Vault locked: never write income or the photo in the clear — leave
+      // them out (a merge write keeps whatever encrypted copy is stored).
+      m.remove('monthlyIncome');
+      m.remove('photoUrl');
+      return m;
+    }
     m.remove('monthlyIncome');
     m['incomeEnc'] = await CryptoService.instance
         .encryptJson({'income': p.monthlyIncome}, dek);
@@ -106,8 +115,9 @@ class AuthService {
       if (!completer.isCompleted) completer.complete();
       return cred;
     } catch (e) {
-      if (!completer.isCompleted)
+      if (!completer.isCompleted) {
         completer.completeError(e, StackTrace.current);
+      }
       rethrow;
     }
   }
@@ -239,16 +249,41 @@ class AuthService {
     return _auth.signInWithCredential(cred);
   }
 
+  /// SharedPreferences keys holding one account's data (see [signOut]).
+  static const _perAccountPrefs = [
+    'current_uid',
+    'blocked_senders',
+    'village_v1',
+    'sms_hwm_ms',
+    'last_sms_sync',
+    'sms_recent_hashes',
+    'streak_current',
+    'streak_best',
+    'streak_last',
+    'last_txn_account',
+    'last_budget_alert',
+    'dash_hidden',
+  ];
+
   Future<void> signOut() async {
     _unlockCompleter = null;
     final uid = _auth.currentUser?.uid;
     if (uid != null) await KeyVault.instance.clear(uid);
     // Clear the keys the background SMS isolate uses, so it can't write to the
-    // signed-out account on the next incoming SMS.
+    // signed-out account on the next incoming SMS — and everything else that
+    // belongs to this account rather than the device, so the next person to
+    // sign in on this phone starts clean. Device settings (theme, currency,
+    // app lock, privacy eye) stay.
     try {
       final p = await SharedPreferences.getInstance();
-      await p.remove('current_uid');
-      await p.remove('blocked_senders');
+      for (final k in _perAccountPrefs) {
+        await p.remove(k);
+      }
+      for (final k in p.getKeys().where((k) => k.startsWith('gam_'))) {
+        await p.remove(k);
+      }
+      await CategoryRules.instance.clear();
+      SmsImportService.instance.reset();
     } catch (_) {}
     await _auth.signOut();
   }

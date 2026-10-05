@@ -1,0 +1,35 @@
+name: Mobile app
+
+on:
+  push:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile.yml'
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install packages
+        run: flutter pub get
+
+      # Errors and warnings fail the build; style hints (infos) don't.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test

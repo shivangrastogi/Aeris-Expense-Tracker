@@ -5,7 +5,12 @@ import '../../models/budget.dart';
 import '../../models/category.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/transactions_provider.dart';
+<<<<<<< HEAD
 import '../../widgets/aeris_toast.dart';
+=======
+import '../../utils/amount_input_formatter.dart';
+import '../../utils/formatters.dart';
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
 
 class BudgetEditScreen extends ConsumerStatefulWidget {
   final String? categoryId;
@@ -16,12 +21,12 @@ class BudgetEditScreen extends ConsumerStatefulWidget {
 
 class _BudgetEditScreenState extends ConsumerState<BudgetEditScreen> {
   final _cap = TextEditingController();
-  late String _catId = widget.categoryId ?? 'other';
+  late final String _catId = widget.categoryId ?? 'other';
 
   Future<void> _save() async {
     final uid = ref.read(currentUserIdProvider);
     if (uid == null) return;
-    final cap = double.tryParse(_cap.text);
+    final cap = displayToInr(_cap.text); // typed in display currency
     if (cap == null || cap <= 0) {
       ScaffoldMessenger.of(context).showToast(
           const SnackBar(content: Text('Enter a positive amount')));
@@ -64,9 +69,10 @@ class _BudgetEditScreenState extends ConsumerState<BudgetEditScreen> {
           TextField(
             controller: _cap,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Monthly cap (₹)',
-              prefixIcon: Icon(Icons.currency_rupee),
+            decoration: InputDecoration(
+              labelText: 'Monthly cap',
+              prefixText: '${kCurrency.symbol.trim()} ',
+              prefixIcon: const Icon(Icons.savings_outlined),
             ),
           ),
           const SizedBox(height: 20),

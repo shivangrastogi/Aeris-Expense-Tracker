@@ -28,7 +28,7 @@ import '../../widgets/aeris_toast.dart';
 const _kLastAccountPref = 'last_txn_account';
 
 /// Income-first ordering for the category chips when logging money in.
-const _incomeFirst = ['salary', 'transfer', 'investment', 'other'];
+const _incomeFirst = ['salary', 'transfer', 'refund', 'investment', 'other'];
 
 /// One screen for adding **and** editing a transaction.
 ///
@@ -287,7 +287,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
           ]
         : [
             for (final c in Categories.all)
-              if (c.id != 'salary') c,
+              if (c.id != 'salary' && c.id != 'refund') c,
           ];
     // Stable sort by usage: ties keep the default order.
     final indexed = [for (var i = 0; i < base.length; i++) (i, base[i])];
@@ -464,7 +464,12 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final income = _dir == TxnDirection.credit;
+<<<<<<< HEAD
     // Spend is typed in plain ink, income in green; Save is always the accent.
+=======
+    // Red/green only marks the direction (sign + header tab); everything else
+    // stays in the app's own colours so the screen doesn't change family.
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
     final money =
         income ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context);
     final now = DateTime.now();
@@ -502,9 +507,15 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                       controller: _amount,
                       focusNode: _amountFocus,
                       formatter: _formatter,
+<<<<<<< HEAD
                       color: money,
                       autofocus:
                           false, // focused after the route settles — see _focusAfterTransition
+=======
+                      signColor: money,
+                      sign: income ? '+' : '−',
+                      autofocus: !_editing,
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
                       error: _amountError,
                       onChanged: () {
                         if (_amountError) setState(() => _amountError = false);
@@ -565,10 +576,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                               label: Text(_short(c.label)),
                               selected: c.id == _categoryId,
                               showCheckmark: false,
-                              selectedColor: c.color.withValues(alpha: 0.18),
+                              selectedColor:
+                                  scheme.primary.withValues(alpha: 0.14),
                               side: BorderSide(
                                   color: c.id == _categoryId
-                                      ? c.color
+                                      ? scheme.primary
                                       : scheme.outlineVariant),
                               onSelected: (_) => _pickCategory(c.id),
                             ),
@@ -724,7 +736,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                 label: _editing
                     ? 'Update'
                     : (income ? 'Save income' : 'Save expense'),
+<<<<<<< HEAD
                 color: AerisColors.accent(context),
+=======
+                color: scheme.primary,
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
                 busy: _busy,
                 onSave: _save,
               ),
@@ -1041,7 +1057,8 @@ class _AmountField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final TextInputFormatter formatter;
-  final Color color;
+  final Color signColor;
+  final String sign;
   final bool autofocus;
   final bool error;
   final VoidCallback onChanged;
@@ -1053,7 +1070,8 @@ class _AmountField extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.formatter,
-    required this.color,
+    required this.signColor,
+    required this.sign,
     required this.autofocus,
     required this.error,
     required this.onChanged,
@@ -1064,6 +1082,7 @@ class _AmountField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
     final scheme = Theme.of(context).colorScheme;
     return TextFieldTapRegion(
       child: Container(
@@ -1071,6 +1090,18 @@ class _AmountField extends StatelessWidget {
         // card, outlined in red only when Save found it missing.
         decoration: AerisColors.cardDecoration(context, radius: 20).copyWith(
           border: error ? Border.all(color: scheme.error, width: 1.6) : null,
+=======
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final border =
+        error ? scheme.error : scheme.outlineVariant.withValues(alpha: 0.6);
+    return TextFieldTapRegion(
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.cardTheme.color ?? scheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border, width: error ? 1.6 : 1),
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1089,7 +1120,7 @@ class _AmountField extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 34,
                   fontWeight: FontWeight.w700,
-                  color: color,
+                  color: scheme.onSurface,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
                 decoration: InputDecoration(
@@ -1105,18 +1136,23 @@ class _AmountField extends StatelessWidget {
                       color: scheme.onSurfaceVariant.withValues(alpha: 0.4)),
                   prefixIcon: Padding(
                     padding: const EdgeInsets.only(right: 6),
-                    child: Text(kCurrency.symbol.trim(),
+                    child: Text('$sign ${kCurrency.symbol.trim()}',
                         style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.w700,
-                            color: scheme.onSurfaceVariant)),
+                            color: signColor)),
                   ),
                   prefixIconConstraints:
                       const BoxConstraints(minWidth: 0, minHeight: 0),
                 ),
               ),
             ),
+<<<<<<< HEAD
             const Divider(height: 1),
+=======
+            Divider(
+                height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
               child: Row(
@@ -1127,7 +1163,7 @@ class _AmountField extends StatelessWidget {
                   Expanded(
                     child: _ResultText(
                       controller: controller,
-                      color: color,
+                      color: scheme.primary,
                       error: error,
                       onCollapse: onCollapse,
                       fallback: helper,
@@ -1154,7 +1190,11 @@ class _OpKey extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: Material(
+<<<<<<< HEAD
         color: scheme.surfaceContainer,
+=======
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           canRequestFocus: false, // keep focus (and the keyboard) on amount

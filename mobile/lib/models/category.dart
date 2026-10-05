@@ -29,7 +29,8 @@ class Categories {
         keywords: ['swiggy','zomato','mcdonald','starbucks','dominos','kfc',
                    'pizza','restaurant','cafe','dine','eat','burger','meal',
                    'dhaba','hotel','food court','canteen','bakery','tea','chai',
-                   'coffee','juice','ice cream','biryani','thali']),
+                   'coffee','juice','ice cream','biryani','thali','lunch',
+                   'dinner','breakfast','brunch']),
     ExpenseCategory(id: 'groceries', label: 'Groceries', icon: Icons.local_grocery_store,
         color: Color(0xFF22C55E),
         keywords: ['bigbasket','blinkit','zepto','instamart','grofers',
@@ -91,6 +92,11 @@ class Categories {
     ExpenseCategory(id: 'cash', label: 'Cash Withdrawal', icon: Icons.atm,
         color: Color(0xFFF97316),
         keywords: ['atm','cash withdrawal','withdrawn']),
+    // Money coming back for a purchase. Never counted as income; it's taken
+    // off total spend instead (see AnalyticsSnapshot).
+    ExpenseCategory(id: 'refund', label: 'Refund', icon: Icons.replay_rounded,
+        color: Color(0xFF0EA5E9),
+        keywords: ['refund','reversal','reversed','cashback']),
     ExpenseCategory(id: 'other', label: 'Other', icon: Icons.more_horiz,
         color: AerisColors.seed,
         keywords: []),
@@ -100,13 +106,30 @@ class Categories {
       all.firstWhere((c) => c.id == id, orElse: () => all.last);
 
   /// Heuristic category lookup from a free-text merchant or SMS body.
+  ///
+  /// A keyword must start at the beginning of a word, so "rent" doesn't fire
+  /// inside "Torrent" and "ola" doesn't fire inside "Motorola". Short keywords
+  /// (≤ 4 letters, e.g. "sip", "gas", "eat") must be the whole word (an
+  /// optional plural "s" is allowed), so "Gossip" or "Vegas" don't match.
+  /// Longer brand names may run on ("amazonpay", "swiggyinstamart").
   static String classify(String text) {
     final t = text.toLowerCase();
     for (final c in all) {
+      if (c.id == 'refund') continue; // only set explicitly by the parsers
       for (final k in c.keywords) {
-        if (t.contains(k)) return c.id;
+        if (_keywordRe(k).hasMatch(t)) return c.id;
       }
     }
     return 'other';
   }
+
+  static final Map<String, RegExp> _reCache = {};
+
+  static RegExp _keywordRe(String keyword) =>
+      _reCache.putIfAbsent(keyword, () {
+        final k = keyword.trim();
+        final body = RegExp.escape(k);
+        final whole = k.replaceAll(RegExp(r'[^a-z0-9]'), '').length <= 4;
+        return RegExp('(?<![a-z0-9])$body${whole ? r's?(?![a-z0-9])' : ''}');
+      });
 }

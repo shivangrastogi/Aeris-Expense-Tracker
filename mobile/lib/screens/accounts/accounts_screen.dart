@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
 import '../transactions/transactions_screen.dart';
+import '../../utils/amount_input_formatter.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -52,9 +53,10 @@ class _AccountCard extends ConsumerWidget {
     final uid = ref.read(currentUserIdProvider);
     if (uid == null) return;
     final ctrl = TextEditingController(
-        text: account.openingBalance != null
-            ? account.openingBalance!.toStringAsFixed(0)
-            : '');
+        text: account.openingBalance == null
+            ? ''
+            : '${account.openingBalance! < 0 ? '-' : ''}'
+                '${inrToDisplayText(account.openingBalance!.abs())}');
     final result = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -72,9 +74,10 @@ class _AccountCard extends ConsumerWidget {
               autofocus: true,
               keyboardType: const TextInputType.numberWithOptions(
                   decimal: true, signed: true),
-              decoration: const InputDecoration(
-                  labelText: 'Opening balance (₹)',
-                  prefixIcon: Icon(Icons.currency_rupee)),
+              decoration: InputDecoration(
+                  labelText: 'Opening balance',
+                  prefixText: '${kCurrency.symbol.trim()} ',
+                  prefixIcon: const Icon(Icons.account_balance_wallet_outlined)),
             ),
           ],
         ),
@@ -83,7 +86,7 @@ class _AccountCard extends ConsumerWidget {
               onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           FilledButton(
             onPressed: () =>
-                Navigator.pop(ctx, double.tryParse(ctrl.text) ?? 0),
+                Navigator.pop(ctx, _signedInr(ctrl.text)),
             child: const Text('Save'),
           ),
         ],
@@ -205,4 +208,13 @@ class _AccountCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Opening balance typed in the display currency (may be negative, e.g. an
+/// overdrawn account) → INR. Empty or invalid input counts as 0.
+double _signedInr(String text) {
+  final t = text.trim();
+  final neg = t.startsWith('-') || t.startsWith('−');
+  final v = displayToInr(neg ? t.substring(1) : t) ?? 0;
+  return neg ? -v : v;
 }

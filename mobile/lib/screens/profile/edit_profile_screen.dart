@@ -6,7 +6,12 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
+<<<<<<< HEAD
 import '../../widgets/aeris_toast.dart';
+=======
+import '../../utils/amount_input_formatter.dart';
+import '../../utils/formatters.dart';
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
@@ -30,7 +35,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       _name.text = p.displayName ?? '';
       _phone.text = p.phone ?? '';
       _income.text =
-          p.monthlyIncome > 0 ? p.monthlyIncome.toStringAsFixed(0) : '';
+          p.monthlyIncome > 0 ? inrToDisplayText(p.monthlyIncome) : '';
       _photo = p.photoBytes;
     }
   }
@@ -117,7 +122,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final updated = p.copyWith(
       displayName: _name.text.trim().isEmpty ? null : _name.text.trim(),
       phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
-      monthlyIncome: double.tryParse(_income.text) ?? p.monthlyIncome,
+      monthlyIncome: _income.text.trim().isEmpty
+          ? 0
+          : displayToInr(_income.text) ?? p.monthlyIncome,
       photoBytes: _photoRemoved ? null : _photo,
       photoCleared: _photoRemoved,
     );
@@ -222,7 +229,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           _Field(
             label: 'Monthly income',
             icon: Icons.payments_outlined,
-            prefix: '₹',
+            prefix: kCurrency.symbol.trim(),
             controller: _income,
             cardBg: cardBg,
             scheme: scheme,

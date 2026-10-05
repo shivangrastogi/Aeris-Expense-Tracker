@@ -54,12 +54,15 @@ class ExportService {
     s.name = 'Summary';
     double income = 0, expense = 0;
     for (final t in txns) {
-      if (t.isCredit) {
+      if (t.isRefund) {
+        expense -= t.amount; // money back, not income
+      } else if (t.isCredit) {
         income += t.amount;
       } else {
         expense += t.amount;
       }
     }
+    if (expense < 0) expense = 0;
     s.getRangeByName('A1').setText('AERIS Expense Report');
     s.getRangeByName('A1').cellStyle.bold = true;
     s.getRangeByName('A1').cellStyle.fontSize = 18;
@@ -89,12 +92,13 @@ class ExportService {
   void _transactions(xlsio.Workbook wb, List<Transaction> txns) {
     final sh = wb.worksheets.addWithName('Transactions');
     const headers = [
-      'Date', 'Merchant', 'Category', 'Type', 'Amount', 'Account', 'Source'
+      'Date', 'Merchant', 'Category', 'Type', 'Amount', 'Account', 'Source',
+      'Note'
     ];
     for (var i = 0; i < headers.length; i++) {
       sh.getRangeByIndex(1, i + 1).setText(headers[i]);
     }
-    _header(sh.getRangeByName('A1:G1'));
+    _header(sh.getRangeByName('A1:H1'));
     final sorted = [...txns]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
     var r = 2;
     for (final t in sorted) {
@@ -102,15 +106,17 @@ class ExportService {
       sh.getRangeByIndex(r, 1).numberFormat = 'dd-mmm-yyyy';
       sh.getRangeByIndex(r, 2).setText(t.merchant ?? '');
       sh.getRangeByIndex(r, 3).setText(Categories.byId(t.categoryId).label);
-      sh.getRangeByIndex(r, 4).setText(t.isCredit ? 'Income' : 'Expense');
+      sh.getRangeByIndex(r, 4).setText(
+          t.isRefund ? 'Refund' : (t.isCredit ? 'Income' : 'Expense'));
       final amt = sh.getRangeByIndex(r, 5);
       amt.setNumber(t.amount);
       amt.numberFormat = _money;
       sh.getRangeByIndex(r, 6).setText(t.account ?? '');
       sh.getRangeByIndex(r, 7).setText(t.source.name);
+      sh.getRangeByIndex(r, 8).setText(t.note ?? '');
       r++;
     }
-    sh.getRangeByName('A1:G1').autoFitColumns();
+    sh.getRangeByName('A1:H1').autoFitColumns();
   }
 
   // Per-account totals (Spent / Received / Net / count), grouped by the
@@ -199,12 +205,15 @@ class ExportService {
     final inc = <String, double>{};
     for (final t in txns) {
       final k = '${t.timestamp.year}-${t.timestamp.month.toString().padLeft(2, '0')}';
-      if (t.isCredit) {
+      if (t.isRefund) {
+        exp[k] = (exp[k] ?? 0) - t.amount; // money back, not income
+      } else if (t.isCredit) {
         inc[k] = (inc[k] ?? 0) + t.amount;
       } else {
         exp[k] = (exp[k] ?? 0) + t.amount;
       }
     }
+    exp.updateAll((_, v) => v < 0 ? 0 : v);
     final keys = ({...exp.keys, ...inc.keys}.toList()..sort());
     sh.getRangeByName('A1').setText('Month');
     sh.getRangeByName('B1').setText('Expense');

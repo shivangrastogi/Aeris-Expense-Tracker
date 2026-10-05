@@ -10,7 +10,9 @@ import '../../models/goal.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/goals_provider.dart';
 import '../../providers/transactions_provider.dart';
+import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/field_editor.dart';
 import '../../widgets/skeleton.dart';
 
 class GoalsScreen extends ConsumerStatefulWidget {
@@ -292,14 +294,14 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
     ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.06, end: 0);
   }
 
-  Widget _empty() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 30),
+  Widget _empty() => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 30),
         child: Center(
           child: Column(
             children: [
-              const Text('🎯', style: TextStyle(fontSize: 40)),
-              const SizedBox(height: 10),
-              const Text(
+              Text('🎯', style: TextStyle(fontSize: 40)),
+              SizedBox(height: 10),
+              Text(
                 'No savings goals yet.\n'
                 'Tap “New goal” to save toward something —\n'
                 'a trip, a gadget, or an emergency fund.',
@@ -313,8 +315,11 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
   // ── Dialogs ───────────────────────────────────────────────
   Future<void> _editGoal({Goal? existing}) async {
     final title = TextEditingController(text: existing?.title ?? '');
-    final target =
-        TextEditingController(text: existing?.target.toStringAsFixed(0) ?? '');
+    // Typed in the display currency, stored in INR like every other amount.
+    final target = TextEditingController(
+        text: existing == null
+            ? ''
+            : (existing.target / kCurrency.rate).toStringAsFixed(0));
     var emoji = existing?.emoji ?? '🎯';
     const emojis = ['🎯', '✈️', '🏠', '🚗', '📱', '💍', '🎓', '🏖️', '💻', '🎁'];
 
@@ -336,9 +341,12 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: target,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Amount to save (₹)',
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: const [AmountInputFormatter()],
+                  decoration: InputDecoration(
+                    labelText: 'Amount to save',
+                    prefixText: '${kCurrency.symbol.trim()} ',
                     hintText: 'e.g. 50000',
                   ),
                 ),
@@ -373,8 +381,15 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
       ),
     );
     if (ok != true) return;
-    final amt = double.tryParse(target.text.trim()) ?? 0;
-    if (title.text.trim().isEmpty || amt <= 0) return;
+    final typed = evalAmount(target.text) ?? 0;
+    final amt = (typed * kCurrency.rate * 100).roundToDouble() / 100;
+    if (title.text.trim().isEmpty || amt <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Add a name and an amount to save the goal.')));
+      }
+      return;
+    }
     final goal = (existing ??
             Goal(
                 id: const Uuid().v4(),
@@ -386,29 +401,9 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
   }
 
   Future<void> _contribute(Goal g) async {
-    final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: Text('Add to “${g.title}”'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Amount (₹)'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(d, true), child: const Text('Add')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final amt = double.tryParse(ctrl.text.trim()) ?? 0;
-    if (amt <= 0) return;
+    final amt = await editAmountField(context,
+        title: 'Add to “${g.title}”', initialInr: 0);
+    if (amt == null || amt <= 0) return;
     final updated = g.copyWith(saved: g.saved + amt);
     await _save(updated, celebrate: !g.isComplete && updated.isComplete);
   }

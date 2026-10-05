@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import 'formatters.dart';
+
 /// Restricts a text field to a money amount: digits with at most one decimal
 /// point, [maxDecimals] fractional digits and [maxWhole] whole digits.
 /// Commas pasted in (e.g. "1,200") are stripped rather than rejected.
@@ -98,4 +100,20 @@ double? evalAmount(String text) {
   total = addOp == '+' ? total + term : total - term;
   if (total.isNaN || total.isInfinite || total <= 0) return null;
   return (total * 100).roundToDouble() / 100;
+}
+
+/// An amount typed in the user's display currency, converted to INR (what's
+/// stored). Accepts "1,200" and simple math like "120+45". Null when empty,
+/// invalid or not positive.
+double? displayToInr(String text) {
+  final v = evalAmount(text);
+  return v == null ? null : (v * kCurrency.rate * 100).roundToDouble() / 100;
+}
+
+/// A stored INR amount as plain text in the display currency, for pre-filling
+/// an input. Empty for null.
+String inrToDisplayText(double? inr) {
+  if (inr == null) return '';
+  final v = inr / kCurrency.rate;
+  return v % 1 == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 }

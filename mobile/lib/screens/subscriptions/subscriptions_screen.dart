@@ -10,7 +10,11 @@ import '../../providers/auth_provider.dart';
 import '../../providers/subscriptions_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
+<<<<<<< HEAD
 import '../../widgets/aeris_toast.dart';
+=======
+import '../../utils/amount_input_formatter.dart';
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
 
 // Quick-pick catalog of common Indian subscriptions.
 const _subCatalog = <(String, String, double)>[
@@ -52,24 +56,6 @@ class SubscriptionsBody extends ConsumerStatefulWidget {
 class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
   bool _selectMode = false;
   final Set<String> _picked = {};
-
-  Future<void> _logPayment(Subscription s) async {
-    final uid = ref.read(currentUserIdProvider);
-    if (uid == null) return;
-    await ref.read(firestoreServiceProvider).addTransaction(
-          uid,
-          Transaction(
-            id: 'sub_${DateTime.now().microsecondsSinceEpoch}',
-            amount: s.amount,
-            direction: TxnDirection.debit,
-            timestamp: DateTime.now(),
-            categoryId: s.categoryId,
-            merchant: s.name,
-            note: 'Subscription',
-            source: TxnSource.recurring,
-          ),
-        );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -215,18 +201,32 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                   filled: true,
                   onTap: () async {
                     final picked = subs.where((s) => _picked.contains(s.id));
+                    // Ones already paid this month (logged or from the bank
+                    // SMS) are skipped rather than counted twice.
+                    var n = 0, skipped = 0;
                     for (final s in picked) {
-                      await _logPayment(s);
+                      if (subscriptionPaidThisMonth(ref, s) != null) {
+                        skipped++;
+                        continue;
+                      }
+                      await _logSubscriptionPayment(ref, s);
+                      n++;
                     }
-                    final n = _picked.length;
                     setState(() {
                       _picked.clear();
                       _selectMode = false;
                     });
                     if (context.mounted) {
+<<<<<<< HEAD
                       ScaffoldMessenger.of(context).showToast(SnackBar(
                           content:
                               Text('Logged $n payment${n == 1 ? '' : 's'}')));
+=======
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(
+                              'Logged $n payment${n == 1 ? '' : 's'}'
+                              '${skipped == 0 ? '' : ' · $skipped already paid this month'}')));
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
                     }
                   },
                 ),
@@ -469,7 +469,7 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
   late final TextEditingController _name =
       TextEditingController(text: widget.edit?.name ?? '');
   late final TextEditingController _amount = TextEditingController(
-      text: widget.edit != null ? widget.edit!.amount.toStringAsFixed(0) : '');
+      text: inrToDisplayText(widget.edit?.amount));
   late final TextEditingController _day =
       TextEditingController(text: '${widget.edit?.day ?? 1}');
   late String _cat = widget.edit?.categoryId ?? 'bills';
@@ -484,7 +484,7 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    final amount = double.tryParse(_amount.text.trim()) ?? 0;
+    final amount = displayToInr(_amount.text) ?? 0; // display currency → INR
     if (name.isEmpty || amount <= 0) {
       ScaffoldMessenger.of(context)
           .showToast(const SnackBar(content: Text('Add a name and amount')));
@@ -721,21 +721,31 @@ void showSubActionsSheet(BuildContext context, WidgetRef ref, Subscription s) {
           const Divider(height: 1),
           row(Icons.add_card_rounded, "Log this month's payment", () async {
             Navigator.pop(ctx);
-            final uid = ref.read(currentUserIdProvider);
-            if (uid == null) return;
-            await ref.read(firestoreServiceProvider).addTransaction(
-                  uid,
-                  Transaction(
-                    id: 'sub_${DateTime.now().microsecondsSinceEpoch}',
-                    amount: s.amount,
-                    direction: TxnDirection.debit,
-                    timestamp: DateTime.now(),
-                    categoryId: s.categoryId,
-                    merchant: s.name,
-                    note: 'Subscription',
-                    source: TxnSource.recurring,
-                  ),
-                );
+            final already = subscriptionPaidThisMonth(ref, s);
+            if (already != null) {
+              final again = await showDialog<bool>(
+                context: context,
+                builder: (d) => AlertDialog(
+                  icon: const Icon(Icons.copy_all_outlined),
+                  title: const Text('Already paid this month?'),
+                  content: Text('There is already a '
+                      '${formatRupees(s.amount, raw: true)} payment to '
+                      '${already.merchant ?? s.name} on '
+                      '${relativeDate(already.timestamp).toLowerCase()}.\n\n'
+                      'Log another one?'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(d, false),
+                        child: const Text('Cancel')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(d, true),
+                        child: const Text('Log again')),
+                  ],
+                ),
+              );
+              if (again != true) return;
+            }
+            await _logSubscriptionPayment(ref, s);
             if (context.mounted) {
               ScaffoldMessenger.of(context).showToast(
                   const SnackBar(content: Text('Payment logged')));
@@ -759,4 +769,41 @@ void showSubActionsSheet(BuildContext context, WidgetRef ref, Subscription s) {
       );
     },
   );
+}
+
+/// This month's payment for [s] if one is already recorded — logged by hand
+/// or imported from the bank SMS (same amount, name matching the merchant).
+Transaction? subscriptionPaidThisMonth(WidgetRef ref, Subscription s) {
+  final now = DateTime.now();
+  final name = s.name.trim().toLowerCase();
+  final txns = ref.read(transactionsStreamProvider).valueOrNull ?? const [];
+  for (final t in txns) {
+    if (!t.isDebit ||
+        t.timestamp.year != now.year ||
+        t.timestamp.month != now.month ||
+        (t.amount - s.amount).abs() >= 0.01) {
+      continue;
+    }
+    final m = (t.merchant ?? '').trim().toLowerCase();
+    if (m.isNotEmpty && (m.contains(name) || name.contains(m))) return t;
+  }
+  return null;
+}
+
+Future<void> _logSubscriptionPayment(WidgetRef ref, Subscription s) async {
+  final uid = ref.read(currentUserIdProvider);
+  if (uid == null) return;
+  await ref.read(firestoreServiceProvider).addTransaction(
+        uid,
+        Transaction(
+          id: 'sub_${DateTime.now().microsecondsSinceEpoch}',
+          amount: s.amount,
+          direction: TxnDirection.debit,
+          timestamp: DateTime.now(),
+          categoryId: s.categoryId,
+          merchant: s.name,
+          note: 'Subscription',
+          source: TxnSource.recurring,
+        ),
+      );
 }

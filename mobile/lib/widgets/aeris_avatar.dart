@@ -182,7 +182,7 @@ class _AvatarPainter extends CustomPainter {
 
   // ── Shared blob body + face ─────────────────────────────────────────────
   void _body(Canvas canvas) {
-    final rect = const Rect.fromLTWH(32, 56, 64, 62);
+    const rect = Rect.fromLTWH(32, 56, 64, 62);
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(27)),
       Paint()

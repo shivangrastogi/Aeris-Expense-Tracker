@@ -18,7 +18,11 @@ import '../../services/money_insights.dart';
 import '../../services/prediction_service.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/skeleton.dart';
+<<<<<<< HEAD
 import '../../widgets/aeris_toast.dart';
+=======
+import '../../utils/amount_input_formatter.dart';
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
 
 class BudgetsScreen extends ConsumerWidget {
   const BudgetsScreen({super.key});
@@ -55,7 +59,8 @@ class BudgetsScreen extends ConsumerWidget {
           final total =
               list.where((b) => b.categoryId == Budget.totalId).firstOrNull;
           final allCats = Categories.all
-              .where((c) => c.id != 'salary' && c.id != 'transfer')
+              .where((c) =>
+                  c.id != 'salary' && c.id != 'transfer' && c.id != 'refund')
               .toList();
           return ListView(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 80),
@@ -213,7 +218,7 @@ class BudgetsScreen extends ConsumerWidget {
       BuildContext context, WidgetRef ref, double current) async {
     final messenger = ScaffoldMessenger.of(context);
     final ctrl = TextEditingController(
-        text: current > 0 ? current.toStringAsFixed(0) : '');
+        text: current > 0 ? inrToDisplayText(current) : '');
     final v = await showDialog<String>(
       context: context,
       builder: (d) => AlertDialog(
@@ -222,8 +227,9 @@ class BudgetsScreen extends ConsumerWidget {
           controller: ctrl,
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-              prefixText: '₹ ', labelText: 'Amount per month'),
+          decoration: InputDecoration(
+              prefixText: '${kCurrency.symbol.trim()} ',
+              labelText: 'Amount per month'),
         ),
         actions: [
           TextButton(
@@ -235,7 +241,7 @@ class BudgetsScreen extends ConsumerWidget {
       ),
     );
     if (v == null) return;
-    final amt = double.tryParse(v.replaceAll(',', ''));
+    final amt = displayToInr(v); // typed in display currency
     final uid = ref.read(currentUserIdProvider);
     if (uid == null || amt == null || amt <= 0) return;
     try {
@@ -269,7 +275,9 @@ class BudgetsScreen extends ConsumerWidget {
     final existing = (ref.read(budgetsStreamProvider).valueOrNull ?? const [])
         .map((b) => b.categoryId)
         .toSet();
-    const skip = {'salary', 'transfer', 'cash', 'investment', 'other'};
+    const skip = {
+      'salary', 'transfer', 'refund', 'cash', 'investment', 'other'
+    };
     final preds = PredictionService.instance.predictPerCategoryNextMonth(txns);
 
     final suggestions = <({String cat, double cap})>[];

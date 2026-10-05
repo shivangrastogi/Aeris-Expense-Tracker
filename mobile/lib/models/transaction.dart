@@ -41,6 +41,9 @@ class Transaction {
 
   bool get isDebit => direction == TxnDirection.debit;
   bool get isCredit => direction == TxnDirection.credit;
+
+  /// Money back for a purchase. Not income: it's taken off total spend.
+  bool get isRefund => isCredit && categoryId == 'refund';
   double get signed => isDebit ? -amount : amount;
 
   /// Auto-captured (bank SMS, payment screenshot) and not yet confirmed by
@@ -96,16 +99,18 @@ class Transaction {
     String? note,
     bool? reviewed,
     bool? hasReceipt,
+    bool clearMerchant = false,
+    bool clearNote = false,
   }) =>
       Transaction(
         id: id,
         amount: amount ?? this.amount,
         direction: direction ?? this.direction,
         timestamp: timestamp ?? this.timestamp,
-        merchant: merchant ?? this.merchant,
+        merchant: clearMerchant ? null : (merchant ?? this.merchant),
         account: account,
         categoryId: categoryId ?? this.categoryId,
-        note: note ?? this.note,
+        note: clearNote ? null : (note ?? this.note),
         source: source,
         smsBody: smsBody,
         smsSender: smsSender,

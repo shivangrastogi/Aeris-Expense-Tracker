@@ -241,8 +241,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final n = await BackupService.instance.restoreBackup(uid, pass);
       if (n < 0) return;
+<<<<<<< HEAD
       messenger.showToast(SnackBar(
           content: Text('Restored $n transaction${n == 1 ? '' : 's'}.')));
+=======
+      messenger.showSnackBar(SnackBar(
+          content: Text('Backup restored · $n transaction${n == 1 ? '' : 's'}.')));
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
     } catch (e) {
       messenger.showToast(const SnackBar(
           content: Text('Restore failed — wrong passphrase or invalid file.')));

@@ -30,8 +30,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       body: 'Your private, automatic expense tracker. Everything is '
           'end-to-end encrypted — only you can read your data.',
     ),
-    _Slide(
-      custom: const AerisMascot(mood: MascotMood.happy, size: 96),
+    const _Slide(
+      custom: AerisMascot(mood: MascotMood.happy, size: 96),
       title: 'Meet Aeris',
       body: 'Tap Aeris (top-right on Home) anytime to ask things like '
           '“how much did I spend on food this month?”',

@@ -80,7 +80,7 @@ class Challenge {
 
     if (broken) return const ChallengeStatus(ChallengeState.failed, 'Broken — better luck next time');
     if (now.isBefore(start)) {
-      return ChallengeStatus(ChallengeState.upcoming, 'Starts soon', 0);
+      return const ChallengeStatus(ChallengeState.upcoming, 'Starts soon', 0);
     }
     if (now.isAfter(end)) {
       return const ChallengeStatus(ChallengeState.won, 'Completed! Aura awarded', 1);

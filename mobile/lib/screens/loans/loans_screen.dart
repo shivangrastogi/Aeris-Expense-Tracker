@@ -11,7 +11,11 @@ import '../../providers/transactions_provider.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/discard_guard.dart';
+<<<<<<< HEAD
 import '../../widgets/aeris_toast.dart';
+=======
+import '../../widgets/field_editor.dart';
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
 
 /// "Lent" tab — money given to (or borrowed from) friends, tracked until
 /// it comes back. Each entry is Pending until marked settled.
@@ -159,7 +163,7 @@ class LoansScreen extends ConsumerWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        onTap: () => _detailSheet(context, ref, l),
+        onTap: () => showLoanDetailSheet(context, ref, l),
         leading: CircleAvatar(
           backgroundColor: color.withValues(alpha: 0.18),
           child: Text(initial,
@@ -213,6 +217,7 @@ class LoansScreen extends ConsumerWidget {
       ),
     );
   }
+<<<<<<< HEAD
 
   // ── Actions ───────────────────────────────────────────────
 
@@ -281,12 +286,20 @@ class LoansScreen extends ConsumerWidget {
       ),
     );
   }
+=======
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
 }
 
-Future<void> _saveLoan(WidgetRef ref, Loan l) async {
+/// Saves [l]; a failure is shown on [messenger] instead of being lost.
+Future<void> _saveLoan(
+    WidgetRef ref, Loan l, ScaffoldMessengerState messenger) async {
   final uid = ref.read(currentUserIdProvider);
   if (uid == null) return;
-  await ref.read(firestoreServiceProvider).setLoan(uid, l);
+  try {
+    await ref.read(firestoreServiceProvider).setLoan(uid, l);
+  } catch (err) {
+    messenger.showSnackBar(SnackBar(content: Text('Could not save: $err')));
+  }
 }
 
 /// Opens the "Add entry" sheet for tracking a new lent/borrowed payment —
@@ -316,13 +329,14 @@ class _OpenAddOnceState extends ConsumerState<_OpenAddOnce> {
 }
 
 void showAddLoanSheet(BuildContext context, WidgetRef ref) {
+  final messenger = ScaffoldMessenger.of(context);
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     // Swipe-to-dismiss bypasses the discard guard, so it's off here; the
     // close button, back gesture and scrim tap all ask before discarding.
     enableDrag: false,
-    builder: (_) => _AddLoanSheet(onSave: (l) => _saveLoan(ref, l)),
+    builder: (_) => _AddLoanSheet(onSave: (l) => _saveLoan(ref, l, messenger)),
   );
 }
 
@@ -445,7 +459,6 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
               decoration: InputDecoration(
                 labelText: "Friend's name",
                 prefixIcon: const Icon(Icons.person_outline),
-                border: const OutlineInputBorder(),
                 errorText:
                     _tried && _person.text.trim().isEmpty ? 'Who is it?' : null,
               ),
@@ -461,7 +474,6 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
                 labelText: 'Amount',
                 prefixText: '${kCurrency.symbol.trim()} ',
                 prefixIcon: const Icon(Icons.payments_outlined),
-                border: const OutlineInputBorder(),
                 errorText: _tried && _amountValue == null
                     ? 'Enter an amount greater than 0'
                     : null,
@@ -477,7 +489,6 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
                 labelText: 'Note (optional)',
                 hintText: 'e.g. movie tickets, trip',
                 prefixIcon: Icon(Icons.notes),
-                border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 16),
@@ -487,6 +498,243 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
               onPressed: _submit,
               child: const Text('Add entry'),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Details for one lent/borrowed entry — used by the Lent tab and the
+/// Lent & borrowed screen. Each row (name, amount, note, type) opens a small
+/// editor for just that field; the actions below settle or delete it.
+void showLoanDetailSheet(BuildContext context, WidgetRef ref, Loan loan) {
+  final messenger = ScaffoldMessenger.of(context);
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (_) => _LoanDetailSheet(
+      loan: loan,
+      onSave: (l) => _saveLoan(ref, l, messenger),
+      onDelete: () async {
+        final uid = ref.read(currentUserIdProvider);
+        if (uid == null) return;
+        try {
+          await ref.read(firestoreServiceProvider).deleteLoan(uid, loan.id);
+        } catch (err) {
+          messenger
+              .showSnackBar(SnackBar(content: Text('Could not delete: $err')));
+        }
+      },
+      messenger: messenger,
+    ),
+  );
+}
+
+class _LoanDetailSheet extends StatefulWidget {
+  final Loan loan;
+  final Future<void> Function(Loan) onSave;
+  final Future<void> Function() onDelete;
+  final ScaffoldMessengerState messenger;
+  const _LoanDetailSheet({
+    required this.loan,
+    required this.onSave,
+    required this.onDelete,
+    required this.messenger,
+  });
+
+  @override
+  State<_LoanDetailSheet> createState() => _LoanDetailSheetState();
+}
+
+class _LoanDetailSheetState extends State<_LoanDetailSheet> {
+  late Loan _l = widget.loan;
+
+  Future<void> _update(Loan next) async {
+    setState(() => _l = next);
+    await widget.onSave(next);
+  }
+
+  Future<void> _editPerson() async {
+    final v = await editTextField(context,
+        title: "Friend's name",
+        initial: _l.person,
+        icon: Icons.person_outline,
+        maxLength: 60,
+        required: true,
+        capitalization: TextCapitalization.words);
+    if (v == null || v.isEmpty || v == _l.person) return;
+    await _update(_l.copyWith(person: v));
+  }
+
+  Future<void> _editAmount() async {
+    final v = await editAmountField(context,
+        title: _l.borrowed ? 'Amount borrowed' : 'Amount lent',
+        initialInr: _l.amount);
+    if (v == null || v == _l.amount) return;
+    await _update(_l.copyWith(amount: v, paid: _l.paid.clamp(0.0, v)));
+  }
+
+  Future<void> _editNote() async {
+    final v = await editTextField(context,
+        title: 'Note',
+        initial: _l.note,
+        hint: 'e.g. movie tickets, trip',
+        icon: Icons.notes_rounded,
+        multiline: true);
+    if (v == null || v == _l.note) return;
+    await _update(_l.copyWith(note: v));
+  }
+
+  Future<void> _editType() async {
+    final picked = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (s) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (borrowed, label, icon) in const [
+              (false, 'I gave money', Icons.north_east),
+              (true, 'I borrowed', Icons.south_west),
+            ])
+              ListTile(
+                leading: Icon(icon),
+                title: Text(label),
+                trailing: borrowed == _l.borrowed
+                    ? Icon(Icons.check_rounded,
+                        color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () => Navigator.pop(s, borrowed),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == _l.borrowed) return;
+    await _update(_l.copyWith(borrowed: picked));
+  }
+
+  Future<void> _recordPartial() async {
+    final entered = await editAmountField(context,
+        title: 'Record repayment · ${formatRupees(_l.outstanding)} left',
+        initialInr: _l.outstanding);
+    if (entered == null || entered <= 0) return;
+    final newPaid = (_l.paid + entered).clamp(0.0, _l.amount);
+    final fully = newPaid >= _l.amount;
+    await _update(
+        _l.copyWith(paid: newPaid, settledAt: fully ? DateTime.now() : null));
+    widget.messenger.showSnackBar(SnackBar(
+        content: Text(fully
+            ? 'Settled in full 🎉'
+            : 'Recorded ${formatRupees(entered)}')));
+  }
+
+  Widget _row(String label, String value, VoidCallback onTap) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+        title: Text(label),
+        subtitle: Text(value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        trailing: const Icon(Icons.edit, size: 18),
+        onTap: onTap,
+      );
+
+  Widget _action(IconData icon, Color color, String title, VoidCallback onTap,
+          {String? subtitle}) =>
+      ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+        leading: CircleAvatar(
+          backgroundColor: color.withValues(alpha: 0.18),
+          child: Icon(icon, color: color),
+        ),
+        title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle),
+        onTap: onTap,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final l = _l;
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _row("Friend's name", l.person, _editPerson),
+            _row('Type', l.borrowed ? 'I borrowed' : 'I gave money',
+                _editType),
+            _row('Amount', formatRupees(l.amount, decimals: true),
+                _editAmount),
+            _row('Note', l.note.isEmpty ? 'Add a note' : l.note, _editNote),
+            if (!l.isSettled && l.paid > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Text(
+                          '${formatRupees(l.paid)} of ${formatRupees(l.amount)} back',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurfaceVariant)),
+                      const Spacer(),
+                      Text('${(l.paid / l.amount * 100).round()}%',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: AerisColors.ink(context))),
+                    ]),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: (l.paid / l.amount).clamp(0.0, 1.0),
+                        minHeight: 6,
+                        backgroundColor: scheme.surfaceContainerHighest,
+                        color: AerisColors.seed,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const Divider(height: 16),
+            if (!l.isSettled) ...[
+              _action(
+                Icons.check,
+                AerisColors.moneyIn(context),
+                l.borrowed ? 'Mark as paid back' : 'Mark as received',
+                subtitle: 'Moves it to Settled',
+                () async {
+                  Navigator.pop(context);
+                  await widget.onSave(
+                      l.copyWith(paid: l.amount, settledAt: DateTime.now()));
+                  widget.messenger.showSnackBar(SnackBar(
+                      content: Text(l.borrowed
+                          ? 'Marked as paid back ✓'
+                          : 'Marked as received ✓')));
+                },
+              ),
+              _action(Icons.add_card, AerisColors.seed,
+                  'Record partial repayment', _recordPartial),
+            ] else
+              _action(Icons.undo, AerisColors.warning, 'Mark as pending again',
+                  () async {
+                Navigator.pop(context);
+                await widget.onSave(l.copyWith(paid: 0, settledAt: null));
+              }),
+            _action(Icons.delete_outline, scheme.error, 'Delete', () async {
+              Navigator.pop(context);
+              await widget.onDelete();
+            }),
+            const SizedBox(height: 8),
           ],
         ),
       ),

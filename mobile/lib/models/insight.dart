@@ -1,6 +1,7 @@
 /// Output of the on-device AI engine (`services/prediction_service.dart`
 /// and `services/recommendation_service.dart`). Kept dumb on purpose —
 /// the engine is just a value producer; UI cards consume these.
+library;
 
 enum InsightSeverity { info, positive, warning, alert }
 

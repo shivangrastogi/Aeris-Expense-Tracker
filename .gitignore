@@ -36,3 +36,6 @@ mobile/tool/shots/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local run output
+mobile/run_log.txt

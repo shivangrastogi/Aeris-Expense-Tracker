@@ -672,9 +672,20 @@ class _NavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+<<<<<<< HEAD
     final dark = Theme.of(context).brightness == Brightness.dark;
     final accent = AerisColors.accent(context);
     final inactive = AerisColors.muted(context);
+=======
+    final glassColor = isDark
+        ? const Color(0xFF162122).withValues(alpha: 0.97)
+        : Colors.white.withValues(alpha: 0.97);
+    final glassBorder = isDark
+        ? Colors.white.withValues(alpha: 0.10)
+        : const Color(0xFF0E1A18).withValues(alpha: 0.10);
+    const active = AerisColors.seed;
+    final inactive = isDark ? const Color(0xFF6A7E7C) : const Color(0xFF8B9997);
+>>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
 
     return SizedBox(
       height: _kNavBarH + bottomInset + 22,
