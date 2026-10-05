@@ -170,7 +170,7 @@ class NluParser {
     if (dir == TxnDirection.credit) {
       final low = hint.toLowerCase();
       if (low.contains('salary') || low.contains('payroll')) return 'salary';
-      if (low.contains('refund') || low.contains('reversed')) return 'shopping';
+      if (low.contains('refund') || low.contains('reversed')) return 'refund';
       return 'transfer';
     }
     return Categories.classify(hint);

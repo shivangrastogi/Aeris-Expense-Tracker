@@ -71,7 +71,13 @@ class AuthService {
       {required bool deleteLegacy}) async {
     final m = p.toMap();
     final dek = KeyVault.instance.dek;
-    if (dek == null) return m; // vault locked — keep plaintext fallback
+    if (dek == null) {
+      // Vault locked: never write income or the photo in the clear — leave
+      // them out (a merge write keeps whatever encrypted copy is stored).
+      m.remove('monthlyIncome');
+      m.remove('photoUrl');
+      return m;
+    }
     m.remove('monthlyIncome');
     m['incomeEnc'] = await CryptoService.instance
         .encryptJson({'income': p.monthlyIncome}, dek);

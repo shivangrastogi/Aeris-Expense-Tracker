@@ -221,9 +221,19 @@ class FirestoreService {
   // Stored doc shape: { timestamp (plaintext, for ordering), enc (blob), v }.
   // The blob holds every sensitive field — amount, merchant, SMS text, etc.
 
-  Future<Map<String, dynamic>> _encodeTxn(Transaction t) async {
+  /// The data key, or throws: personal data is never written in the clear.
+  /// (Callers already surface save errors; the Key Gate keeps the vault
+  /// unlocked during normal use, so this only trips on a real fault.)
+  List<int> _requireDek() {
     final dek = KeyVault.instance.dek;
-    if (dek == null) return t.toMap(); // vault locked — should not happen
+    if (dek == null) {
+      throw StateError('Your data is locked. Unlock the app and try again.');
+    }
+    return dek;
+  }
+
+  Future<Map<String, dynamic>> _encodeTxn(Transaction t) async {
+    final dek = _requireDek();
     final json = t.toMap();
     json['timestamp'] = t.timestamp.millisecondsSinceEpoch; // JSON-safe
     return {
@@ -271,8 +281,7 @@ class FirestoreService {
 
   // The monthly cap is encrypted; the doc id (categoryId) is just a label.
   Future<Map<String, dynamic>> _encodeBudget(Budget b) async {
-    final dek = KeyVault.instance.dek;
-    if (dek == null) return b.toMap();
+    final dek = _requireDek();
     return {
       'categoryId': b.categoryId,
       'enc': await CryptoService.instance.encryptJson({
@@ -369,8 +378,7 @@ class FirestoreService {
 
   Future<void> setOpeningBalance(
       String uid, String accountKey, double amount) async {
-    final dek = KeyVault.instance.dek;
-    if (dek == null) return;
+    final dek = _requireDek();
     final snap = await _balancesDoc(uid).get();
     final current = <String, double>{};
     final enc = snap.data()?['enc'];
@@ -431,14 +439,12 @@ class FirestoreService {
   }
 
   Future<void> setGoal(String uid, Goal g) async {
-    final dek = KeyVault.instance.dek;
-    final doc = dek == null
-        ? g.toMap()
-        : {
-            'createdAt': Timestamp.fromDate(g.createdAt),
-            'enc': await CryptoService.instance.encryptJson(g.toMap(), dek),
-            'v': 1,
-          };
+    final dek = _requireDek();
+    final doc = {
+      'createdAt': Timestamp.fromDate(g.createdAt),
+      'enc': await CryptoService.instance.encryptJson(g.toMap(), dek),
+      'v': 1,
+    };
     await _out.set(_goalsCol(uid).doc(g.id), doc);
   }
 
@@ -471,14 +477,12 @@ class FirestoreService {
   }
 
   Future<void> setLoan(String uid, Loan l) async {
-    final dek = KeyVault.instance.dek;
-    final doc = dek == null
-        ? l.toMap()
-        : {
-            'createdAt': Timestamp.fromDate(l.createdAt),
-            'enc': await CryptoService.instance.encryptJson(l.toMap(), dek),
-            'v': 1,
-          };
+    final dek = _requireDek();
+    final doc = {
+      'createdAt': Timestamp.fromDate(l.createdAt),
+      'enc': await CryptoService.instance.encryptJson(l.toMap(), dek),
+      'v': 1,
+    };
     await _out.set(_loansCol(uid).doc(l.id), doc);
   }
 
@@ -509,13 +513,11 @@ class FirestoreService {
   }
 
   Future<void> setSubscription(String uid, Subscription s) async {
-    final dek = KeyVault.instance.dek;
-    final doc = dek == null
-        ? s.toMap()
-        : {
-            'enc': await CryptoService.instance.encryptJson(s.toMap(), dek),
-            'v': 1,
-          };
+    final dek = _requireDek();
+    final doc = {
+      'enc': await CryptoService.instance.encryptJson(s.toMap(), dek),
+      'v': 1,
+    };
     await _out.set(_subsCol(uid).doc(s.id), doc);
   }
 

@@ -117,7 +117,7 @@ class AnalyticsSnapshot {
   factory AnalyticsSnapshot.from(List<Transaction> txns, AnalyticsRange range) {
     final start = range.start;
     final end = range.end;
-    double inSum = 0, outSum = 0;
+    double inSum = 0, outSum = 0, refundSum = 0;
     final byCat = <String, double>{};
     final countByCat = <String, int>{};
     final daily = <String, double>{};
@@ -128,7 +128,10 @@ class AnalyticsSnapshot {
     for (final t in txns) {
       final mk =
           '${t.timestamp.year}-${t.timestamp.month.toString().padLeft(2, '0')}';
-      if (t.isCredit) {
+      // A refund isn't income: it reduces what was spent.
+      if (t.isRefund) {
+        mExp[mk] = (mExp[mk] ?? 0) - t.amount;
+      } else if (t.isCredit) {
         mInc[mk] = (mInc[mk] ?? 0) + t.amount;
       } else {
         mExp[mk] = (mExp[mk] ?? 0) + t.amount;
@@ -136,6 +139,10 @@ class AnalyticsSnapshot {
 
       // Restrict the dashboard aggregates to the selected range.
       if (t.timestamp.isBefore(start) || t.timestamp.isAfter(end)) continue;
+      if (t.isRefund) {
+        refundSum += t.amount;
+        continue;
+      }
       if (t.isCredit) {
         inSum += t.amount;
         continue;
@@ -151,6 +158,11 @@ class AnalyticsSnapshot {
         merchants[t.merchant!] = (merchants[t.merchant!] ?? 0) + t.amount;
       }
     }
+
+    // Refunds come off the total spend (never below zero). Per-category
+    // figures stay gross, since a refund doesn't say which purchase it was.
+    outSum = (outSum - refundSum).clamp(0, double.infinity).toDouble();
+    mExp.updateAll((_, v) => v < 0 ? 0 : v);
 
     final now = DateTime.now();
     final effEnd = end.isBefore(now) ? end : now;

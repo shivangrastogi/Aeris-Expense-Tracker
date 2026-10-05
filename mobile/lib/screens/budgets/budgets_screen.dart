@@ -43,7 +43,8 @@ class BudgetsScreen extends ConsumerWidget {
           final total =
               list.where((b) => b.categoryId == Budget.totalId).firstOrNull;
           final allCats = Categories.all
-              .where((c) => c.id != 'salary' && c.id != 'transfer')
+              .where((c) =>
+                  c.id != 'salary' && c.id != 'transfer' && c.id != 'refund')
               .toList();
           return ListView(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 80),
@@ -237,7 +238,9 @@ class BudgetsScreen extends ConsumerWidget {
     final existing = (ref.read(budgetsStreamProvider).valueOrNull ?? const [])
         .map((b) => b.categoryId)
         .toSet();
-    const skip = {'salary', 'transfer', 'cash', 'investment', 'other'};
+    const skip = {
+      'salary', 'transfer', 'refund', 'cash', 'investment', 'other'
+    };
     final preds = PredictionService.instance.predictPerCategoryNextMonth(txns);
 
     final suggestions = <({String cat, double cap})>[];

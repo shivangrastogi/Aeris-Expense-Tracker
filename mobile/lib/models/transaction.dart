@@ -41,6 +41,9 @@ class Transaction {
 
   bool get isDebit => direction == TxnDirection.debit;
   bool get isCredit => direction == TxnDirection.credit;
+
+  /// Money back for a purchase. Not income: it's taken off total spend.
+  bool get isRefund => isCredit && categoryId == 'refund';
   double get signed => isDebit ? -amount : amount;
 
   Map<String, dynamic> toMap() => {

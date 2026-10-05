@@ -25,7 +25,7 @@ import '../../widgets/receipt_field.dart';
 const _kLastAccountPref = 'last_txn_account';
 
 /// Income-first ordering for the category chips when logging money in.
-const _incomeFirst = ['salary', 'transfer', 'investment', 'other'];
+const _incomeFirst = ['salary', 'transfer', 'refund', 'investment', 'other'];
 
 /// One screen for adding **and** editing a transaction.
 ///
@@ -262,7 +262,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
           ]
         : [
             for (final c in Categories.all)
-              if (c.id != 'salary') c,
+              if (c.id != 'salary' && c.id != 'refund') c,
           ];
     // Stable sort by usage: ties keep the default order.
     final indexed = [for (var i = 0; i < base.length; i++) (i, base[i])];

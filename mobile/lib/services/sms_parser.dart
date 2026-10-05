@@ -196,6 +196,30 @@ class SmsParser {
     ),
   ];
 
+  /// Failed / declined payments — no money actually moved, so they must not
+  /// become an expense. ("Amount if debited will be reversed" also lands
+  /// here.) Real reversals arrive as their own "credited/reversed" alert.
+  static final _failedRe = RegExp(
+    r'\b(failed|declined|unsuccessful|not successful|could not be '
+    r'(?:processed|completed)|insufficient (?:funds|balance)|'
+    r'if debited)\b',
+    caseSensitive: false,
+  );
+
+  /// Card-spend alerts name the merchant after "on": "INR 1,299 spent using
+  /// ICICI Bank Card XX4321 on 02-Oct-26 on AMAZON." Only ALL-CAPS words are
+  /// taken, so dates ("on 02-Oct-26") and prose ("on your card") are skipped.
+  static final _onMerchantRe = RegExp(
+    r'\bon\s+([A-Z][A-Z0-9&_*\-]*\b(?:\s[A-Z0-9&_*\-]+\b)*)',
+  );
+
+  /// First words after "on" that are a channel or bank, not a merchant.
+  static const _notMerchant = {
+    'upi', 'imps', 'neft', 'rtgs', 'pos', 'atm', 'ecom', 'card', 'netbanking',
+    'sbi', 'hdfc', 'icici', 'axis', 'kotak', 'idfc', 'indusind', 'yes', 'idbi',
+    'pnb', 'bob', 'paytm', 'phonepe', 'gpay', 'bhim', 'your', 'a/c',
+  };
+
   /// Any URL in the body — legit bank txn alerts almost never contain links,
   /// but phishing/promo SMS do. Used to reject links from untrusted senders.
   static final _urlRe = RegExp(
@@ -228,6 +252,9 @@ class SmsParser {
 
     final direction = _directionFrom(clean);
     if (direction == null) return null;
+    if (direction == TxnDirection.debit && _failedRe.hasMatch(clean)) {
+      return null;
+    }
     // Scammers fake "credited" messages ("You won Rs 50000, claim now") to
     // look like income. Only trust a credit if it comes from a known
     // bank / UPI sender — debits from bank-like bodies are still allowed.
@@ -323,6 +350,13 @@ class SmsParser {
     if (at != null) return _trimMerchant(at.group(1)!);
     final to = _toVpaRe.firstMatch(body);
     if (to != null) return _trimMerchant(to.group(1)!);
+    if (dir == TxnDirection.debit) {
+      for (final m in _onMerchantRe.allMatches(body)) {
+        final name = _trimMerchant(m.group(1)!);
+        final first = name.split(' ').first.toLowerCase();
+        if (name.length >= 3 && !_notMerchant.contains(first)) return name;
+      }
+    }
     return null;
   }
 
@@ -340,7 +374,7 @@ class SmsParser {
     if (dir == TxnDirection.credit) {
       final low = hint.toLowerCase();
       if (low.contains('salary') || low.contains('payroll')) return 'salary';
-      if (low.contains('refund') || low.contains('reversed')) return 'shopping';
+      if (low.contains('refund') || low.contains('reversed')) return 'refund';
       return 'transfer';
     }
     return Categories.classify(hint);

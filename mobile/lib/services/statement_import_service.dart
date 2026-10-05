@@ -351,7 +351,7 @@ class StatementImportService {
   String _creditCategory(String hint) {
     final l = hint.toLowerCase();
     if (l.contains('salary') || l.contains('payroll')) return 'salary';
-    if (l.contains('refund') || l.contains('reversal')) return 'shopping';
+    if (l.contains('refund') || l.contains('reversal')) return 'refund';
     return 'transfer';
   }
 
