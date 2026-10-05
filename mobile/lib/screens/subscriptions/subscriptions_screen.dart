@@ -10,11 +10,8 @@ import '../../providers/auth_provider.dart';
 import '../../providers/subscriptions_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
-<<<<<<< HEAD
-import '../../widgets/aeris_toast.dart';
-=======
 import '../../utils/amount_input_formatter.dart';
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
+import '../../widgets/aeris_toast.dart';
 
 // Quick-pick catalog of common Indian subscriptions.
 const _subCatalog = <(String, String, double)>[
@@ -203,10 +200,9 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                     final picked = subs.where((s) => _picked.contains(s.id));
                     // Ones already paid this month (logged or from the bank
                     // SMS) are skipped rather than counted twice.
-                    var n = 0, skipped = 0;
+                    var n = 0;
                     for (final s in picked) {
                       if (subscriptionPaidThisMonth(ref, s) != null) {
-                        skipped++;
                         continue;
                       }
                       await _logSubscriptionPayment(ref, s);
@@ -217,16 +213,9 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                       _selectMode = false;
                     });
                     if (context.mounted) {
-<<<<<<< HEAD
                       ScaffoldMessenger.of(context).showToast(SnackBar(
                           content:
                               Text('Logged $n payment${n == 1 ? '' : 's'}')));
-=======
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(
-                              'Logged $n payment${n == 1 ? '' : 's'}'
-                              '${skipped == 0 ? '' : ' · $skipped already paid this month'}')));
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
                     }
                   },
                 ),

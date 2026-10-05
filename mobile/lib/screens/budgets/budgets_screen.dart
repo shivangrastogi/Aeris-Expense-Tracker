@@ -18,11 +18,8 @@ import '../../services/money_insights.dart';
 import '../../services/prediction_service.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/skeleton.dart';
-<<<<<<< HEAD
-import '../../widgets/aeris_toast.dart';
-=======
 import '../../utils/amount_input_formatter.dart';
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
+import '../../widgets/aeris_toast.dart';
 
 class BudgetsScreen extends ConsumerWidget {
   const BudgetsScreen({super.key});

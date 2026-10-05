@@ -5,12 +5,9 @@ import '../../models/budget.dart';
 import '../../models/category.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/transactions_provider.dart';
-<<<<<<< HEAD
-import '../../widgets/aeris_toast.dart';
-=======
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
+import '../../widgets/aeris_toast.dart';
 
 class BudgetEditScreen extends ConsumerStatefulWidget {
   final String? categoryId;

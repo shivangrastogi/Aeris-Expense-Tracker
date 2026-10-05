@@ -115,7 +115,7 @@ class _SplashScreenState extends State<SplashScreen>
                               ? 1.0
                               : (_cursorVisible ? 1.0 : 0.0),
                           duration: const Duration(milliseconds: 120),
-                          child: const Text(
+                          child: Text(
                             '|',
                             style: TextStyle(
                               fontSize: 34,

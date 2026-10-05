@@ -464,12 +464,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final income = _dir == TxnDirection.credit;
-<<<<<<< HEAD
     // Spend is typed in plain ink, income in green; Save is always the accent.
-=======
-    // Red/green only marks the direction (sign + header tab); everything else
-    // stays in the app's own colours so the screen doesn't change family.
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
     final money =
         income ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context);
     final now = DateTime.now();
@@ -507,15 +502,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                       controller: _amount,
                       focusNode: _amountFocus,
                       formatter: _formatter,
-<<<<<<< HEAD
                       color: money,
                       autofocus:
                           false, // focused after the route settles — see _focusAfterTransition
-=======
-                      signColor: money,
-                      sign: income ? '+' : '−',
-                      autofocus: !_editing,
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
                       error: _amountError,
                       onChanged: () {
                         if (_amountError) setState(() => _amountError = false);
@@ -576,11 +565,10 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                               label: Text(_short(c.label)),
                               selected: c.id == _categoryId,
                               showCheckmark: false,
-                              selectedColor:
-                                  scheme.primary.withValues(alpha: 0.14),
+                              selectedColor: c.color.withValues(alpha: 0.18),
                               side: BorderSide(
                                   color: c.id == _categoryId
-                                      ? scheme.primary
+                                      ? c.color
                                       : scheme.outlineVariant),
                               onSelected: (_) => _pickCategory(c.id),
                             ),
@@ -736,11 +724,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                 label: _editing
                     ? 'Update'
                     : (income ? 'Save income' : 'Save expense'),
-<<<<<<< HEAD
                 color: AerisColors.accent(context),
-=======
-                color: scheme.primary,
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
                 busy: _busy,
                 onSave: _save,
               ),
@@ -1057,8 +1041,7 @@ class _AmountField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final TextInputFormatter formatter;
-  final Color signColor;
-  final String sign;
+  final Color color;
   final bool autofocus;
   final bool error;
   final VoidCallback onChanged;
@@ -1070,8 +1053,7 @@ class _AmountField extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.formatter,
-    required this.signColor,
-    required this.sign,
+    required this.color,
     required this.autofocus,
     required this.error,
     required this.onChanged,
@@ -1082,7 +1064,6 @@ class _AmountField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
     final scheme = Theme.of(context).colorScheme;
     return TextFieldTapRegion(
       child: Container(
@@ -1090,18 +1071,6 @@ class _AmountField extends StatelessWidget {
         // card, outlined in red only when Save found it missing.
         decoration: AerisColors.cardDecoration(context, radius: 20).copyWith(
           border: error ? Border.all(color: scheme.error, width: 1.6) : null,
-=======
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final border =
-        error ? scheme.error : scheme.outlineVariant.withValues(alpha: 0.6);
-    return TextFieldTapRegion(
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.cardTheme.color ?? scheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: border, width: error ? 1.6 : 1),
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1120,7 +1089,7 @@ class _AmountField extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 34,
                   fontWeight: FontWeight.w700,
-                  color: scheme.onSurface,
+                  color: color,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
                 decoration: InputDecoration(
@@ -1136,23 +1105,18 @@ class _AmountField extends StatelessWidget {
                       color: scheme.onSurfaceVariant.withValues(alpha: 0.4)),
                   prefixIcon: Padding(
                     padding: const EdgeInsets.only(right: 6),
-                    child: Text('$sign ${kCurrency.symbol.trim()}',
+                    child: Text(kCurrency.symbol.trim(),
                         style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.w700,
-                            color: signColor)),
+                            color: scheme.onSurfaceVariant)),
                   ),
                   prefixIconConstraints:
                       const BoxConstraints(minWidth: 0, minHeight: 0),
                 ),
               ),
             ),
-<<<<<<< HEAD
             const Divider(height: 1),
-=======
-            Divider(
-                height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
               child: Row(
@@ -1163,7 +1127,7 @@ class _AmountField extends StatelessWidget {
                   Expanded(
                     child: _ResultText(
                       controller: controller,
-                      color: scheme.primary,
+                      color: color,
                       error: error,
                       onCollapse: onCollapse,
                       fallback: helper,
@@ -1190,11 +1154,7 @@ class _OpKey extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: Material(
-<<<<<<< HEAD
         color: scheme.surfaceContainer,
-=======
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           canRequestFocus: false, // keep focus (and the keyboard) on amount

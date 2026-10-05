@@ -11,11 +11,8 @@ import '../../providers/transactions_provider.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/discard_guard.dart';
-<<<<<<< HEAD
-import '../../widgets/aeris_toast.dart';
-=======
 import '../../widgets/field_editor.dart';
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
+import '../../widgets/aeris_toast.dart';
 
 /// "Lent" tab — money given to (or borrowed from) friends, tracked until
 /// it comes back. Each entry is Pending until marked settled.
@@ -217,77 +214,8 @@ class LoansScreen extends ConsumerWidget {
       ),
     );
   }
-<<<<<<< HEAD
 
   // ── Actions ───────────────────────────────────────────────
-
-  void _detailSheet(BuildContext context, WidgetRef ref, Loan l) {
-    final messenger = ScaffoldMessenger.of(context);
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(l.person,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800, fontSize: 17)),
-              subtitle: Text(
-                  '${l.borrowed ? 'You borrowed' : 'You lent'} ${formatRupees(l.amount)}'
-                  '${l.note.isNotEmpty ? ' · ${l.note}' : ''}'),
-            ),
-            if (!l.isSettled)
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0x3322C55E),
-                  child: Icon(Icons.check, color: Color(0xFF22C55E)),
-                ),
-                title:
-                    Text(l.borrowed ? 'Mark as paid back' : 'Mark as received'),
-                subtitle: const Text('Moves it to Settled'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _saveLoan(ref, l.copyWith(settledAt: DateTime.now()));
-                  messenger.showToast(SnackBar(
-                      content: Text(l.borrowed
-                          ? 'Marked as paid back ✓'
-                          : 'Marked as received ✓')));
-                },
-              )
-            else
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0x33F59E0B),
-                  child: Icon(Icons.undo, color: Color(0xFFF59E0B)),
-                ),
-                title: const Text('Mark as pending again'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _saveLoan(ref, l.copyWith(settledAt: null));
-                },
-              ),
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0x33EF4444),
-                child: Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
-              ),
-              title: const Text('Delete'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final uid = ref.read(currentUserIdProvider);
-                if (uid == null) return;
-                await ref.read(firestoreServiceProvider).deleteLoan(uid, l.id);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-=======
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
 }
 
 /// Saves [l]; a failure is shown on [messenger] instead of being lost.

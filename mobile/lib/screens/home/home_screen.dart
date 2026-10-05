@@ -296,13 +296,8 @@ class _ProfileAvatar extends StatelessWidget {
       child: Center(
         child: Text(
           initials.isEmpty ? '?' : initials,
-<<<<<<< HEAD
           style: TextStyle(
               color: AerisColors.accent(context),
-=======
-          style: const TextStyle(
-              color: Colors.white,
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
               fontSize: size * 0.36,
               fontWeight: FontWeight.w800),
         ),

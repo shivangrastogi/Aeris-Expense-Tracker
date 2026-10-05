@@ -304,15 +304,9 @@ class _QuestsSection extends StatelessWidget {
         const SizedBox(height: 24),
         Row(children: [
           Icon(Icons.sports_kabaddi_rounded,
-<<<<<<< HEAD
               size: 18, color: AerisColors.danger(context)),
           SizedBox(width: 7),
           Text('Boss battles',
-=======
-              size: 18, color: AerisColors.moneyOut(context)),
-          const SizedBox(width: 7),
-          const Text('Boss battles',
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         ]),
         const SizedBox(height: 4),

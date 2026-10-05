@@ -448,7 +448,6 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
       ),
     ),
     chipTheme: ChipThemeData(
-<<<<<<< HEAD
       backgroundColor: card,
       selectedColor: accent.withValues(alpha: dark ? 0.22 : 0.12),
       labelStyle: jakarta(12.5, FontWeight.w600),
@@ -492,18 +491,6 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
       color: card,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-=======
-      backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
-      selectedColor: scheme.primary.withValues(alpha: 0.14),
-      checkmarkColor: scheme.primary,
-      labelStyle: GoogleFonts.plusJakartaSans(
-          fontSize: 12, fontWeight: FontWeight.w600, color: scheme.onSurface),
-      secondaryLabelStyle: GoogleFonts.plusJakartaSans(
-          fontSize: 12, fontWeight: FontWeight.w600, color: scheme.onSurface),
-      iconTheme: IconThemeData(color: scheme.onSurfaceVariant, size: 18),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      side: BorderSide.none,
->>>>>>> 03b46533542cdba8b0b640a9e2a5977620e74684
     ),
     bottomAppBarTheme: BottomAppBarThemeData(
       color: card,
