@@ -165,7 +165,7 @@ class _ChartsTabState extends ConsumerState<_ChartsTab> {
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
           children: [
-            Align(
+            const Align(
               alignment: Alignment.centerRight,
               child: _RangePillBtn(),
             ),
@@ -1614,7 +1614,7 @@ class _AITabState extends ConsumerState<_AITab> {
           ],
           const _SectionHead('Recommendations'),
           if (bundle.recommendations.isEmpty)
-            _EmptyCard('Nothing to flag yet — keep using the app!'),
+            const _EmptyCard('Nothing to flag yet — keep using the app!'),
           for (final r in bundle.recommendations.take(4))
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -1625,7 +1625,7 @@ class _AITabState extends ConsumerState<_AITab> {
           const SizedBox(height: 10),
           const _SectionHead('Anomalies'),
           if (bundle.anomalies.isEmpty)
-            _EmptyCard('Nothing anomalous in recent activity.'),
+            const _EmptyCard('Nothing anomalous in recent activity.'),
           for (final a in bundle.anomalies.take(3))
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -1634,7 +1634,7 @@ class _AITabState extends ConsumerState<_AITab> {
                   .fadeIn(duration: 280.ms, delay: 180.ms),
             ),
           const SizedBox(height: 10),
-          _AskAerisBtn().animate().fadeIn(duration: 280.ms, delay: 220.ms),
+          const _AskAerisBtn().animate().fadeIn(duration: 280.ms, delay: 220.ms),
         ],
       ),
     );
@@ -1723,12 +1723,12 @@ class _PredictionBanner extends StatelessWidget {
         ],
       ),
       child: Stack(children: [
-        Positioned(
+        const Positioned(
           right: -10,
           top: -10,
           child: Opacity(
             opacity: 0.2,
-            child: const Icon(Icons.online_prediction,
+            child: Icon(Icons.online_prediction,
                 size: 110, color: Colors.white),
           ),
         ),
@@ -2047,7 +2047,7 @@ class _AskAerisBtn extends StatelessWidget {
           ],
         ),
         child: Row(children: [
-          AerisMascot(mood: MascotMood.happy, size: 40),
+          const AerisMascot(mood: MascotMood.happy, size: 40),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

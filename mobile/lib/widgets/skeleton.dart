@@ -81,7 +81,7 @@ class SkeletonListTile extends StatelessWidget {
                   const SkeletonLine(width: 180, height: 11),
                   if (showBar) ...[
                     const SizedBox(height: 10),
-                    SkeletonBox(width: double.infinity, height: 6, radius: 3),
+                    const SkeletonBox(width: double.infinity, height: 6, radius: 3),
                   ],
                 ],
               ),
@@ -127,8 +127,8 @@ class DashboardCardsSkeleton extends StatelessWidget {
   const DashboardCardsSkeleton({super.key});
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: const [
+    return const Column(
+      children: [
         SkeletonBox(width: double.infinity, height: 178, radius: 22),
         SizedBox(height: 14),
         SkeletonBox(width: double.infinity, height: 132, radius: 20),
@@ -181,11 +181,11 @@ class GoalsSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 100),
-      children: [
-        const SkeletonBox(width: double.infinity, height: 120, radius: 20),
-        const SizedBox(height: 16),
+      children: const [
+        SkeletonBox(width: double.infinity, height: 120, radius: 20),
+        SizedBox(height: 16),
         Row(
-          children: const [
+          children: [
             SkeletonCircle(size: 52),
             SizedBox(width: 14),
             SkeletonCircle(size: 52),
@@ -195,12 +195,12 @@ class GoalsSkeleton extends StatelessWidget {
             SkeletonCircle(size: 52),
           ],
         ),
-        const SizedBox(height: 20),
-        const SkeletonLine(width: 160, height: 16),
-        const SizedBox(height: 14),
-        const SkeletonBox(width: double.infinity, height: 96, radius: 18),
-        const SizedBox(height: 12),
-        const SkeletonBox(width: double.infinity, height: 96, radius: 18),
+        SizedBox(height: 20),
+        SkeletonLine(width: 160, height: 16),
+        SizedBox(height: 14),
+        SkeletonBox(width: double.infinity, height: 96, radius: 18),
+        SizedBox(height: 12),
+        SkeletonBox(width: double.infinity, height: 96, radius: 18),
       ],
     );
   }

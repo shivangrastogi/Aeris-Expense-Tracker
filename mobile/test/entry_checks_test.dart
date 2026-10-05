@@ -1,7 +1,6 @@
 import 'package:aeris_expense/models/transaction.dart';
 import 'package:aeris_expense/services/entry_checks.dart';
 import 'package:aeris_expense/utils/amount_input_formatter.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Transaction _t(String id, double amt, DateTime at,

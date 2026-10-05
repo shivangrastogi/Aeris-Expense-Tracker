@@ -15,7 +15,7 @@ class BudgetEditScreen extends ConsumerStatefulWidget {
 
 class _BudgetEditScreenState extends ConsumerState<BudgetEditScreen> {
   final _cap = TextEditingController();
-  late String _catId = widget.categoryId ?? 'other';
+  late final String _catId = widget.categoryId ?? 'other';
 
   Future<void> _save() async {
     final uid = ref.read(currentUserIdProvider);

@@ -274,8 +274,9 @@ class _DonutPainter extends CustomPainter {
           l.y -= shift;
         }
         for (var k = 1; k < col.length; k++) {
-          if (col[k].y - col[k - 1].y < minGap)
+          if (col[k].y - col[k - 1].y < minGap) {
             col[k].y = col[k - 1].y + minGap;
+          }
         }
       }
     }

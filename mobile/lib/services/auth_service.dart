@@ -11,6 +11,7 @@ import 'category_rules.dart';
 import 'crypto_service.dart';
 import 'firestore_service.dart';
 import 'key_vault.dart';
+import 'sms_import_service.dart';
 
 class AuthService {
   AuthService._();
@@ -59,8 +60,9 @@ class AuthService {
           .set(await _profileDoc(profile, deleteLegacy: false));
       return recoveryKey;
     } catch (e) {
-      if (!completer.isCompleted)
+      if (!completer.isCompleted) {
         completer.completeError(e, StackTrace.current);
+      }
       rethrow;
     }
   }
@@ -113,8 +115,9 @@ class AuthService {
       if (!completer.isCompleted) completer.complete();
       return cred;
     } catch (e) {
-      if (!completer.isCompleted)
+      if (!completer.isCompleted) {
         completer.completeError(e, StackTrace.current);
+      }
       rethrow;
     }
   }
@@ -280,6 +283,7 @@ class AuthService {
         await p.remove(k);
       }
       await CategoryRules.instance.clear();
+      SmsImportService.instance.reset();
     } catch (_) {}
     await _auth.signOut();
   }

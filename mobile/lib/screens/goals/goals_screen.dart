@@ -292,14 +292,14 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
     ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.06, end: 0);
   }
 
-  Widget _empty() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 30),
+  Widget _empty() => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 30),
         child: Center(
           child: Column(
             children: [
-              const Text('🎯', style: TextStyle(fontSize: 40)),
-              const SizedBox(height: 10),
-              const Text(
+              Text('🎯', style: TextStyle(fontSize: 40)),
+              SizedBox(height: 10),
+              Text(
                 'No savings goals yet.\n'
                 'Tap “New goal” to save toward something —\n'
                 'a trip, a gadget, or an emergency fund.',

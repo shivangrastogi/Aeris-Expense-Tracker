@@ -763,7 +763,7 @@ class _SmsCard extends ConsumerWidget {
                         color: AerisColors.warning.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(99),
                       ),
-                      child: Text('Edited',
+                      child: const Text('Edited',
                           style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,

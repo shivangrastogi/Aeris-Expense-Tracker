@@ -46,6 +46,14 @@ class SmsImportService {
     _loaded = true;
   }
 
+  /// Forget the in-memory pointer and hash cache (on sign-out; the prefs
+  /// behind them are cleared by AuthService.signOut).
+  void reset() {
+    _hwm = null;
+    _recent.clear();
+    _loaded = false;
+  }
+
   void _remember(String hash) {
     _recent.add(hash);
     while (_recent.length > _recentCap) {
@@ -170,10 +178,12 @@ class SmsImportService {
     var saved = 0;
     for (var i = 0; i < fresh.length; i++) {
       onProgress?.call(i, fresh.length);
-      if (await _persistChecked(uid, fresh[i].p, fresh[i].hash, blocked))
+      if (await _persistChecked(uid, fresh[i].p, fresh[i].hash, blocked)) {
         saved++;
-      if (i % 8 == 7)
+      }
+      if (i % 8 == 7) {
         await Future<void>.delayed(Duration.zero); // keep UI alive
+      }
     }
     if (fresh.isNotEmpty) onProgress?.call(fresh.length, fresh.length);
 

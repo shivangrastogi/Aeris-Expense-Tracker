@@ -42,8 +42,10 @@ class NluParser {
   /// "spent 200 on chai and 500 on petrol and got 5000 salary" → 3 entries.
   /// Only segments that yield an amount are kept; falls back to a single parse.
   static List<NluResult> parseMulti(String text, {DateTime? now}) {
-    final parts =
-        text.split(RegExp(r'\b(?:and|also|then|plus)\b|[,&;]', caseSensitive: false));
+    // A comma between digits is a thousands separator ("1,200"), not a split.
+    final parts = text.split(RegExp(
+        r'\b(?:and|also|then|plus)\b|[&;]|(?<!\d),|,(?!\d)',
+        caseSensitive: false));
     final out = <NluResult>[];
     for (final p in parts) {
       if (p.trim().isEmpty) continue;

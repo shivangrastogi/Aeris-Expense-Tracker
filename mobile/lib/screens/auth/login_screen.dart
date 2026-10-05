@@ -239,6 +239,8 @@ String _friendlyError(Object e) {
     return 'Incorrect email or password.';
   }
   if (s.contains('user-not-found')) return 'No account with that email.';
+  if (s.contains('invalid-email')) return 'That email looks invalid.';
+  if (s.contains('user-disabled')) return 'This account has been disabled.';
   if (s.contains('too-many-requests')) {
     return 'Too many attempts. Try again later.';
   }

@@ -422,7 +422,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       : Theme.of(ctx).colorScheme.onSurface)),
           const Spacer(),
           if (selected)
-            Icon(Icons.check_circle, color: AerisColors.seed, size: 20),
+            const Icon(Icons.check_circle, color: AerisColors.seed, size: 20),
         ]),
       ),
     );
@@ -838,15 +838,20 @@ class _TransactionsTabState extends ConsumerState<_TransactionsTab> {
               // miss anything the user typed with a capital ("Swiggy").
               final q = widget.query.trim().toLowerCase();
               var filtered = list.where((t) {
-                if (widget.filterDir != null && t.direction != widget.filterDir)
+                if (widget.filterDir != null && t.direction != widget.filterDir) {
                   return false;
+                }
                 if (widget.filterCat != null &&
-                    t.categoryId != widget.filterCat) return false;
+                    t.categoryId != widget.filterCat) {
+                  return false;
+                }
                 if (!widget.inRange(t.timestamp)) return false;
-                if (widget.minAmount != null && t.amount < widget.minAmount!)
+                if (widget.minAmount != null && t.amount < widget.minAmount!) {
                   return false;
-                if (widget.maxAmount != null && t.amount > widget.maxAmount!)
+                }
+                if (widget.maxAmount != null && t.amount > widget.maxAmount!) {
                   return false;
+                }
                 if (q.isEmpty) return true;
                 return (t.merchant ?? '').toLowerCase().contains(q) ||
                     (t.note ?? '').toLowerCase().contains(q) ||
@@ -960,7 +965,7 @@ class _TransactionsTabState extends ConsumerState<_TransactionsTab> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.delete_outline_rounded,
                         size: 18, color: AerisColors.moneyOut(context)),
-                    SizedBox(width: 6),
+                    const SizedBox(width: 6),
                     Text('Delete',
                         style: TextStyle(
                             color: AerisColors.moneyOut(context),
@@ -1402,7 +1407,7 @@ class _LentTab extends ConsumerWidget {
               ),
             if (pending.isNotEmpty) ...[
               Row(children: [
-                Icon(Icons.access_time, size: 16, color: AerisColors.warning),
+                const Icon(Icons.access_time, size: 16, color: AerisColors.warning),
                 const SizedBox(width: 6),
                 Text(
                   'Pending ${pending.length}',

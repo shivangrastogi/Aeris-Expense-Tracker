@@ -299,7 +299,7 @@ class _ProfileAvatar extends StatelessWidget {
       child: Center(
         child: Text(
           initials.isEmpty ? '?' : initials,
-          style: TextStyle(
+          style: const TextStyle(
               color: Colors.white,
               fontSize: size * 0.36,
               fontWeight: FontWeight.w800,

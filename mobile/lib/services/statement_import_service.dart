@@ -391,15 +391,13 @@ class StatementImportService {
     final m = _dateInText.firstMatch(line);
     if (m == null) return null;
     final dd = int.tryParse(m.group(1)!) ?? 1;
-    var mm = int.tryParse(m.group(2)!) ?? _monthFromName(m.group(2)!);
+    final mm = int.tryParse(m.group(2)!) ?? _monthFromName(m.group(2)!);
     var yy = int.tryParse(m.group(3)!) ?? DateTime.now().year;
     if (yy < 100) yy += 2000;
     if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-    try {
-      return DateTime(yy, mm, dd);
-    } catch (_) {
-      return null;
-    }
+    // DateTime rolls invalid days over (31 Feb → 3 Mar); reject those.
+    final d = DateTime(yy, mm, dd);
+    return d.month == mm && d.day == dd ? d : null;
   }
 
   int _firstDateEnd(String line) {
@@ -414,7 +412,7 @@ class StatementImportService {
     ];
     final i = months.indexOf(s.toLowerCase().substring(
         0, s.length < 3 ? s.length : 3));
-    return i >= 0 ? i + 1 : 1;
+    return i >= 0 ? i + 1 : 0; // 0 → not a month; the caller rejects it
   }
 
   /// Parse a money string: "1,234.56", "(1,234.50)", "₹500 Dr", "-200".

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:aeris_expense/models/category.dart';
 import 'package:aeris_expense/models/transaction.dart';
 import 'package:aeris_expense/providers/analytics_provider.dart';
+import 'package:aeris_expense/services/nlu_parser.dart';
 import 'package:aeris_expense/services/sms_parser.dart';
 
 void main() {
@@ -96,5 +97,38 @@ void main() {
     expect(snap.monthIncome, 5000);
     expect(snap.monthlyExpenseSeries['2026-10'], 700);
     expect(snap.monthlyIncomeSeries['2026-10'], 5000);
+  });
+
+  group('later fixes', () {
+    test('impossible SMS date falls back to when it arrived', () {
+      final arrived = DateTime(2026, 2, 28, 9, 30);
+      final p = SmsParser.parse(
+        sender: 'AD-HDFCBK',
+        body: 'Rs.250.00 debited from A/c XX1234 on 31-02-26 to VPA '
+            'swiggy@icici. Avl bal Rs.1,000.00',
+        receivedAt: arrived,
+      );
+      expect(p, isNotNull);
+      expect(p!.txn.timestamp, arrived);
+    });
+
+    test('voice: "1,200" is one amount, not two entries', () {
+      final r = NluParser.parseMulti('paid 1,200 for rent',
+          now: DateTime(2026, 10, 5));
+      expect(r, hasLength(1));
+      expect(r.single.amount, 1200);
+      expect(r.single.categoryId, 'rent');
+    });
+
+    test('voice: commas still split separate entries', () {
+      final r = NluParser.parseMulti('spent 200 on chai, 500 on petrol',
+          now: DateTime(2026, 10, 5));
+      expect(r.map((x) => x.amount), [200, 500]);
+    });
+
+    test('meals count as food', () {
+      expect(Categories.classify('lunch'), 'food');
+      expect(Categories.classify('Team dinner'), 'food');
+    });
   });
 }

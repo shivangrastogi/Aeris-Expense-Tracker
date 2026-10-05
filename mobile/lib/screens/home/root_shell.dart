@@ -607,7 +607,7 @@ class _GlassNav extends StatelessWidget {
     final glassBorder = isDark
         ? Colors.white.withValues(alpha: 0.10)
         : const Color(0xFF0E1A18).withValues(alpha: 0.10);
-    final active = AerisColors.seed;
+    const active = AerisColors.seed;
     final inactive = isDark ? const Color(0xFF6A7E7C) : const Color(0xFF8B9997);
 
     return SizedBox(

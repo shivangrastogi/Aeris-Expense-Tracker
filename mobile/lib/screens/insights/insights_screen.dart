@@ -42,12 +42,12 @@ class InsightsScreen extends ConsumerWidget {
             _PredictionCard(p: bundle.monthEstimate, hero: true),
             if (bundle.budgetProjections.isNotEmpty) ...[
               const SizedBox(height: 16),
-              _SectionTitle('Budget projections'),
+              const _SectionTitle('Budget projections'),
               for (final bp in bundle.budgetProjections)
                 _BudgetProjectionCard(bp: bp),
             ],
             const SizedBox(height: 16),
-            _SectionTitle('Recommendations'),
+            const _SectionTitle('Recommendations'),
             ...bundle.recommendations.map(_RecCard.new),
             if (bundle.recommendations.isEmpty)
               const Card(
@@ -56,12 +56,12 @@ class InsightsScreen extends ConsumerWidget {
                       child: Text('Nothing to flag yet — keep using the app, '
                           'I\'ll have tips once you have a few weeks of data.'))),
             const SizedBox(height: 16),
-            _SectionTitle('Next month: per-category forecast'),
+            const _SectionTitle('Next month: per-category forecast'),
             ...bundle.categoryForecasts.take(6).map(
                   (p) => _PredictionCard(p: p),
                 ),
             const SizedBox(height: 16),
-            _SectionTitle('Recurring payments detected'),
+            const _SectionTitle('Recurring payments detected'),
             if (bundle.recurring.isEmpty)
               const Card(
                   child: Padding(
@@ -69,7 +69,7 @@ class InsightsScreen extends ConsumerWidget {
                       child: Text('No recurring patterns detected yet.'))),
             for (final r in bundle.recurring) _RecurringCard(r: r),
             const SizedBox(height: 16),
-            _SectionTitle('Recent anomalies'),
+            const _SectionTitle('Recent anomalies'),
             if (bundle.anomalies.isEmpty)
               const Card(
                   child: Padding(

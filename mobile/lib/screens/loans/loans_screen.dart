@@ -202,22 +202,29 @@ class LoansScreen extends ConsumerWidget {
   }
 }
 
-Future<void> _saveLoan(WidgetRef ref, Loan l) async {
+/// Saves [l]; a failure is shown on [messenger] instead of being lost.
+Future<void> _saveLoan(
+    WidgetRef ref, Loan l, ScaffoldMessengerState messenger) async {
   final uid = ref.read(currentUserIdProvider);
   if (uid == null) return;
-  await ref.read(firestoreServiceProvider).setLoan(uid, l);
+  try {
+    await ref.read(firestoreServiceProvider).setLoan(uid, l);
+  } catch (err) {
+    messenger.showSnackBar(SnackBar(content: Text('Could not save: $err')));
+  }
 }
 
 /// Opens the "Add entry" sheet for tracking a new lent/borrowed payment —
 /// reachable both from the Lent screen's FAB and the home radial FAB.
 void showAddLoanSheet(BuildContext context, WidgetRef ref) {
+  final messenger = ScaffoldMessenger.of(context);
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     // Swipe-to-dismiss bypasses the discard guard, so it's off here; the
     // close button, back gesture and scrim tap all ask before discarding.
     enableDrag: false,
-    builder: (_) => _AddLoanSheet(onSave: (l) => _saveLoan(ref, l)),
+    builder: (_) => _AddLoanSheet(onSave: (l) => _saveLoan(ref, l, messenger)),
   );
 }
 
@@ -397,11 +404,16 @@ void showLoanDetailSheet(BuildContext context, WidgetRef ref, Loan loan) {
     isScrollControlled: true,
     builder: (_) => _LoanDetailSheet(
       loan: loan,
-      onSave: (l) => _saveLoan(ref, l),
+      onSave: (l) => _saveLoan(ref, l, messenger),
       onDelete: () async {
         final uid = ref.read(currentUserIdProvider);
         if (uid == null) return;
-        await ref.read(firestoreServiceProvider).deleteLoan(uid, loan.id);
+        try {
+          await ref.read(firestoreServiceProvider).deleteLoan(uid, loan.id);
+        } catch (err) {
+          messenger
+              .showSnackBar(SnackBar(content: Text('Could not delete: $err')));
+        }
       },
       messenger: messenger,
     ),

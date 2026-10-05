@@ -396,12 +396,14 @@ class SmsParser {
       yy = int.tryParse(t.group(3)!) ?? fallback.year;
     }
     if (yy < 100) yy += 2000;
-    try {
-      // Preserve receivedAt hour/min so we still know when it landed.
-      return DateTime(yy, mm, dd, fallback.hour, fallback.minute);
-    } catch (_) {
-      return fallback;
-    }
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return fallback;
+    // Preserve receivedAt hour/min so we still know when it landed.
+    final d = DateTime(yy, mm, dd, fallback.hour, fallback.minute);
+    // DateTime rolls invalid days over (31 Feb → 3 Mar), and a misread date
+    // can land in the future — either way trust when the SMS arrived.
+    if (d.month != mm || d.day != dd) return fallback;
+    if (d.isAfter(fallback.add(const Duration(days: 1)))) return fallback;
+    return d;
   }
 
   static double _scoreConfidence(String body, String? merchant, String? acct) {

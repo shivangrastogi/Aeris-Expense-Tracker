@@ -91,8 +91,8 @@ class VillageNotifier extends StateNotifier<VillageState> {
     final raw = p.getString(_key);
     if (raw == null) {
       // Seed a fresh village with the Town Hall in the middle.
-      state = VillageState(
-        buildings: const {
+      state = const VillageState(
+        buildings: {
           'th': VillageBuilding(type: 'townhall', col: 3, row: 3),
         },
         loaded: true,
