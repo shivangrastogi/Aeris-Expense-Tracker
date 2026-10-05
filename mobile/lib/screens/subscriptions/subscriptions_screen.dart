@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/subscriptions_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
+import '../../utils/amount_input_formatter.dart';
 
 // Quick-pick catalog of common Indian subscriptions.
 const _subCatalog = <(String, String, double)>[
@@ -458,7 +459,7 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
   late final TextEditingController _name =
       TextEditingController(text: widget.edit?.name ?? '');
   late final TextEditingController _amount = TextEditingController(
-      text: widget.edit != null ? widget.edit!.amount.toStringAsFixed(0) : '');
+      text: inrToDisplayText(widget.edit?.amount));
   late final TextEditingController _day =
       TextEditingController(text: '${widget.edit?.day ?? 1}');
   late String _cat = widget.edit?.categoryId ?? 'bills';
@@ -473,7 +474,7 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    final amount = double.tryParse(_amount.text.trim()) ?? 0;
+    final amount = displayToInr(_amount.text) ?? 0; // display currency → INR
     if (name.isEmpty || amount <= 0) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Add a name and amount')));

@@ -7,6 +7,8 @@ import '../../models/category.dart';
 import '../../models/challenge.dart';
 import '../../providers/gamification_provider.dart';
 import '../../providers/transactions_provider.dart';
+import '../../utils/amount_input_formatter.dart';
+import '../../utils/formatters.dart';
 
 class ChallengesScreen extends ConsumerWidget {
   /// Body-only (no Scaffold/AppBar/FAB) so it can be embedded in the Quests tab.
@@ -134,10 +136,11 @@ class ChallengesScreen extends ConsumerWidget {
               if (type == ChallengeType.dailyCap)
                 TextField(
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                      labelText: 'Daily cap (₹)',
-                      prefixIcon: Icon(Icons.currency_rupee)),
-                  onChanged: (v) => cap = double.tryParse(v) ?? cap,
+                  decoration: InputDecoration(
+                      labelText: 'Daily cap',
+                      hintText: inrToDisplayText(cap),
+                      prefixText: '${kCurrency.symbol.trim()} '),
+                  onChanged: (v) => cap = displayToInr(v) ?? cap,
                 ),
               if (type == ChallengeType.noCategory)
                 DropdownButtonFormField<String>(

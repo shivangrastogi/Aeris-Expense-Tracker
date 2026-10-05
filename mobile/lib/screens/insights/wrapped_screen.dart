@@ -87,7 +87,8 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
             _big(c.label),
             const SizedBox(height: 8),
             _sub('${formatRupees(stats.topCatAmount)} · '
-                '${(stats.topCatAmount / stats.spent * 100).toStringAsFixed(0)}% of spend'),
+                // Refunds lower total spend but not categories, so cap it.
+                '${(stats.spent <= 0 ? 100 : (stats.topCatAmount / stats.spent * 100).clamp(0, 100)).toStringAsFixed(0)}% of spend'),
           ],
         ));
       }
@@ -285,6 +286,10 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
         lastMonthSpent += t.amount;
       }
       if (ts.year != now.year || ts.month != now.month) continue;
+      if (t.isRefund) {
+        spent -= t.amount; // money back, not income
+        continue;
+      }
       if (t.isCredit) {
         income += t.amount;
         continue;
@@ -298,6 +303,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
       byDay[ts.day] = (byDay[ts.day] ?? 0) + t.amount;
       spendDays.add(ts.day);
     }
+    if (spent < 0) spent = 0;
 
     String? topCat;
     double topCatAmount = 0;

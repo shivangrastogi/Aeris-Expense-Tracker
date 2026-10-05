@@ -46,7 +46,8 @@ class AssistantService {
             !t.timestamp.isAfter(period.end))
         .toList();
     final debits = inRange.where((t) => t.isDebit).toList();
-    final credits = inRange.where((t) => t.isCredit).toList();
+    // Refunds are money back, not income.
+    final credits = inRange.where((t) => t.isCredit && !t.isRefund).toList();
     double sum(Iterable<Transaction> ts) =>
         ts.fold(0.0, (a, b) => a + b.amount);
 

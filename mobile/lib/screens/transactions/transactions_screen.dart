@@ -19,6 +19,7 @@ import '../../widgets/transaction_tile.dart';
 import '../../widgets/txn_undo.dart';
 import '../loans/loans_screen.dart';
 import '../subscriptions/subscriptions_screen.dart';
+import '../../utils/amount_input_formatter.dart';
 
 // ── Sort options ─────────────────────────────────────────────
 enum _SortMode { recent, highest, lowest }
@@ -157,9 +158,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     // snapshot current values to sheet-local state
     var sheetSort = _sort;
     final minCtrl =
-        TextEditingController(text: _minAmount?.toStringAsFixed(0) ?? '');
+        TextEditingController(text: inrToDisplayText(_minAmount));
     final maxCtrl =
-        TextEditingController(text: _maxAmount?.toStringAsFixed(0) ?? '');
+        TextEditingController(text: inrToDisplayText(_maxAmount));
     var sheetRange = _dateRange;
 
     showModalBottomSheet(
@@ -352,8 +353,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                         Navigator.pop(ctx);
                         setState(() {
                           _sort = sheetSort;
-                          _minAmount = double.tryParse(minCtrl.text);
-                          _maxAmount = double.tryParse(maxCtrl.text);
+                          // Typed in display currency; amounts are INR.
+                          _minAmount = displayToInr(minCtrl.text);
+                          _maxAmount = displayToInr(maxCtrl.text);
                           _dateRange = sheetRange;
                         });
                       },

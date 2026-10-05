@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aeris_expense/models/category.dart';
+import 'package:aeris_expense/models/currency.dart';
 import 'package:aeris_expense/models/transaction.dart';
 import 'package:aeris_expense/providers/analytics_provider.dart';
 import 'package:aeris_expense/services/nlu_parser.dart';
 import 'package:aeris_expense/services/sms_parser.dart';
+import 'package:aeris_expense/utils/amount_input_formatter.dart';
+import 'package:aeris_expense/utils/formatters.dart';
 
 void main() {
   group('Categories.classify — word-aware matching', () {
@@ -129,6 +132,21 @@ void main() {
     test('meals count as food', () {
       expect(Categories.classify('lunch'), 'food');
       expect(Categories.classify('Team dinner'), 'food');
+    });
+
+    test('amounts typed in another display currency are stored as INR', () {
+      final before = kCurrency;
+      try {
+        kCurrency = Currencies.byCode('USD');
+        final inr = displayToInr('1,200')!;
+        expect(inr, closeTo(1200 * kCurrency.rate, 0.01));
+        expect(inrToDisplayText(inr), '1200');
+        kCurrency = Currencies.byCode('INR');
+        expect(displayToInr('1,200'), 1200);
+        expect(displayToInr(''), isNull);
+      } finally {
+        kCurrency = before;
+      }
     });
   });
 }
