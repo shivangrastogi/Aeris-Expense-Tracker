@@ -30,7 +30,8 @@ void main() {
       for (var d = 1; d <= 10; d++)
         _t(amount: 1000, when: DateTime(2026, 5, d), catId: 'food'),
     ];
-    final p = svc.predictCurrentMonth(txns);
+    // "Today" is 10 May 2026, matching the data above.
+    final p = svc.predictCurrentMonth(txns, now: DateTime(2026, 5, 10));
     expect(p.estimate, greaterThan(20000));
     expect(p.low, lessThan(p.estimate));
     expect(p.high, greaterThan(p.estimate));

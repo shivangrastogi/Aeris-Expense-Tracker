@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/subscriptions_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/aeris_toast.dart';
 
 // Quick-pick catalog of common Indian subscriptions.
 const _subCatalog = <(String, String, double)>[
@@ -76,7 +77,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
     final totals = ref.watch(subscriptionTotalsProvider);
     final scheme = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = dark ? const Color(0xFF14221F) : Colors.white;
+    final cardBg = dark ? AerisColors.cardDark : Colors.white;
     final pad = widget.embed ? 20.0 : 16.0;
 
     return Column(
@@ -190,7 +191,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
               _bulkBtn(
                 label: 'Remove (${_picked.length})',
                 icon: Icons.delete_outline_rounded,
-                color: AerisColors.moneyOut(context),
+                color: AerisColors.danger(context),
                 onTap: () async {
                   final uid = ref.read(currentUserIdProvider);
                   final fs = ref.read(firestoreServiceProvider);
@@ -210,7 +211,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                 child: _bulkBtn(
                   label: 'Log payments (${_picked.length})',
                   icon: Icons.add_card_rounded,
-                  color: AerisColors.seed,
+                  color: AerisColors.accent(context),
                   filled: true,
                   onTap: () async {
                     final picked = subs.where((s) => _picked.contains(s.id));
@@ -223,7 +224,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                       _selectMode = false;
                     });
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      ScaffoldMessenger.of(context).showToast(SnackBar(
                           content:
                               Text('Logged $n payment${n == 1 ? '' : 's'}')));
                     }
@@ -253,7 +254,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
                 color: on
-                    ? AerisColors.seed
+                    ? AerisColors.accent(context)
                     : scheme.onSurface.withValues(alpha: 0.08),
                 width: on ? 1.5 : 1),
           ),
@@ -264,7 +265,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                 height: 24,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  color: on ? AerisColors.seed : Colors.transparent,
+                  color: on ? AerisColors.accent(context) : Colors.transparent,
                   border: on
                       ? null
                       : Border.all(
@@ -272,7 +273,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                           width: 2),
                 ),
                 child: on
-                    ? const Icon(Icons.check, size: 16, color: Colors.white)
+                    ? Icon(Icons.check, size: 16, color: AerisColors.onAccent(context))
                     : null,
               ),
               const SizedBox(width: 12),
@@ -354,8 +355,8 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
         FilledButton(
           onPressed: () => showAddSubSheet(context, ref),
           style: FilledButton.styleFrom(
-            backgroundColor: AerisColors.seed,
-            foregroundColor: Colors.white,
+            backgroundColor: AerisColors.accent(context),
+            foregroundColor: AerisColors.onAccent(context),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
           ),
@@ -373,14 +374,14 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
       required VoidCallback onTap}) {
     final scheme = Theme.of(context).colorScheme;
     final bg = filled
-        ? AerisColors.seed
+        ? AerisColors.accent(context)
         : active
-            ? AerisColors.seed.withValues(alpha: 0.14)
+            ? AerisColors.accent(context).withValues(alpha: 0.14)
             : scheme.onSurface.withValues(alpha: 0.06);
     final fg = filled
-        ? Colors.white
+        ? AerisColors.onAccent(context)
         : active
-            ? AerisColors.seed
+            ? AerisColors.accent(context)
             : scheme.onSurface;
     return GestureDetector(
       onTap: onTap,
@@ -413,13 +414,13 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, size: 17, color: filled ? Colors.white : color),
+        Icon(icon, size: 17, color: filled ? AerisColors.on(color) : color),
         const SizedBox(width: 6),
         Text(label,
             style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: filled ? Colors.white : color)),
+                color: filled ? AerisColors.on(color) : color)),
       ]),
     );
     return GestureDetector(onTap: onTap, child: child);
@@ -486,7 +487,7 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
     final amount = double.tryParse(_amount.text.trim()) ?? 0;
     if (name.isEmpty || amount <= 0) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Add a name and amount')));
+          .showToast(const SnackBar(content: Text('Add a name and amount')));
       return;
     }
     final day = (int.tryParse(_day.text.trim()) ?? 1).clamp(1, 28);
@@ -538,12 +539,12 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
                         padding: const EdgeInsets.symmetric(horizontal: 13),
                         decoration: BoxDecoration(
                           color: _name.text == c.$1
-                              ? AerisColors.seed.withValues(alpha: 0.14)
+                              ? AerisColors.accent(context).withValues(alpha: 0.14)
                               : scheme.onSurface.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(99),
                           border: Border.all(
                               color: _name.text == c.$1
-                                  ? AerisColors.seed
+                                  ? AerisColors.accent(context)
                                   : scheme.onSurface.withValues(alpha: 0.1)),
                         ),
                         child: Text(c.$1,
@@ -601,7 +602,7 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
                             child: Icon(c.icon,
                                 size: 22,
                                 color: _cat == c.id
-                                    ? Colors.white
+                                    ? AerisColors.on(c.color)
                                     : scheme.onSurfaceVariant),
                           ),
                           const SizedBox(height: 4),
@@ -627,13 +628,13 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
             child: FilledButton(
               onPressed: _save,
               style: FilledButton.styleFrom(
-                backgroundColor: AerisColors.seed,
-                foregroundColor: Colors.white,
+                backgroundColor: AerisColors.accent(context),
+                foregroundColor: AerisColors.onAccent(context),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
                 textStyle:
-                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    const TextStyle(fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w800),
               ),
               child: Text(
                   widget.edit == null ? 'Add subscription' : 'Save changes'),
@@ -676,7 +677,7 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
                 BorderSide(color: scheme.onSurface.withValues(alpha: 0.1))),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(13),
-            borderSide: const BorderSide(color: AerisColors.seed, width: 1.4)),
+            borderSide: BorderSide(color: AerisColors.accent(context), width: 1.4)),
       ),
     );
   }
@@ -694,10 +695,10 @@ void showSubActionsSheet(BuildContext context, WidgetRef ref, Subscription s) {
       Widget row(IconData icon, String label, VoidCallback onTap,
           {bool danger = false}) {
         final color =
-            danger ? AerisColors.moneyOut(context) : Theme.of(ctx).colorScheme.onSurface;
+            danger ? AerisColors.danger(context) : Theme.of(ctx).colorScheme.onSurface;
         return ListTile(
           leading:
-              Icon(icon, color: danger ? AerisColors.moneyOut(context) : AerisColors.seed),
+              Icon(icon, color: danger ? AerisColors.danger(context) : AerisColors.accent(context)),
           title: Text(label,
               style: TextStyle(fontWeight: FontWeight.w700, color: color)),
           onTap: onTap,
@@ -736,7 +737,7 @@ void showSubActionsSheet(BuildContext context, WidgetRef ref, Subscription s) {
                   ),
                 );
             if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              ScaffoldMessenger.of(context).showToast(
                   const SnackBar(content: Text('Payment logged')));
             }
           }),

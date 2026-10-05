@@ -151,7 +151,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
               avatar: Text(b.$1),
               label: Text(b.$2, style: const TextStyle(fontSize: 12)),
               backgroundColor: b.$3
-                  ? AerisColors.seed.withValues(alpha: 0.15)
+                  ? AerisColors.accent(context).withValues(alpha: 0.15)
                   : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
             ),
           ),
@@ -162,7 +162,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
   // ── Explainer ─────────────────────────────────────────────
   Widget _explainer() {
     return Card(
-      color: AerisColors.seed.withValues(alpha: 0.08),
+      color: AerisColors.accent(context).withValues(alpha: 0.08),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Row(
@@ -247,8 +247,8 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                 builder: (_, v, __) => LinearProgressIndicator(
                   value: v,
                   minHeight: 12,
-                  color: g.isComplete ? AerisColors.moneyIn(context) : AerisColors.seed,
-                  backgroundColor: AerisColors.seed.withValues(alpha: 0.12),
+                  color: g.isComplete ? AerisColors.moneyIn(context) : AerisColors.accent(context),
+                  backgroundColor: AerisColors.accent(context).withValues(alpha: 0.12),
                 ),
               ),
             ),
@@ -351,7 +351,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                         onTap: () => setLocal(() => emoji = e),
                         child: CircleAvatar(
                           backgroundColor: emoji == e
-                              ? AerisColors.seed.withValues(alpha: 0.25)
+                              ? AerisColors.accent(context).withValues(alpha: 0.25)
                               : Colors.transparent,
                           child: Text(e, style: const TextStyle(fontSize: 18)),
                         ),

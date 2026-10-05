@@ -49,11 +49,11 @@ class AuthTabs extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 11),
           decoration: BoxDecoration(
             color: active
-                ? AerisColors.seed.withValues(alpha: 0.22)
+                ? AerisColors.accent(context).withValues(alpha: 0.22)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             border: active
-                ? Border.all(color: AerisColors.seed.withValues(alpha: 0.45))
+                ? Border.all(color: AerisColors.accent(context).withValues(alpha: 0.45))
                 : null,
           ),
           alignment: Alignment.center,
@@ -115,7 +115,7 @@ class AuthField extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AerisColors.seed, width: 1.4),
+          borderSide: BorderSide(color: AerisColors.accent(context), width: 1.4),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -152,15 +152,15 @@ class AuthPrimaryButton extends StatelessWidget {
       child: FilledButton(
         onPressed: busy ? null : onPressed,
         style: FilledButton.styleFrom(
-          backgroundColor: AerisColors.seed,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: AerisColors.seed.withValues(alpha: 0.6),
-          disabledForegroundColor: Colors.white,
+          backgroundColor: AerisColors.accent(context),
+          foregroundColor: AerisColors.onAccent(context),
+          disabledBackgroundColor: AerisColors.accent(context).withValues(alpha: 0.6),
+          disabledForegroundColor: AerisColors.onAccent(context),
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           textStyle:
-              const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800),
+              const TextStyle(fontFamily: kFontFamily, fontSize: 15.5, fontWeight: FontWeight.w800),
         ),
         child: busy
             ? Row(

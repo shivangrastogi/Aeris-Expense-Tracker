@@ -8,13 +8,14 @@ import '../../models/budget.dart';
 import '../../models/transaction.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/budgets_provider.dart';
 import '../../providers/gamification_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../providers/village_provider.dart';
+import '../../providers/money_providers.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/aeris_avatar.dart';
 import '../../widgets/budget_ring.dart';
+import '../../widgets/aeris_toast.dart';
 
 /// Gallery of home-screen widgets, mirroring the new-GUI "Me → Widgets" screen.
 /// The phone/tablet toggle from the design tool is intentionally dropped — this
@@ -46,7 +47,7 @@ class WidgetsScreen extends ConsumerWidget {
     final greeting = firstName == null ? null : 'Hi, $firstName!';
 
     final analytics = ref.watch(analyticsProvider).valueOrNull;
-    final budgets = ref.watch(budgetsStreamProvider).valueOrNull ?? const [];
+    final budgets = ref.watch(effectiveBudgetsProvider);
     final explicitTotal = budgets
         .where((b) => b.categoryId == Budget.totalId)
         .fold<double>(0, (s, b) => s + b.monthlyCap);
@@ -246,11 +247,11 @@ class WidgetsScreen extends ConsumerWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 13, vertical: 6),
                           decoration: BoxDecoration(
-                              color: AerisColors.seed.withValues(alpha: 0.12),
+                              color: AerisColors.accent(context).withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(99)),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.add,
-                                size: 15, color: AerisColors.seed),
+                            Icon(Icons.add,
+                                size: 15, color: AerisColors.accent(context)),
                             const SizedBox(width: 4),
                             Text(w.provider == null ? 'Preview' : 'Add',
                                 style: TextStyle(
@@ -274,7 +275,7 @@ class WidgetsScreen extends ConsumerWidget {
 
   Future<void> _add(BuildContext context, _WidgetDef w) async {
     if (w.provider == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showToast(const SnackBar(
           content:
               Text('Preview only for now — coming to your home screen soon.')));
       return;
@@ -287,7 +288,7 @@ class WidgetsScreen extends ConsumerWidget {
       }
     } catch (_) {}
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showToast(const SnackBar(
         content:
             Text('Long-press your home screen → Widgets → AERIS to add this.'),
       ));
@@ -535,7 +536,7 @@ class _BudgetW extends StatelessWidget {
               progress: ringV.clamp(0.0, 1.0),
               size: 64,
               strokeWidth: 8,
-              color: AerisColors.seed,
+              color: AerisColors.accent(context),
               center: Text('${(ringV * 100).round()}%',
                   style: const TextStyle(
                       fontSize: 14, fontWeight: FontWeight.w700)),
@@ -545,7 +546,7 @@ class _BudgetW extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: left >= 0 ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context))),
+                    color: left >= 0 ? AerisColors.moneyIn(context) : AerisColors.danger(context))),
             Text(left >= 0 ? 'left' : 'over',
                 style: TextStyle(
                     fontSize: 9.5,
@@ -659,9 +660,9 @@ class _QuickW extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-                color: AerisColors.seed,
+                color: AerisColors.accent(context),
                 borderRadius: BorderRadius.circular(11)),
-            child: const Icon(Icons.add, size: 21, color: Colors.white),
+            child: Icon(Icons.add, size: 21, color: AerisColors.onAccent(context)),
           ),
         ]),
       ),

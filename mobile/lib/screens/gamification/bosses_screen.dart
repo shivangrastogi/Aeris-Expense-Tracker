@@ -113,7 +113,7 @@ class _BossCard extends StatelessWidget {
     final shield = (remaining / cap).clamp(0.0, 1.0);
     final broken = spent >= cap;
     final color = broken
-        ? AerisColors.moneyOut(context)
+        ? AerisColors.danger(context)
         : shield < 0.25
             ? AerisColors.warning
             : AerisColors.moneyIn(context);
@@ -156,7 +156,7 @@ class _BossCard extends StatelessWidget {
                 value: shield,
                 minHeight: 12,
                 color: color,
-                backgroundColor: AerisColors.moneyOut(context).withValues(alpha: 0.18),
+                backgroundColor: AerisColors.danger(context).withValues(alpha: 0.18),
               ),
             ),
             const SizedBox(height: 6),

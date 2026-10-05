@@ -4,7 +4,7 @@ import '../models/insight.dart';
 import '../services/prediction_service.dart';
 import '../services/recommendation_service.dart';
 import 'auth_provider.dart';
-import 'budgets_provider.dart';
+import 'money_providers.dart';
 import 'transactions_provider.dart';
 
 class InsightsBundle {
@@ -35,7 +35,7 @@ class InsightsBundle {
 // coalesces rapid bursts of stream emissions into one recompute.
 final insightsProvider = FutureProvider<InsightsBundle>((ref) async {
   final txns = await ref.watch(transactionsStreamProvider.future);
-  final budgetList = ref.watch(budgetsStreamProvider).valueOrNull ?? const [];
+  final budgetList = ref.watch(effectiveBudgetsProvider);
   final profile = ref.watch(userProfileProvider).valueOrNull;
 
   await Future<void>.delayed(const Duration(milliseconds: 250));

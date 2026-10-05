@@ -80,9 +80,9 @@ class _WidgetConfigureScreenState extends State<WidgetConfigureScreen> {
                       onPressed: _done,
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.white,
-                        foregroundColor: AerisColors.seed,
+                        foregroundColor: AerisColors.accent(context),
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        textStyle: const TextStyle(
+                        textStyle: const TextStyle(fontFamily: kFontFamily, 
                             fontSize: 15, fontWeight: FontWeight.w800),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16)),

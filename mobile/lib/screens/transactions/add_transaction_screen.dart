@@ -13,14 +13,17 @@ import '../../models/subscription.dart';
 import '../../models/transaction.dart';
 import '../../providers/accounts_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/budgets_provider.dart';
 import '../../providers/transactions_provider.dart';
+import '../../providers/money_providers.dart';
 import '../../services/category_rules.dart';
 import '../../services/entry_checks.dart';
+import '../../services/receipt_scanner.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/discard_guard.dart';
 import '../../widgets/receipt_field.dart';
+import '../loans/loans_screen.dart';
+import '../../widgets/aeris_toast.dart';
 
 const _kLastAccountPref = 'last_txn_account';
 
@@ -66,6 +69,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   Uint8List? _receipt;
   Uint8List? _originalReceipt;
   bool _busy = false;
+  bool _scanning = false; // OCR running on a just-attached receipt
 
   // Snapshot of the data this screen needs, taken once on open so streams
   // emitting in the background never rebuild (or reshuffle) the form.
@@ -121,7 +125,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     _amount.text = _initialAmount;
 
     _txns = ref.read(transactionsStreamProvider).asData?.value ?? const [];
-    _budgets = ref.read(budgetsStreamProvider).asData?.value ?? const [];
+    _budgets = ref.read(effectiveBudgetsProvider);
     _accounts = ref
         .read(accountsProvider)
         .where((a) => a.key != unassignedAccount)
@@ -146,9 +150,30 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
 
     if (e == null) {
       _restoreLastAccount();
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _focusAfterTransition());
     } else if (e.hasReceipt) {
       _loadReceipt(e);
     }
+  }
+
+  /// Raises the keyboard only once this route has finished animating in.
+  /// Opening it mid-transition resized the page on every frame of the
+  /// animation — the stutter people saw when tapping +.
+  void _focusAfterTransition() {
+    if (!mounted) return;
+    final anim = ModalRoute.of(context)?.animation;
+    if (anim == null || anim.isCompleted) {
+      _amountFocus.requestFocus();
+      return;
+    }
+    void onStatus(AnimationStatus s) {
+      if (s != AnimationStatus.completed) return;
+      anim.removeStatusListener(onStatus);
+      if (mounted) _amountFocus.requestFocus();
+    }
+
+    anim.addStatusListener(onStatus);
   }
 
   void _syncGuard() {
@@ -379,7 +404,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     final next = DateTime(
         _when.year, _when.month, _when.day, picked.hour, picked.minute);
     if (next.isAfter(DateTime.now())) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showToast(
           const SnackBar(content: Text("Time can't be in the future")));
       return;
     }
@@ -390,8 +415,47 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   Future<void> _attachReceipt() async {
     final picked = await pickReceipt(context);
     if (picked == null || !mounted) return;
-    setState(() => _receipt = picked);
+    setState(() {
+      _receipt = picked;
+      _scanning = true;
+    });
     _syncGuard();
+    // Read the bill on-device and fill whatever is still empty — never
+    // overwrite something the user already typed.
+    final info = await ReceiptScanner.scan(picked);
+    if (!mounted) return;
+    setState(() => _scanning = false);
+    if (info == null) return;
+    // A payment screenshot knows whether the money came in or went out.
+    if (info.direction != null && !_editing) _setDirection(info.direction!);
+    final filled = <String>[];
+    if (info.total != null && _amount.text.trim().isEmpty) {
+      final s = _plain(info.total! / _rate);
+      _amount.value = TextEditingValue(
+          text: s, selection: TextSelection.collapsed(offset: s.length));
+      filled.add(formatRupees(info.total!, decimals: info.total! % 1 != 0));
+    }
+    if (info.merchant != null && _merchant.text.trim().isEmpty) {
+      _merchant.text = info.merchant!;
+      _autoCategorizeFor(info.merchant!);
+      filled.add(info.merchant!);
+    }
+    final d = info.date;
+    if (d != null &&
+        !d.isAfter(DateTime.now()) &&
+        DateTime.now().difference(d).inDays < 120 &&
+        !_editing) {
+      // A screenshot's date carries its own time; a bill's is midnight.
+      final timed = d.hour != 0 || d.minute != 0;
+      setState(() => _when = timed
+          ? d
+          : DateTime(d.year, d.month, d.day, _when.hour, _when.minute));
+    }
+    _syncGuard();
+    if (filled.isNotEmpty) {
+      ScaffoldMessenger.of(context).showToast(
+          SnackBar(content: Text('Read from receipt: ${filled.join(' · ')}')));
+    }
   }
 
   // ── Build ──────────────────────────────────────────────────
@@ -399,11 +463,10 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final income = _dir == TxnDirection.credit;
-    final money = income
-        ? (dark ? AerisColors.creditDark : AerisColors.moneyIn(context))
-        : (dark ? AerisColors.debitDark : AerisColors.moneyOut(context));
+    // Spend is typed in plain ink, income in green; Save is always the accent.
+    final money =
+        income ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context);
     final now = DateTime.now();
     final yesterday = now.subtract(const Duration(days: 1));
     final customDay = !_sameDay(_when, now) && !_sameDay(_when, yesterday);
@@ -423,6 +486,13 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                 dir: _dir,
                 onDirection: _setDirection,
                 onClose: () => Navigator.maybePop(context),
+                showVoice: !_editing,
+                // Voice replaces this screen, so it only works while the form
+                // is still empty — never throw away typed input.
+                onVoice: _dirty
+                    ? null
+                    : () => Navigator.pushReplacementNamed(
+                        context, AppRoutes.voice),
               ),
               Expanded(
                 child: ListView(
@@ -433,7 +503,8 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                       focusNode: _amountFocus,
                       formatter: _formatter,
                       color: money,
-                      autofocus: !_editing,
+                      autofocus:
+                          false, // focused after the route settles — see _focusAfterTransition
                       error: _amountError,
                       onChanged: () {
                         if (_amountError) setState(() => _amountError = false);
@@ -594,16 +665,22 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                       children: [
                         if (_receipt == null)
                           ActionChip(
-                            avatar: const Icon(Icons.receipt_long_outlined,
+                            avatar: const Icon(Icons.document_scanner_outlined,
                                 size: 16),
-                            label: const Text('Attach receipt'),
+                            label: const Text('Scan receipt'),
                             onPressed: _attachReceipt,
                           )
                         else
                           InputChip(
-                            avatar: const Icon(Icons.receipt_long_rounded,
-                                size: 16),
-                            label: const Text('Receipt'),
+                            avatar: _scanning
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2))
+                                : const Icon(Icons.receipt_long_rounded,
+                                    size: 16),
+                            label: Text(_scanning ? 'Reading…' : 'Receipt'),
                             onPressed: () =>
                                 showReceiptViewer(context, _receipt!),
                             onDeleted: () {
@@ -625,6 +702,17 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                               _syncGuard();
                             },
                           ),
+                        // Money lent to / borrowed from a friend isn't a
+                        // spend — it lives in "Lent & borrowed" until settled.
+                        if (!_editing && !_dirty)
+                          ActionChip(
+                            avatar:
+                                const Icon(Icons.handshake_outlined, size: 16),
+                            label: const Text('Lent or borrowed?'),
+                            onPressed: () => Navigator.pushReplacementNamed(
+                                context, AppRoutes.loans,
+                                arguments: LoansScreen.openAddSheet),
+                          ),
                       ],
                     ),
                   ],
@@ -636,7 +724,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                 label: _editing
                     ? 'Update'
                     : (income ? 'Save income' : 'Save expense'),
-                color: money,
+                color: AerisColors.accent(context),
                 busy: _busy,
                 onSave: _save,
               ),
@@ -788,7 +876,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
       if (!mounted) return;
       setState(() => _busy = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not save: $err')));
+          .showToast(SnackBar(content: Text('Could not save: $err')));
       return;
     }
     if (merchant.isNotEmpty) {
@@ -808,8 +896,8 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
     final dir = _dir;
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(
+    messenger.hideToast();
+    messenger.showToast(SnackBar(
       content: Text(_editing
           ? 'Transaction updated'
           : '${dir == TxnDirection.credit ? 'Income' : 'Expense'} of '
@@ -848,16 +936,19 @@ class _Header extends StatelessWidget {
   final TxnDirection dir;
   final ValueChanged<TxnDirection> onDirection;
   final VoidCallback onClose;
+  final bool showVoice;
+  final VoidCallback? onVoice;
   const _Header({
     required this.dir,
     required this.onDirection,
     required this.onClose,
+    this.showVoice = false,
+    this.onVoice,
   });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
     Widget seg(TxnDirection d, String label, IconData icon, Color color) {
       final on = d == dir;
       return Expanded(
@@ -870,20 +961,9 @@ class _Header extends StatelessWidget {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
-              decoration: BoxDecoration(
-                color: on
-                    ? (dark ? const Color(0xFF14221F) : Colors.white)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(11),
-                boxShadow: on && !dark
-                    ? [
-                        BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.06),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2))
-                      ]
-                    : null,
-              ),
+              decoration: on
+                  ? AerisColors.cardDecoration(context, radius: 11)
+                  : const BoxDecoration(),
               alignment: Alignment.center,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -891,11 +971,17 @@ class _Header extends StatelessWidget {
                   Icon(icon,
                       size: 16, color: on ? color : scheme.onSurfaceVariant),
                   const SizedBox(width: 6),
-                  Text(label,
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: on ? color : scheme.onSurfaceVariant)),
+                  // Flexible: narrow phones + large system font must shrink
+                  // the label, never overflow the header.
+                  Flexible(
+                    child: Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: on ? color : scheme.onSurfaceVariant)),
+                  ),
                 ],
               ),
             ),
@@ -905,7 +991,7 @@ class _Header extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 16, 0),
+      padding: EdgeInsets.fromLTRB(4, 4, showVoice ? 4 : 16, 0),
       child: Row(
         children: [
           IconButton(
@@ -919,19 +1005,28 @@ class _Header extends StatelessWidget {
               height: 42,
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                color: scheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 children: [
                   seg(TxnDirection.debit, 'Expense', Icons.south_west_rounded,
-                      dark ? AerisColors.debitDark : AerisColors.moneyOut(context)),
+                      AerisColors.moneyOut(context)),
                   seg(TxnDirection.credit, 'Income', Icons.north_east_rounded,
-                      dark ? AerisColors.creditDark : AerisColors.moneyIn(context)),
+                      AerisColors.moneyIn(context)),
                 ],
               ),
             ),
           ),
+          if (showVoice) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: 'Say it instead',
+              icon: const Icon(Icons.mic_none_rounded),
+              color: AerisColors.accent(context),
+              onPressed: onVoice,
+            ),
+          ],
         ],
       ),
     );
@@ -970,13 +1065,12 @@ class _AmountField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final border = error ? scheme.error : color.withValues(alpha: 0.35);
     return TextFieldTapRegion(
       child: Container(
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: border, width: error ? 1.6 : 1),
+        // The amount is the one thing this screen is about: a raised white
+        // card, outlined in red only when Save found it missing.
+        decoration: AerisColors.cardDecoration(context, radius: 20).copyWith(
+          border: error ? Border.all(color: scheme.error, width: 1.6) : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -993,7 +1087,7 @@ class _AmountField extends StatelessWidget {
                 inputFormatters: [formatter],
                 onChanged: (_) => onChanged(),
                 style: TextStyle(
-                  fontSize: 30,
+                  fontSize: 34,
                   fontWeight: FontWeight.w700,
                   color: color,
                   fontFeatures: const [FontFeature.tabularFigures()],
@@ -1006,14 +1100,14 @@ class _AmountField extends StatelessWidget {
                   contentPadding: const EdgeInsets.symmetric(vertical: 8),
                   hintText: '0',
                   hintStyle: TextStyle(
-                      fontSize: 30,
+                      fontSize: 34,
                       fontWeight: FontWeight.w700,
                       color: scheme.onSurfaceVariant.withValues(alpha: 0.4)),
                   prefixIcon: Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: Text(kCurrency.symbol.trim(),
                         style: TextStyle(
-                            fontSize: 24,
+                            fontSize: 26,
                             fontWeight: FontWeight.w700,
                             color: scheme.onSurfaceVariant)),
                   ),
@@ -1022,7 +1116,7 @@ class _AmountField extends StatelessWidget {
                 ),
               ),
             ),
-            Divider(height: 1, color: color.withValues(alpha: 0.18)),
+            const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
               child: Row(
@@ -1060,7 +1154,7 @@ class _OpKey extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: Material(
-        color: scheme.surface,
+        color: scheme.surfaceContainer,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           canRequestFocus: false, // keep focus (and the keyboard) on amount
@@ -1309,7 +1403,7 @@ class _SaveBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
       decoration: BoxDecoration(
-        color: scheme.surface,
+        color: AerisColors.canvas(context),
         border: Border(
             top: BorderSide(
                 color: scheme.outlineVariant.withValues(alpha: 0.5))),
@@ -1317,18 +1411,18 @@ class _SaveBar extends StatelessWidget {
       child: FilledButton(
         style: FilledButton.styleFrom(
           backgroundColor: color,
-          foregroundColor: Colors.white,
+          foregroundColor: AerisColors.onAccent(context),
           minimumSize: const Size.fromHeight(50),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
         onPressed: busy ? null : onSave,
         child: busy
-            ? const SizedBox(
+            ? SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2.4, color: Colors.white))
+                    strokeWidth: 2.4, color: AerisColors.onAccent(context)))
             : Text(label,
                 style:
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),

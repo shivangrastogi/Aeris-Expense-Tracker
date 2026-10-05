@@ -28,8 +28,11 @@ class PredictionService {
   /// Predict total expense for the *current* month based on burn-rate so far,
   /// blended with the last-3-months average. Returns (estimate, low, high)
   /// where low/high are a ±15% confidence band.
-  Prediction predictCurrentMonth(List<Transaction> txns) {
-    final now = DateTime.now();
+  ///
+  /// [now] defaults to the wall clock; tests pin it so the result doesn't
+  /// depend on the day they run.
+  Prediction predictCurrentMonth(List<Transaction> txns, {DateTime? now}) {
+    now ??= DateTime.now();
     final mKey = _monthKey(now);
     final byMonth = _monthlyExpenseTotals(txns);
 

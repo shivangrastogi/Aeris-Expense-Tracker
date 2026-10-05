@@ -59,9 +59,9 @@ class _SplashScreenState extends State<SplashScreen>
                   center: Alignment(-0.7, -0.8),
                   radius: 1.2,
                   colors: [
-                    Color(0xFF16201F),
-                    Color(0xFF0C1212),
-                    Color(0xFF080C0C)
+                    Color(0xFF0F1B2A),
+                    Color(0xFF080C14),
+                    AerisColors.bgDark // = the native launch window colour
                   ],
                   stops: [0.0, 0.6, 1.0],
                 )
@@ -120,7 +120,7 @@ class _SplashScreenState extends State<SplashScreen>
                             style: TextStyle(
                               fontSize: 34,
                               fontWeight: FontWeight.w800,
-                              color: AerisColors.seed,
+                              color: AerisColors.accent(context),
                             ),
                           ),
                         ),
@@ -160,9 +160,9 @@ class _SplashScreenState extends State<SplashScreen>
                           minHeight: 4,
                           backgroundColor: isDark
                               ? Colors.white.withValues(alpha: 0.10)
-                              : AerisColors.seed.withValues(alpha: 0.15),
+                              : AerisColors.accent(context).withValues(alpha: 0.15),
                           valueColor:
-                              const AlwaysStoppedAnimation(AerisColors.seed),
+                              AlwaysStoppedAnimation(AerisColors.accent(context)),
                         ),
                       ),
                     ),

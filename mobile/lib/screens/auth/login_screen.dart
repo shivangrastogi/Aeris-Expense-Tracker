@@ -7,6 +7,7 @@ import '../../models/avatar_skin.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/aeris_avatar.dart';
 import 'auth_widgets.dart';
+import '../../widgets/aeris_toast.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -89,14 +90,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       await ref.read(authServiceProvider).sendPasswordReset(email);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showToast(
           SnackBar(content: Text('Reset link sent to $email')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_friendlyError(e))));
+            .showToast(SnackBar(content: Text(_friendlyError(e))));
       }
     }
   }

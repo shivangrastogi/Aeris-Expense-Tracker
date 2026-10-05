@@ -5,6 +5,7 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
     // FlutterFire requires this — added after `flutterfire configure`
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 android {

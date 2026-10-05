@@ -11,6 +11,7 @@ import '../../widgets/aeris_avatar.dart';
 import 'bosses_screen.dart';
 import 'challenges_screen.dart';
 import 'customize_dashboard_screen.dart';
+import '../../widgets/aeris_toast.dart';
 
 class AerisWorldScreen extends ConsumerStatefulWidget {
   const AerisWorldScreen({super.key});
@@ -84,7 +85,7 @@ class _AerisWorldScreenState extends ConsumerState<AerisWorldScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 9),
                           decoration: BoxDecoration(
                             color: _section == i
-                                ? AerisColors.seed
+                                ? AerisColors.accent(context)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(99),
                           ),
@@ -95,7 +96,7 @@ class _AerisWorldScreenState extends ConsumerState<AerisWorldScreen> {
                               Icon(_tabs[i].$1,
                                   size: 16,
                                   color: _section == i
-                                      ? Colors.white
+                                      ? AerisColors.onAccent(context)
                                       : scheme.onSurface
                                           .withValues(alpha: 0.6)),
                               const SizedBox(width: 6),
@@ -104,7 +105,7 @@ class _AerisWorldScreenState extends ConsumerState<AerisWorldScreen> {
                                       fontSize: 13.5,
                                       fontWeight: FontWeight.w700,
                                       color: _section == i
-                                          ? Colors.white
+                                          ? AerisColors.onAccent(context)
                                           : scheme.onSurface
                                               .withValues(alpha: 0.7))),
                             ],
@@ -141,7 +142,7 @@ class _VillageHero extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final v = ref.watch(villageProvider);
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = dark ? const Color(0xFF122120) : Colors.white;
+    final cardBg = dark ? AerisColors.cardDark : Colors.white;
     return GestureDetector(
       onTap: () => Navigator.pushNamed(context, AppRoutes.village),
       child: Container(
@@ -261,16 +262,16 @@ class _VillageHero extends ConsumerWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                   decoration: BoxDecoration(
-                      color: AerisColors.seed,
+                      color: AerisColors.accent(context),
                       borderRadius: BorderRadius.circular(99)),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Text('Enter',
                         style: TextStyle(
-                            color: Colors.white,
+                            color: AerisColors.onAccent(context),
                             fontWeight: FontWeight.w800,
                             fontSize: 13.5)),
                     SizedBox(width: 4),
-                    Icon(Icons.arrow_forward, size: 16, color: Colors.white),
+                    Icon(Icons.arrow_forward, size: 16, color: AerisColors.onAccent(context)),
                   ]),
                 ),
               ]),
@@ -292,8 +293,8 @@ class _QuestsSection extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 40),
       children: [
-        const Row(children: [
-          Icon(Icons.flag_rounded, size: 18, color: AerisColors.seed),
+        Row(children: [
+          Icon(Icons.flag_rounded, size: 18, color: AerisColors.accent(context)),
           SizedBox(width: 7),
           Text('Challenges',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
@@ -303,7 +304,7 @@ class _QuestsSection extends StatelessWidget {
         const SizedBox(height: 24),
         Row(children: [
           Icon(Icons.sports_kabaddi_rounded,
-              size: 18, color: AerisColors.moneyOut(context)),
+              size: 18, color: AerisColors.danger(context)),
           SizedBox(width: 7),
           Text('Boss battles',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
@@ -560,7 +561,7 @@ class _AvatarCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = dark ? const Color(0xFF122120) : Colors.white;
+    final cardBg = dark ? AerisColors.cardDark : Colors.white;
     final owned = skin.cost == 0 || g.unlocked.contains(skin.id);
     final equipped = g.selected == skin.id;
     final canAfford = g.available >= skin.cost;
@@ -690,7 +691,7 @@ class _AvatarCard extends StatelessWidget {
     if (owned) {
       return _filledBtn(
         label: const Text('Equip'),
-        bg: AerisColors.seed,
+        bg: AerisColors.accent(context),
         onTap: () => ref.read(gamificationProvider.notifier).select(skin.id),
       );
     }
@@ -725,7 +726,7 @@ class _AvatarCard extends StatelessWidget {
       ]),
       onTap: () => canAfford
           ? _confirmUnlock(context)
-          : ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          : ScaffoldMessenger.of(context).showToast(SnackBar(
               content: Text('Need ${skin.cost - g.available} more Aura'))),
     );
   }
@@ -746,7 +747,7 @@ class _AvatarCard extends StatelessWidget {
           minimumSize: Size.zero,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           textStyle:
-              const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+              const TextStyle(fontFamily: kFontFamily, fontSize: 12.5, fontWeight: FontWeight.w800),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
@@ -819,7 +820,7 @@ class _AvatarCard extends StatelessWidget {
                       Navigator.pop(ctx);
                     },
                     style: FilledButton.styleFrom(
-                        backgroundColor: AerisColors.seed,
+                        backgroundColor: AerisColors.accent(context),
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(13))),

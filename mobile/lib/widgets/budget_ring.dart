@@ -2,8 +2,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// An animated circular progress ring with rounded caps and a center slot.
-/// Used on Home to show "budget used" at a glance. Colour shifts from the
-/// given [color] toward red as it approaches/exceeds 100%.
+///
+/// As a *budget* ring ([warnOverflow], the default) the colour shifts from
+/// [color] toward red as it approaches/exceeds 100%. Rings that show a share
+/// (e.g. "biggest category = full ring") pass `warnOverflow: false` — a full
+/// share ring is not a warning.
 class BudgetRing extends StatelessWidget {
   final double progress; // 0..1+ (may exceed 1 when over budget)
   final double size;
@@ -11,20 +14,25 @@ class BudgetRing extends StatelessWidget {
   final Color color;
   final Widget? center;
   final Duration duration;
+  final bool warnOverflow;
 
   const BudgetRing({
     super.key,
     required this.progress,
     this.size = 132,
     this.strokeWidth = 12,
-    this.color = const Color(0xFF0EA5A4),
+    this.color = const Color(0xFF0F766E),
     this.center,
     this.duration = const Duration(milliseconds: 900),
+    this.warnOverflow = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final track = Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+    final track = Theme.of(context)
+        .colorScheme
+        .surfaceContainerHighest
+        .withValues(alpha: 0.6);
     return SizedBox(
       width: size,
       height: size,
@@ -33,9 +41,10 @@ class BudgetRing extends StatelessWidget {
         duration: duration,
         curve: Curves.easeOutCubic,
         builder: (_, v, __) {
-          // Blend toward red as the ring fills past 80%.
-          final over = ((progress - 0.8) / 0.2).clamp(0.0, 1.0);
-          final ringColor = Color.lerp(color, const Color(0xFFEF4444), over)!;
+          // Blend toward red as a budget ring fills past 80%.
+          final over =
+              warnOverflow ? ((progress - 0.8) / 0.2).clamp(0.0, 1.0) : 0.0;
+          final ringColor = Color.lerp(color, const Color(0xFFE5484D), over)!;
           return CustomPaint(
             painter: _RingPainter(
               progress: v,

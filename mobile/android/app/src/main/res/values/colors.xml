@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#15C0B4</color>
+    <!-- AERIS "void" — the app's dark canvas. The launch window uses it so the
+         first native frame already matches the first Flutter frame. -->
+    <color name="aeris_void">#06080D</color>
 </resources>

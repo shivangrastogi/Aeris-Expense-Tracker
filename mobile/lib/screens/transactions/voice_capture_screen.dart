@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/routes.dart';
 import '../../core/theme.dart';
 import '../../models/category.dart';
 import '../../models/transaction.dart';
@@ -14,6 +15,7 @@ import '../../services/category_rules.dart';
 import '../../services/nlu_parser.dart';
 import '../../services/voice_service.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/aeris_toast.dart';
 
 enum _Phase { starting, listening, processing, review, denied, unavailable }
 
@@ -133,7 +135,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
     if (mounted) {
       final n = _results.length;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showToast(SnackBar(
           content: Text('$n transaction${n == 1 ? '' : 's'} added 🎉')));
     }
   }
@@ -189,7 +191,8 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
                 gradient: AerisColors.heroGradient,
                 boxShadow: [
                   BoxShadow(
-                    color: AerisColors.seed.withValues(alpha: 0.5 + level * 0.4),
+                    color: AerisColors.accent(context)
+                        .withValues(alpha: 0.5 + level * 0.4),
                     blurRadius: 50 + level * 60,
                     spreadRadius: 4 + level * 10,
                   ),
@@ -234,11 +237,12 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
                   label: const Text('Try again'),
                 ),
               const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => openAppSettings(),
-                child: const Text('Open settings',
-                    style: TextStyle(color: Colors.white70)),
-              ),
+              if (_phase == _Phase.denied)
+                TextButton(
+                  onPressed: () => openAppSettings(),
+                  child: const Text('Open settings',
+                      style: TextStyle(color: Colors.white70)),
+                ),
             ],
           )
         else
@@ -248,6 +252,18 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
             style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.45), fontSize: 12),
           ),
+        const SizedBox(height: 6),
+        // Voice depends on the phone's speech service (some OEM builds ship
+        // without one), so typing the same sentence is always one tap away.
+        TextButton.icon(
+          onPressed: () =>
+              Navigator.pushReplacementNamed(context, AppRoutes.quickAdd),
+          icon: const Icon(Icons.keyboard_alt_outlined,
+              size: 18, color: Colors.white70),
+          label: const Text('Type it instead',
+              style: TextStyle(
+                  color: Colors.white70, fontWeight: FontWeight.w700)),
+        ),
       ],
     );
   }
@@ -296,8 +312,8 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
               child: OutlinedButton.icon(
                 onPressed: _begin,
                 icon: const Icon(Icons.mic, color: Colors.white),
-                label: const Text('Redo',
-                    style: TextStyle(color: Colors.white)),
+                label:
+                    const Text('Redo', style: TextStyle(color: Colors.white)),
                 style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.white24),
                     padding: const EdgeInsets.symmetric(vertical: 14)),
@@ -347,7 +363,8 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
                     style: const TextStyle(
                         color: Colors.white, fontWeight: FontWeight.w700)),
                 Text('${cat.label} · ${income ? 'Income' : 'Expense'}',
-                    style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                    style:
+                        const TextStyle(color: Colors.white60, fontSize: 12)),
               ],
             ),
           ),

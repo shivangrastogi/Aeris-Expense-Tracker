@@ -1,0 +1,20 @@
+Create a UI design sheet (landscape 3:2) with 6 phone screens for the finance app "AERIS":
+1. Home — greeting "Good evening, Shivang", eye icon to hide amounts; hero card "Spent this month ₹32,480 of ₹45,000" with thin progress bar and "₹417/day left"; row of 3 top categories as small rings (Food, Travel, Bills); one "Needs attention" card ("Netflix renews tomorrow ₹649"); "Recent" list of 4 transactions. Bottom nav with centre +.
+2. Activity — search bar, filter chips (All, Spent, Received, This month), list grouped by sticky date headers ("Today", "Yesterday"), each row: category icon, merchant, time + UPI app, amount right-aligned.
+3. Transaction detail — big amount "−₹486", merchant "Swiggy", category chip, date, account "HDFC ••4521", UPI ref, note field, Edit / Delete.
+4. Add expense — segmented Expense / Income toggle, huge amount input "₹ 250", merchant field with suggestions, category chips grid, account picker, date, big "Save" button above the keyboard.
+5. Voice add — dark screen, glowing teal orb in centre, live transcript "250 on chai and 1200 on Uber", parsed items below as 2 small cards, "Save all".
+6. SMS review — card-deck UI: one bank SMS card "₹1,200 debited to UBER via UPI" with detected category, big buttons "Skip" and "Add", counter "3 of 12".
+
+DESIGN SYSTEM (apply to every screen, keep it identical across all phones):
+- App name "AERIS" — a private, encrypted personal finance app for India. Currency ₹.
+- Mood: calm, premium, trustworthy fintech — like a mix of CRED's polish and Apple Wallet's clarity. NOT playful, NOT cartoonish.
+- Background: warm off-white #F7F5F0. Cards: pure white, 24px radius, very soft shadow, no borders.
+- Text: deep ink #0F1A1A for headings, muted grey #6B7280 for secondary.
+- ONE accent colour only: deep teal #0F766E (buttons, active tab, progress). Money in = green #15A24A, money out = near-black ink (not red); red #E5484D only for over-budget warnings.
+- Typography: Plus Jakarta Sans. Big bold numbers for amounts (tabular figures), small medium-weight labels. Generous whitespace.
+- Icons: thin 1.5px line icons, rounded. Category icons sit in soft pastel rounded squares.
+- Charts: minimal, thin lines, no gridlines, one accent + greys.
+- Bottom navigation (on main tabs): 4 tabs — Home, Activity, Insights, Me — with a floating round teal "+" button in the centre.
+- Realistic Indian data: Swiggy, Zomato, Uber, Amazon, BigBasket, Airtel recharge, Rent, Salary, PhonePe/GPay UPI.
+- Each phone: modern Android frame (thin bezels, punch-hole camera), 9:19.5 ratio, all text sharp and legible, short labels only.

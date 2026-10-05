@@ -15,6 +15,9 @@ dist/
 website/node_modules/
 website/dist/
 
+# ── Screenshots from mobile/tool/render_screens_test.dart ──
+mobile/tool/shots/
+
 # ── Local env / logs ──
 *.log
 .env

@@ -12,6 +12,9 @@ class NotificationService {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
 
+  /// Called with a notification's route when it's tapped while the app runs.
+  void Function(String route)? onTapRoute;
+
   Future<void> init() async {
     if (_ready) return;
     tzdata.initializeTimeZones();
@@ -19,9 +22,15 @@ class NotificationService {
       final info = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(info.identifier));
     } catch (_) {/* falls back to UTC */}
-    await _plugin.initialize(const InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    ));
+    await _plugin.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      ),
+      onDidReceiveNotificationResponse: (r) {
+        final route = r.payload;
+        if (route != null && route.isNotEmpty) onTapRoute?.call(route);
+      },
+    );
     _ready = true;
   }
 
@@ -98,6 +107,39 @@ class NotificationService {
   }
 
   Future<void> cancelAll() => _plugin.cancelAll();
+
+  /// One-shot reminder at [when]. [route] (an AppRoutes name) opens when the
+  /// notification is tapped — see [onTapRoute] / [launchRoute].
+  Future<void> scheduleOnce(
+      int id, String title, String body, DateTime when, {String? route}) async {
+    await init();
+    final at = tz.TZDateTime.from(when, tz.local);
+    if (!at.isAfter(tz.TZDateTime.now(tz.local))) return;
+    await _plugin.zonedSchedule(
+      id,
+      title,
+      body,
+      at,
+      _details,
+      payload: route,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  Future<void> cancel(int id) async {
+    await init();
+    await _plugin.cancel(id);
+  }
+
+  /// Route of the notification that cold-started the app, if any.
+  Future<String?> launchRoute() async {
+    await init();
+    final d = await _plugin.getNotificationAppLaunchDetails();
+    if (d?.didNotificationLaunchApp != true) return null;
+    return d!.notificationResponse?.payload;
+  }
 
   tz.TZDateTime _nextWeekday(int weekday, int hour) {
     final now = tz.TZDateTime.now(tz.local);

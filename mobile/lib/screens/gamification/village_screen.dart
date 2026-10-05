@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/gamification_provider.dart';
 import '../../providers/village_provider.dart';
+import '../../widgets/aeris_toast.dart';
 
 // ── Building catalog (ported from flow-village.jsx BLD) ──────────────────────
 class _Bld {
@@ -189,7 +190,7 @@ class _VillageScreenState extends ConsumerState<VillageScreen> {
   }
 
   void _toast(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.of(context).showToast(
       SnackBar(
           content: Text(msg), duration: const Duration(milliseconds: 1400)),
     );

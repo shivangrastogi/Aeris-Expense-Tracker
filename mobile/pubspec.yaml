@@ -15,11 +15,13 @@ dependencies:
     sdk: flutter
 
   # ── Firebase
-  firebase_core: ^2.27.0
-  firebase_auth: ^4.17.7
-  cloud_firestore: ^4.15.6
-  firebase_storage: ^11.6.7
-  firebase_messaging: ^14.7.16
+  firebase_core: ^4.15.0
+  firebase_auth: ^6.7.0
+  cloud_firestore: ^6.10.0
+  firebase_storage: ^13.6.0
+  firebase_messaging: ^16.7.0
+  # Crash + error reports from real devices (ColorOS background kills etc.)
+  firebase_crashlytics: ^5.4.0
 
   # ── State management
   flutter_riverpod: ^2.5.1
@@ -62,7 +64,7 @@ dependencies:
   flutter_timezone: ^5.1.0
   home_widget: ^0.9.2
   syncfusion_flutter_xlsio: ^33.2.8
-  share_plus: ">=7.2.2 <10.0.0"
+  share_plus: ">=10.0.3 <11.0.0"   # same Share.share/shareXFiles API
   syncfusion_officechart: ^33.2.8
 
   # ── Profile picture (pick from gallery/camera; bytes are encrypted in Firestore)
@@ -72,13 +74,16 @@ dependencies:
   local_auth: ^2.3.0
 
   # ── Bank statement import (PDF / CSV / Excel → transactions)
-  file_picker: 8.0.7   # pinned: >=8.1.0 needs web ^1.0 which conflicts with the old firebase_messaging
+  file_picker: ^8.1.2   # 8.x API; was pinned to 8.0.7 only while Firebase 2.x blocked web ^1.0
   csv: ^6.0.0
   syncfusion_flutter_pdf: ^33.2.8
   # XLSX is read via archive (zip) + xml — avoids the `excel` package's
   # archive ^3 pin which conflicts with syncfusion_officechart's archive ^4.
   archive: ^4.0.0
   xml: ^6.5.0
+
+  # ── Receipt scan: on-device OCR (no network, text never leaves the phone)
+  google_mlkit_text_recognition: ^0.17.1
 
 dev_dependencies:
   flutter_test:
@@ -110,3 +115,25 @@ flutter:
     # Plus Jakarta Sans, bundled so the app never downloads fonts at runtime
     # (google_fonts finds these by file name; see main.dart).
     - assets/google_fonts/
+
+  # The same files registered as ONE family with real weights, so a plain
+  # `TextStyle(fontWeight: FontWeight.w800)` picks the actual ExtraBold face.
+  # (google_fonts registers each weight as its own family — anything that
+  # only changed the weight fell back to a synthetic, smeared bold.)
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/google_fonts/PlusJakartaSans-Regular.ttf
+        - asset: assets/google_fonts/PlusJakartaSans-Italic.ttf
+          style: italic
+        - asset: assets/google_fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/google_fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/google_fonts/PlusJakartaSans-SemiBoldItalic.ttf
+          weight: 600
+          style: italic
+        - asset: assets/google_fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: assets/google_fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800

@@ -152,7 +152,7 @@ class _BudgetProjectionCard extends StatelessWidget {
     final cat = Categories.byId(bp.categoryId);
     final (Color color, IconData icon, String status) = bp.alreadyOver
         ? (
-            AerisColors.moneyOut(context),
+            AerisColors.danger(context),
             Icons.error_outline,
             'Over budget by ${formatRupees(bp.spentSoFar - bp.cap, compact: true)}'
           )
@@ -224,7 +224,7 @@ class _RecCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (r.severity) {
-      InsightSeverity.alert => AerisColors.moneyOut(context),
+      InsightSeverity.alert => AerisColors.danger(context),
       InsightSeverity.warning => AerisColors.warning,
       InsightSeverity.positive => AerisColors.moneyIn(context),
       InsightSeverity.info => AerisColors.info,

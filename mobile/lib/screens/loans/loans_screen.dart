@@ -11,16 +11,28 @@ import '../../providers/transactions_provider.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/discard_guard.dart';
+import '../../widgets/aeris_toast.dart';
 
 /// "Lent" tab — money given to (or borrowed from) friends, tracked until
 /// it comes back. Each entry is Pending until marked settled.
 class LoansScreen extends ConsumerWidget {
-  const LoansScreen({super.key});
+  /// Route argument that opens the "add" sheet as soon as the screen shows —
+  /// used by the add-transaction screen's "Lent or borrowed?" shortcut.
+  static const openAddSheet = 'add';
+
+  final bool openAdd;
+  const LoansScreen({super.key, this.openAdd = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final loansAsync = ref.watch(loansStreamProvider);
     final totals = ref.watch(loanTotalsProvider);
+    final screen = _screen(context, ref, loansAsync, totals);
+    return openAdd ? _OpenAddOnce(child: screen) : screen;
+  }
+
+  Widget _screen(BuildContext context, WidgetRef ref,
+      AsyncValue<List<Loan>> loansAsync, LoanTotals totals) {
     return Scaffold(
       appBar: AppBar(title: const Text('Lent & borrowed')),
       floatingActionButton: FloatingActionButton.extended(
@@ -139,7 +151,9 @@ class LoansScreen extends ConsumerWidget {
 
   Widget _loanTile(BuildContext context, WidgetRef ref, Loan l) {
     final scheme = Theme.of(context).colorScheme;
-    final color = l.borrowed ? AerisColors.moneyOut(context) : AerisColors.moneyIn(context);
+    final color = l.borrowed
+        ? AerisColors.moneyOut(context)
+        : AerisColors.moneyIn(context);
     final initial = l.person.isEmpty ? '?' : l.person[0].toUpperCase();
     final when = '${l.createdAt.day}/${l.createdAt.month}/${l.createdAt.year}';
     return Card(
@@ -231,7 +245,7 @@ class LoansScreen extends ConsumerWidget {
                 onTap: () async {
                   Navigator.pop(ctx);
                   await _saveLoan(ref, l.copyWith(settledAt: DateTime.now()));
-                  messenger.showSnackBar(SnackBar(
+                  messenger.showToast(SnackBar(
                       content: Text(l.borrowed
                           ? 'Marked as paid back ✓'
                           : 'Marked as received ✓')));
@@ -277,6 +291,30 @@ Future<void> _saveLoan(WidgetRef ref, Loan l) async {
 
 /// Opens the "Add entry" sheet for tracking a new lent/borrowed payment —
 /// reachable both from the Lent screen's FAB and the home radial FAB.
+/// Opens the add sheet once, right after the screen's first frame. Its own
+/// [ref] outlives the sheet (it lives as long as the Loans screen), so the
+/// sheet's save callback always has a live ref.
+class _OpenAddOnce extends ConsumerStatefulWidget {
+  final Widget child;
+  const _OpenAddOnce({required this.child});
+
+  @override
+  ConsumerState<_OpenAddOnce> createState() => _OpenAddOnceState();
+}
+
+class _OpenAddOnceState extends ConsumerState<_OpenAddOnce> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showAddLoanSheet(context, ref);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 void showAddLoanSheet(BuildContext context, WidgetRef ref) {
   showModalBottomSheet<void>(
     context: context,
@@ -350,7 +388,7 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
     Navigator.pop(context);
     widget.onSave(loan);
     HapticFeedback.mediumImpact();
-    messenger.showSnackBar(SnackBar(
+    messenger.showToast(SnackBar(
         content: Text(_borrowed
             ? 'Noted: you owe $name ${formatRupees(amt, raw: true)}'
             : 'Noted: $name owes you ${formatRupees(amt, raw: true)}')));

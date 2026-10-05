@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/routes.dart';
 import '../../core/theme.dart';
 import '../../models/category.dart';
-import '../../models/transaction.dart';
 import '../../providers/gamification_provider.dart';
 import '../../providers/insights_provider.dart';
 import '../../providers/transactions_provider.dart';
@@ -52,13 +51,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     // 1 · Pending SMS imports to review.
     final txns = ref.watch(transactionsStreamProvider).valueOrNull ?? const [];
     final pending =
-        txns.where((t) => t.source == TxnSource.sms && !t.reviewed).length;
+        txns.where((t) => t.needsReview).length;
     if (pending > 0) {
       out.add(_Notif(
         id: 'sms',
         icon: Icons.sms_outlined,
-        color: AerisColors.seed,
-        title: '$pending new bank SMS to review',
+        color: AerisColors.accent(context),
+        title: '$pending new transaction${pending == 1 ? '' : 's'} to review',
         body: 'Verify or correct the transactions AERIS auto-imported.',
         action: 'Review imports',
         route: AppRoutes.smsReview,
@@ -232,7 +231,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: sel
-                ? AerisColors.seed
+                ? AerisColors.accent(context)
                 : scheme.onSurface.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(99),
           ),
@@ -240,7 +239,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: sel ? Colors.white : scheme.onSurfaceVariant)),
+                  color: sel ? AerisColors.onAccent(context) : scheme.onSurfaceVariant)),
         ),
       ),
     );
@@ -256,7 +255,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: unread
-                ? (dark ? const Color(0xFF122120) : Colors.white)
+                ? (dark ? AerisColors.cardDark : Colors.white)
                 : scheme.onSurface.withValues(alpha: 0.04),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: scheme.onSurface.withValues(alpha: 0.08)),
@@ -297,8 +296,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                           width: 8,
                           height: 8,
                           margin: const EdgeInsets.only(left: 6, top: 4),
-                          decoration: const BoxDecoration(
-                              shape: BoxShape.circle, color: AerisColors.seed),
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle, color: AerisColors.accent(context)),
                         ),
                     ]),
                     const SizedBox(height: 2),

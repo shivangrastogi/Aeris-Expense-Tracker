@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/routes.dart';
 import '../../core/theme.dart';
-import '../../models/avatar_skin.dart';
-import '../../models/transaction.dart';
 import '../../models/user_profile.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/gamification_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../services/sync_outbox.dart';
 import '../../utils/formatters.dart';
-import '../../widgets/aeris_avatar.dart';
-import '../../widgets/budget_ring.dart';
 
+/// The "Me" tab: who you are, then everything else grouped by what it's for —
+/// Money (the things you manage), Tools (ways data gets in) and You (the fun
+/// stuff). One tidy list instead of a grid of equal-looking tiles.
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
@@ -22,165 +20,263 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(userProfileProvider).asData?.value;
     final g = ref.watch(gamificationProvider);
-    final skin = Avatars.byId(g.selected);
-    final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-
-    final levelProgress = (g.earned % auraPerLevel) / auraPerLevel;
-    final initials = _initials(profile?.displayName ?? profile?.email ?? 'A');
-
     final pendingCount =
-        (ref.watch(transactionsStreamProvider).valueOrNull ?? [])
-            .where((t) => t.source == TxnSource.sms && !t.reviewed)
+        (ref.watch(transactionsStreamProvider).valueOrNull ?? const [])
+            .where((t) => t.needsReview)
             .length;
 
-    final cardBg = dark ? const Color(0xFF122120) : Colors.white;
-    final divColor = scheme.onSurface.withValues(alpha: 0.08);
+    void go(String route) => Navigator.pushNamed(context, route);
 
     return Scaffold(
-      backgroundColor: scheme.surface,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 92),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
           children: [
-            // ── Title ── (top spacing matches the Home header)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(0, 8, 0, 16),
-              child: Text('Me',
-                  style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.5)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(2, 10, 0, 16),
+              child: Row(children: [
+                const Expanded(
+                  child: Text('Me',
+                      style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.6)),
+                ),
+                IconButton(
+                  tooltip: 'Settings',
+                  onPressed: () => go(AppRoutes.settings),
+                  icon: const Icon(Icons.settings_outlined),
+                ),
+              ]),
             ),
-
-            // ── Profile card ──
-            _ProfileCard(
-              profile: profile,
-              g: g,
-              initials: initials,
-              levelProgress: levelProgress,
-              cardBg: cardBg,
-              divColor: divColor,
-              scheme: scheme,
-            ),
-
-            const SizedBox(height: 14),
-
-            // ── Equipped avatar banner ──
-            _AvatarBanner(skin: skin, cardBg: cardBg),
-
-            const SizedBox(height: 16),
-
-            // ── 2 × 4 tile grid ──
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.12,
-              children: [
-                _GridTile(
-                  icon: Icons.sports_esports,
-                  label: 'Aeris World',
-                  sub: 'Garden · challenges · bosses',
-                  gradient: AerisColors.heroGradient,
-                  cardBg: cardBg,
-                  onTap: () =>
-                      Navigator.pushNamed(context, AppRoutes.aerisWorld),
-                ),
-                _GridTile(
-                  icon: Icons.celebration,
-                  label: 'Wrapped',
-                  sub: 'Your month in money',
-                  gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFDB2777), Color(0xFF8B5CF6)]),
-                  cardBg: cardBg,
-                  onTap: () => Navigator.pushNamed(context, AppRoutes.wrapped),
-                ),
-                _GridTile(
-                  icon: Icons.flag_rounded,
-                  label: 'Goals',
-                  sub: 'Savings goals',
-                  cardBg: cardBg,
-                  onTap: () => Navigator.pushNamed(context, AppRoutes.goals),
-                ),
-                _GridTile(
-                  icon: Icons.widgets_rounded,
-                  label: 'Widgets',
-                  sub: 'Home-screen widgets',
-                  cardBg: cardBg,
-                  onTap: () => Navigator.pushNamed(context, AppRoutes.widgets),
-                ),
-                _GridTile(
-                  icon: Icons.account_balance_rounded,
-                  label: 'Accounts',
-                  sub: 'Linked banks',
-                  cardBg: cardBg,
-                  onTap: () => Navigator.pushNamed(context, AppRoutes.accounts),
-                ),
-                _GridTile(
-                  icon: Icons.upload_file_rounded,
-                  label: 'Import statement',
-                  sub: 'PDF / CSV',
-                  cardBg: cardBg,
-                  onTap: () =>
-                      Navigator.pushNamed(context, AppRoutes.importStatement),
-                ),
-                _GridTile(
-                  icon: Icons.mark_email_read_rounded,
-                  label: 'SMS review',
-                  sub: pendingCount > 0 ? '$pendingCount pending' : 'All clear',
-                  badge: pendingCount > 0 ? '$pendingCount' : null,
-                  cardBg: cardBg,
-                  onTap: () =>
-                      Navigator.pushNamed(context, AppRoutes.smsReview),
-                ),
-                _GridTile(
-                  icon: Icons.settings_rounded,
-                  label: 'Settings',
-                  sub: 'Theme · privacy · data',
-                  cardBg: cardBg,
-                  onTap: () => Navigator.pushNamed(context, AppRoutes.settings),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // ── Sign out ──
+            _ProfileCard(profile: profile, g: g),
+            if (pendingCount > 0) ...[
+              const SizedBox(height: 12),
+              _ReviewBanner(
+                  count: pendingCount, onTap: () => go(AppRoutes.smsReview)),
+            ],
+            const SizedBox(height: 22),
+            const SectionLabel('Money'),
+            _Group(rows: [
+              _Row(
+                icon: Icons.stacked_line_chart_rounded,
+                title: 'Net worth',
+                subtitle: 'Everything you own minus what you owe',
+                onTap: () => go(AppRoutes.netWorth),
+              ),
+              _Row(
+                icon: Icons.account_balance_outlined,
+                title: 'Accounts',
+                subtitle: 'Balances by bank, card and wallet',
+                onTap: () => go(AppRoutes.accounts),
+              ),
+              _Row(
+                icon: Icons.savings_outlined,
+                title: 'Budgets',
+                subtitle: 'Monthly limits by category',
+                onTap: () => go(AppRoutes.budgets),
+              ),
+              _Row(
+                icon: Icons.flag_outlined,
+                title: 'Goals',
+                subtitle: 'What you\'re saving for',
+                onTap: () => go(AppRoutes.goals),
+              ),
+              _Row(
+                icon: Icons.calendar_month_outlined,
+                title: 'Bill calendar',
+                subtitle: 'What\'s due and when — reminded a day before',
+                onTap: () => go(AppRoutes.bills),
+              ),
+              _Row(
+                icon: Icons.autorenew_rounded,
+                title: 'Subscriptions',
+                subtitle: 'Bills and renewals',
+                onTap: () => go(AppRoutes.subscriptions),
+              ),
+              _Row(
+                icon: Icons.handshake_outlined,
+                title: 'Lent & borrowed',
+                subtitle: 'Money between you and friends',
+                onTap: () => go(AppRoutes.loans),
+              ),
+            ]),
+            const SizedBox(height: 22),
+            const SectionLabel('Tools'),
+            _Group(rows: [
+              _Row(
+                icon: Icons.upload_file_outlined,
+                title: 'Import bank statement',
+                subtitle: 'PDF, CSV or Excel from any bank',
+                onTap: () => go(AppRoutes.importStatement),
+              ),
+              _Row(
+                icon: Icons.sms_outlined,
+                title: 'Review imports',
+                subtitle: pendingCount > 0
+                    ? '$pendingCount waiting for a look'
+                    : 'All caught up',
+                badge: pendingCount > 0 ? '$pendingCount' : null,
+                onTap: () => go(AppRoutes.smsReview),
+              ),
+              _Row(
+                icon: Icons.widgets_outlined,
+                title: 'Home-screen widgets',
+                subtitle: 'Budget and quick-add on your launcher',
+                onTap: () => go(AppRoutes.widgets),
+              ),
+            ]),
+            const SizedBox(height: 22),
+            const SectionLabel('You'),
+            _Group(rows: [
+              _Row(
+                icon: Icons.grading_rounded,
+                title: 'Report card',
+                subtitle: 'Your monthly grade — share it',
+                onTap: () => go(AppRoutes.reportCard),
+              ),
+              _Row(
+                icon: Icons.auto_awesome_outlined,
+                title: 'Monthly Wrapped',
+                subtitle: 'Your month in money, as a story',
+                onTap: () => go(AppRoutes.wrapped),
+              ),
+              _Row(
+                icon: Icons.emoji_events_outlined,
+                title: 'Aeris World',
+                subtitle: 'Streaks, challenges and rewards',
+                onTap: () => go(AppRoutes.aerisWorld),
+              ),
+            ]),
+            const SizedBox(height: 22),
+            _Group(rows: [
+              _Row(
+                icon: Icons.settings_outlined,
+                title: 'Settings',
+                subtitle: 'Theme, privacy, backup and export',
+                onTap: () => go(AppRoutes.settings),
+              ),
+            ]),
+            const SizedBox(height: 22),
             OutlinedButton.icon(
               onPressed: () => _signOut(context, ref),
-              icon: const Icon(Icons.logout_rounded, size: 20),
+              icon: const Icon(Icons.logout_rounded, size: 19),
               label: const Text('Sign out'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: AerisColors.moneyOut(context),
-                side: BorderSide(color: AerisColors.moneyOut(context), width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                textStyle: const TextStyle(
-                    fontSize: 14.5, fontWeight: FontWeight.w800),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                foregroundColor: AerisColors.danger(context),
+                side: BorderSide(
+                    color: AerisColors.danger(context).withValues(alpha: 0.35)),
+                minimumSize: const Size.fromHeight(50),
               ),
             ),
-
-            // ── Footer ──
             Padding(
-              padding: const EdgeInsets.only(top: 16, bottom: 2),
-              child: Text(
-                'AERIS · Flow 2.0 · Member since Jan 2026',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.onSurface.withValues(alpha: 0.38)),
+              padding: const EdgeInsets.only(top: 18),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.lock_outline_rounded,
+                      size: 13, color: AerisColors.muted(context)),
+                  const SizedBox(width: 5),
+                  Text('Your data is end-to-end encrypted',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: AerisColors.muted(context))),
+                ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Profile card ──────────────────────────────────────────────
+class _ProfileCard extends StatelessWidget {
+  final UserProfile? profile;
+  final GamificationState g;
+  const _ProfileCard({required this.profile, required this.g});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (profile?.displayName ?? '').trim();
+    final email = profile?.email ?? '';
+    final initials = _initials(name.isNotEmpty ? name : email);
+    final muted = AerisColors.muted(context);
+    final accent = AerisColors.accent(context);
+
+    final bytes = profile?.photoBytes;
+    final url = profile?.photoUrl;
+    ImageProvider? img;
+    if (bytes != null && bytes.isNotEmpty) {
+      img = MemoryImage(bytes);
+    } else if (url != null && url.isNotEmpty) {
+      img = NetworkImage(url);
+    }
+
+    return AerisCard(
+      padding: const EdgeInsets.all(16),
+      onTap: () => Navigator.pushNamed(context, AppRoutes.editProfile),
+      child: Row(children: [
+        Container(
+          width: 60,
+          height: 60,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: img == null ? AerisColors.accentSoft(context) : null,
+            image: img == null
+                ? null
+                : DecorationImage(image: img, fit: BoxFit.cover),
+          ),
+          child: img == null
+              ? Text(initials,
+                  style: TextStyle(
+                      fontSize: 21, fontWeight: FontWeight.w800, color: accent))
+              : null,
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(name.isEmpty ? 'Add your name' : name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3)),
+              if (email.isNotEmpty)
+                Text(email,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        color: muted)),
+              const SizedBox(height: 8),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                GestureDetector(
+                  onTap: () =>
+                      Navigator.pushNamed(context, AppRoutes.aerisWorld),
+                  child: _Pill(
+                    icon: Icons.bolt_rounded,
+                    label: 'Level ${g.level} · ${_fmtAura(g.available)} Aura',
+                  ),
+                ),
+                if (profile != null && profile!.monthlyIncome > 0)
+                  _Pill(
+                      label:
+                          '${formatRupees(profile!.monthlyIncome, compact: true)}/mo'),
+              ]),
+            ],
+          ),
+        ),
+        Icon(Icons.chevron_right_rounded, color: muted),
+      ]),
     );
   }
 
@@ -192,393 +288,177 @@ class ProfileScreen extends ConsumerWidget {
     if (parts[0].isNotEmpty) return parts[0][0].toUpperCase();
     return 'A';
   }
+
+  static String _fmtAura(int v) {
+    if (v >= 100000) return '${(v / 100000).toStringAsFixed(1)}L';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(1)}K';
+    return '$v';
+  }
 }
 
-// ── Profile card ─────────────────────────────────────────────────────────────
+class _Pill extends StatelessWidget {
+  final IconData? icon;
+  final String label;
+  const _Pill({required this.label, this.icon});
 
-class _ProfileCard extends StatelessWidget {
-  final UserProfile? profile;
-  final GamificationState g;
-  final String initials;
-  final double levelProgress;
-  final Color cardBg;
-  final Color divColor;
-  final ColorScheme scheme;
+  @override
+  Widget build(BuildContext context) {
+    final accent = AerisColors.accent(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: AerisColors.accentSoft(context),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[
+          Icon(icon, size: 13, color: accent),
+          const SizedBox(width: 3),
+        ],
+        Text(label,
+            style: TextStyle(
+                fontSize: 11.5, fontWeight: FontWeight.w700, color: accent)),
+      ]),
+    );
+  }
+}
 
-  const _ProfileCard({
-    required this.profile,
-    required this.g,
-    required this.initials,
-    required this.levelProgress,
-    required this.cardBg,
-    required this.divColor,
-    required this.scheme,
-  });
+/// "N imports to review" — the one actionable thing on this tab, so it gets
+/// its own banner above the lists when there's something to do.
+class _ReviewBanner extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+  const _ReviewBanner({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return AerisCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      color: dark ? const Color(0xFF2A2212) : const Color(0xFFFFF8EB),
+      onTap: onTap,
+      child: Row(children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: AerisColors.warning.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.sms_outlined,
+              size: 19, color: AerisColors.warning),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            '$count import${count == 1 ? '' : 's'} to review',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+        ),
+        const Text('Review',
+            style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                color: AerisColors.warning)),
+        const Icon(Icons.chevron_right_rounded, color: AerisColors.warning),
+      ]),
+    );
+  }
+}
+
+// ── Grouped list ──────────────────────────────────────────────
+class _Group extends StatelessWidget {
+  final List<_Row> rows;
+  const _Group({required this.rows});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: divColor),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 16,
-              offset: const Offset(0, 4)),
+      clipBehavior: Clip.antiAlias,
+      decoration: AerisColors.cardDecoration(context),
+      child: Column(children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          rows[i],
+          if (i < rows.length - 1)
+            const Divider(height: 1, indent: 64, endIndent: 16),
         ],
-      ),
-      child: Row(
-        children: [
-          // Level ring + initials
-          GestureDetector(
-            onTap: () => Navigator.pushNamed(context, AppRoutes.aerisWorld),
-            child: SizedBox(
-              width: 74,
-              height: 74,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  BudgetRing(
-                    progress: levelProgress,
-                    size: 74,
-                    strokeWidth: 6,
-                    color: AerisColors.seed,
-                    duration: const Duration(milliseconds: 800),
-                  ),
-                  Builder(builder: (_) {
-                    final bytes = profile?.photoBytes;
-                    final url = profile?.photoUrl;
-                    ImageProvider? img;
-                    if (bytes != null && bytes.isNotEmpty) {
-                      img = MemoryImage(bytes);
-                    } else if (url != null && url.isNotEmpty) {
-                      img = NetworkImage(url);
-                    }
-                    return Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: img == null ? AerisColors.heroGradient : null,
-                        image: img != null
-                            ? DecorationImage(image: img, fit: BoxFit.cover)
-                            : null,
-                      ),
-                      alignment: Alignment.center,
-                      child: img == null
-                          ? Text(initials,
-                              style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white))
-                          : null,
-                    );
-                  }),
-                  Positioned(
-                    bottom: 0,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AerisColors.seed,
-                        borderRadius: BorderRadius.circular(99),
-                        border: Border.all(color: cardBg, width: 2),
-                      ),
-                      child: Text('Lv ${g.level}',
-                          style: const TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              height: 1.1)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 16),
-
-          // Identity info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(profile?.displayName ?? 'Unnamed',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 1),
-                Text(profile?.email ?? '',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurface.withValues(alpha: 0.55))),
-                const SizedBox(height: 7),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    if (profile != null && profile!.monthlyIncome > 0)
-                      _Badge(
-                        label: '${formatRupees(profile!.monthlyIncome)}/mo',
-                        color: AerisColors.seed,
-                      ),
-                    _Badge(
-                      icon: Icons.bolt,
-                      label: _fmtAura(g.available),
-                      color: const Color(0xFFD97706),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Pencil edit
-          IconButton(
-            onPressed: () =>
-                Navigator.pushNamed(context, AppRoutes.editProfile),
-            icon: Icon(Icons.edit_rounded,
-                color: scheme.onSurface.withValues(alpha: 0.55)),
-            style: IconButton.styleFrom(
-              backgroundColor: scheme.onSurface.withValues(alpha: 0.07),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.all(8),
-            ),
-          ),
-        ],
-      ),
+      ]),
     );
-  }
-
-  String _fmtAura(int v) {
-    if (v >= 100000) return '${(v / 100000).toStringAsFixed(1)}L ✦';
-    if (v >= 1000) return '${(v / 1000).toStringAsFixed(1)}K ✦';
-    return '$v ✦';
   }
 }
 
-// ── Equipped avatar banner ────────────────────────────────────────────────────
+class _Row extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? badge;
+  final VoidCallback onTap;
 
-class _AvatarBanner extends StatelessWidget {
-  final AvatarSkin skin;
-  final Color cardBg;
-
-  const _AvatarBanner({required this.skin, required this.cardBg});
+  const _Row({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.badge,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: () => Navigator.pushNamed(context, AppRoutes.aerisWorld),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: skin.aura.withValues(alpha: 0.25)),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              skin.aura.withValues(alpha: 0.15),
-              Colors.transparent,
-            ],
-          ),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 12,
-                offset: const Offset(0, 3)),
-          ],
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 64,
-              height: 64,
-              child: AerisAvatar(
-                skin: skin,
-                stage: 1,
-                mood: AvatarMood.happy,
-                size: 64,
-                animate: false,
+    final muted = AerisColors.muted(context);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          child: Row(children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AerisColors.accentSoft(context),
+                borderRadius: BorderRadius.circular(11),
               ),
+              child: Icon(icon, size: 19, color: AerisColors.accent(context)),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('YOUR AVATAR',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.05,
-                          color: scheme.onSurface.withValues(alpha: 0.5))),
-                  const SizedBox(height: 3),
-                  Text(skin.name,
+                  Text(title,
                       style: const TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 3),
-                  Text('Tap to change · unlock more →',
+                          fontSize: 15, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 1),
+                  Text(subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AerisColors.ink(context))),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          color: muted)),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
-                color: scheme.onSurface.withValues(alpha: 0.3)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Grid tile ─────────────────────────────────────────────────────────────────
-
-class _GridTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String sub;
-  final LinearGradient? gradient;
-  final String? badge;
-  final Color cardBg;
-  final VoidCallback onTap;
-
-  const _GridTile({
-    required this.icon,
-    required this.label,
-    required this.sub,
-    required this.cardBg,
-    required this.onTap,
-    this.gradient,
-    this.badge,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final hasGrad = gradient != null;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: scheme.onSurface.withValues(alpha: 0.08)),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 3)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    gradient: hasGrad ? gradient : null,
-                    color: hasGrad
-                        ? null
-                        : AerisColors.seed.withValues(alpha: 0.12),
-                  ),
-                  child: Icon(icon,
-                      size: 22,
-                      color: hasGrad ? Colors.white : AerisColors.seed),
+            if (badge != null)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AerisColors.warning,
+                  borderRadius: BorderRadius.circular(99),
                 ),
-                if (badge != null)
-                  Positioned(
-                    right: -4,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: AerisColors.moneyOut(context),
-                        borderRadius: BorderRadius.circular(99),
-                        border: Border.all(color: cardBg, width: 1.5),
-                      ),
-                      child: Text(badge!,
-                          style: const TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              height: 1.2)),
-                    ),
-                  ),
-              ],
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
+                child: Text(badge!,
                     style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 2),
-                Text(sub,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
                         fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3,
-                        color: scheme.onSurface.withValues(alpha: 0.5))),
-              ],
-            ),
-          ],
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white)),
+              ),
+            Icon(Icons.chevron_right_rounded, color: muted),
+          ]),
         ),
-      ),
-    );
-  }
-}
-
-// ── Badge chip ────────────────────────────────────────────────────────────────
-
-class _Badge extends StatelessWidget {
-  final IconData? icon;
-  final String label;
-  final Color color;
-
-  const _Badge({required this.label, required this.color, this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 13, color: color),
-            const SizedBox(width: 3),
-          ],
-          Text(label,
-              style: TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w800, color: color)),
-        ],
       ),
     );
   }

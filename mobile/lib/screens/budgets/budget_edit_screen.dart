@@ -5,6 +5,7 @@ import '../../models/budget.dart';
 import '../../models/category.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/transactions_provider.dart';
+import '../../widgets/aeris_toast.dart';
 
 class BudgetEditScreen extends ConsumerStatefulWidget {
   final String? categoryId;
@@ -22,7 +23,7 @@ class _BudgetEditScreenState extends ConsumerState<BudgetEditScreen> {
     if (uid == null) return;
     final cap = double.tryParse(_cap.text);
     if (cap == null || cap <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showToast(
           const SnackBar(content: Text('Enter a positive amount')));
       return;
     }

@@ -8,16 +8,19 @@ import '../../models/currency.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/budgets_provider.dart';
 import '../../providers/currency_provider.dart';
+import '../../providers/money_providers.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../services/app_lock_service.dart';
 import '../../services/backup_service.dart';
 import '../../services/export_service.dart';
 import '../../services/notification_service.dart';
-import '../../services/prediction_service.dart';
+import '../../services/reminder_scheduler.dart';
 import '../../services/sms_import_service.dart';
 import '../../services/sms_service.dart';
 import '../../widgets/text_input_dialog.dart';
+import '../../widgets/aeris_toast.dart';
+import '../../widgets/privacy_shield.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -64,21 +67,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final granted = await SmsService.instance.requestPermission();
     if (granted) {
       await _wireLiveSms();
-      messenger.showSnackBar(const SnackBar(
+      messenger.showToast(const SnackBar(
           content: Text(
               'SMS auto-import is on — new bank alerts become transactions. '
               'Use "Backfill" below to import past messages.')));
     } else {
       final status = await Permission.sms.status;
       if (status.isPermanentlyDenied || status.isRestricted) {
-        messenger.showSnackBar(const SnackBar(
+        messenger.showToast(const SnackBar(
             duration: Duration(seconds: 8),
             content: Text(
                 'Android restricts SMS for sideloaded apps. Tap the ⋮ menu → '
                 '"Allow restricted settings" → Permissions → SMS → Allow.')));
         await openAppSettings();
       } else {
-        messenger.showSnackBar(
+        messenger.showToast(
             const SnackBar(content: Text('SMS permission was not granted.')));
       }
     }
@@ -99,7 +102,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final status = await Permission.ignoreBatteryOptimizations.request();
     if (mounted) setState(() => _bgAllowed = status.isGranted);
     if (!status.isGranted) {
-      messenger.showSnackBar(const SnackBar(
+      messenger.showToast(const SnackBar(
         content:
             Text('On Realme/Xiaomi also turn on "Auto-launch" / set battery to '
                 '"Unrestricted" in app settings.'),
@@ -111,7 +114,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final messenger = ScaffoldMessenger.of(context);
     if (v) {
       if (!await AppLockService.instance.isAvailable()) {
-        messenger.showSnackBar(const SnackBar(
+        messenger.showToast(const SnackBar(
             content: Text(
                 'No biometric or device PIN set up. Add one in phone settings first.')));
         return;
@@ -130,26 +133,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (v) {
       final ok = await NotificationService.instance.requestPermission();
       if (!ok) {
-        messenger.showSnackBar(
+        messenger.showToast(
             const SnackBar(content: Text('Notification permission denied.')));
         return;
       }
-      await NotificationService.instance.scheduleWeeklySummary();
+      await prefs.setBool('reminders_on', true);
       await NotificationService.instance.scheduleDailyCheckin();
-      final txns = ref.read(transactionsStreamProvider).valueOrNull ?? const [];
-      final recurring = PredictionService.instance.detectRecurring(txns);
-      for (var i = 0; i < recurring.length; i++) {
-        await NotificationService.instance.scheduleBillReminder(
-            i,
-            recurring[i].merchant,
-            recurring[i].approxAmount,
-            recurring[i].dayOfMonth);
-      }
-      messenger.showSnackBar(SnackBar(
-          content: Text(
-              'Reminders on — weekly summary + ${recurring.length} bill reminders.')));
+      final bills = ref.read(billsProvider);
+      await ReminderScheduler.refresh(
+        txns: ref.read(transactionsStreamProvider).valueOrNull ?? const [],
+        budgets: ref.read(effectiveBudgetsProvider),
+        bills: bills,
+      );
+      messenger.showToast(SnackBar(
+          content: Text('Reminders on — 9 PM spend check, Sunday recap, '
+              '${bills.length} bill reminder${bills.length == 1 ? '' : 's'}.')));
     } else {
-      await NotificationService.instance.cancelAll();
+      await ReminderScheduler.cancelAll();
     }
     await prefs.setBool('reminders_on', v);
     if (mounted) setState(() => _reminders = v);
@@ -160,7 +160,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (uid == null) return;
     final messenger = ScaffoldMessenger.of(context);
     if (!await SmsService.instance.hasPermission()) {
-      messenger.showSnackBar(const SnackBar(
+      messenger.showToast(const SnackBar(
           content: Text(
               'SMS permission is off — enable "Read bank SMS automatically" above first.')));
       return;
@@ -177,12 +177,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           if (mounted) progress.state = d >= t ? null : (done: d, total: t);
         },
       );
-      messenger.showSnackBar(SnackBar(
+      messenger.showToast(SnackBar(
           content: Text(n > 0
               ? 'Imported $n transactions from the last 90 days.'
               : 'No new transactions found — last 90 days already imported.')));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Backfill failed: $e')));
+      messenger.showToast(SnackBar(content: Text('Backfill failed: $e')));
     } finally {
       progress.state = null;
       if (mounted) setState(() => _busy = false);
@@ -194,7 +194,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final txns = ref.read(transactionsStreamProvider).valueOrNull ?? const [];
     final budgets = ref.read(budgetsStreamProvider).valueOrNull ?? const [];
     if (txns.isEmpty) {
-      messenger.showSnackBar(
+      messenger.showToast(
           const SnackBar(content: Text('No transactions to export yet.')));
       return;
     }
@@ -202,7 +202,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       await ExportService.instance.buildAndShare(txns: txns, budgets: budgets);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      messenger.showToast(SnackBar(content: Text('Export failed: $e')));
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -216,18 +216,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         'Back up');
     if (pass == null) return;
     if (pass.length < 4) {
-      messenger.showSnackBar(const SnackBar(
+      messenger.showToast(const SnackBar(
           content: Text('Use a passphrase of at least 4 characters.')));
       return;
     }
     final uid = ref.read(currentUserIdProvider);
     if (uid == null) return;
-    messenger.showSnackBar(
+    messenger.showToast(
         const SnackBar(content: Text('Preparing encrypted backup…')));
     try {
       await BackupService.instance.exportBackup(uid, pass);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Backup failed: $e')));
+      messenger.showToast(SnackBar(content: Text('Backup failed: $e')));
     }
   }
 
@@ -241,10 +241,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final n = await BackupService.instance.restoreBackup(uid, pass);
       if (n < 0) return;
-      messenger.showSnackBar(SnackBar(
+      messenger.showToast(SnackBar(
           content: Text('Restored $n transaction${n == 1 ? '' : 's'}.')));
     } catch (e) {
-      messenger.showSnackBar(const SnackBar(
+      messenger.showToast(const SnackBar(
           content: Text('Restore failed — wrong passphrase or invalid file.')));
     }
   }
@@ -268,7 +268,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final currency = ref.watch(currencyProvider);
     final dark = Theme.of(context).brightness == Brightness.dark;
     final scheme = Theme.of(context).colorScheme;
-    final cardBg = dark ? const Color(0xFF122120) : Colors.white;
+    final cardBg = dark ? AerisColors.cardDark : Colors.white;
     final divColor = scheme.onSurface.withValues(alpha: 0.07);
     final blocked =
         ref.watch(blockedSendersProvider).valueOrNull ?? const <String>{};
@@ -357,6 +357,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               'Biometric / PIN over the app',
               _appLock,
               _toggleAppLock,
+              scheme,
+            ),
+            _divider(divColor),
+            _toggleRow(
+              Icons.visibility_off_outlined,
+              'Hide in recent apps',
+              'Cover balances when you switch apps',
+              ref.watch(recentsPrivacyProvider),
+              (v) => ref.read(recentsPrivacyProvider.notifier).set(v),
               scheme,
             ),
             _divider(divColor),
@@ -560,7 +569,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   void _showCurrencySheet(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final bg = dark ? const Color(0xFF122120) : Colors.white;
+    final bg = dark ? AerisColors.cardDark : Colors.white;
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -600,7 +609,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         horizontal: 12, vertical: 13),
                     decoration: BoxDecoration(
                       color: c.code == selected
-                          ? AerisColors.seed.withValues(alpha: 0.12)
+                          ? AerisColors.accent(context).withValues(alpha: 0.12)
                           : null,
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -629,8 +638,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                         if (c.code == selected)
-                          const Icon(Icons.check_circle_rounded,
-                              color: AerisColors.seed, size: 22),
+                          Icon(Icons.check_circle_rounded,
+                              color: AerisColors.accent(context), size: 22),
                       ],
                     ),
                   ),
@@ -686,13 +695,13 @@ class _ThemePicker extends StatelessWidget {
                       margin: const EdgeInsets.all(4),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: active ? AerisColors.seed : Colors.transparent,
+                        color: active ? AerisColors.accent(context) : Colors.transparent,
                         borderRadius: BorderRadius.circular(10),
                         boxShadow: active
                             ? [
                                 BoxShadow(
                                     color:
-                                        AerisColors.seed.withValues(alpha: 0.3),
+                                        AerisColors.accent(context).withValues(alpha: 0.3),
                                     blurRadius: 8,
                                     offset: const Offset(0, 2))
                               ]
@@ -704,7 +713,7 @@ class _ThemePicker extends StatelessWidget {
                           Icon(m.$3,
                               size: 15,
                               color: active
-                                  ? Colors.white
+                                  ? AerisColors.onAccent(context)
                                   : scheme.onSurface.withValues(alpha: 0.6)),
                           const SizedBox(width: 5),
                           Text(m.$2,
@@ -712,7 +721,7 @@ class _ThemePicker extends StatelessWidget {
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                   color: active
-                                      ? Colors.white
+                                      ? AerisColors.onAccent(context)
                                       : scheme.onSurface
                                           .withValues(alpha: 0.7))),
                         ],
@@ -748,7 +757,7 @@ class _Toggle extends StatelessWidget {
         height: 28,
         decoration: BoxDecoration(
           color:
-              on ? AerisColors.seed : scheme.onSurface.withValues(alpha: 0.2),
+              on ? AerisColors.accent(context) : scheme.onSurface.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(99),
         ),
         child: AnimatedAlign(

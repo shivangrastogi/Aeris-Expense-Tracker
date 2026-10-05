@@ -7,6 +7,7 @@ import '../../models/avatar_skin.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/aeris_avatar.dart';
 import 'auth_widgets.dart';
+import '../../widgets/aeris_toast.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -114,7 +115,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 child: TextButton.icon(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: key));
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    ScaffoldMessenger.of(context).showToast(
                         const SnackBar(content: Text('Recovery key copied')));
                   },
                   icon: const Icon(Icons.copy, size: 16),

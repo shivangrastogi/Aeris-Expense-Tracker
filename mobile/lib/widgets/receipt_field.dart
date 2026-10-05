@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'aeris_toast.dart';
 
 /// Largest receipt we'll store. Encrypted + base64 it grows ~1.35×, which
 /// keeps it comfortably under Firestore's 1 MiB document limit.
@@ -43,7 +44,7 @@ Future<Uint8List?> pickReceipt(BuildContext context) async {
     final bytes = await x.readAsBytes();
     if (bytes.length > kMaxReceiptBytes) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showToast(const SnackBar(
             content: Text('That image is too large — try a closer photo.')));
       }
       return null;
@@ -52,7 +53,7 @@ Future<Uint8List?> pickReceipt(BuildContext context) async {
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not open image: $e')));
+          .showToast(SnackBar(content: Text('Could not open image: $e')));
     }
     return null;
   }

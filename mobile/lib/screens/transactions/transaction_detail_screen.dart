@@ -15,6 +15,7 @@ import '../../utils/formatters.dart';
 import '../../core/routes.dart';
 import '../../widgets/receipt_field.dart';
 import '../../widgets/txn_undo.dart';
+import '../../widgets/aeris_toast.dart';
 
 class TransactionDetailScreen extends ConsumerStatefulWidget {
   final Transaction txn;
@@ -53,7 +54,7 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
     final awarded =
         ref.read(gamificationProvider.notifier).rewardCategorization(_t.id);
     if (awarded > 0 && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showToast(SnackBar(
           content: Text('+$awarded Aura for categorising 🎉'),
           duration: const Duration(seconds: 2)));
     }
@@ -90,7 +91,9 @@ class _TxDetailState extends ConsumerState<TransactionDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final cat = Categories.byId(_t.categoryId);
-    final color = _t.isCredit ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context);
+    final color = _t.isCredit
+        ? AerisColors.moneyIn(context)
+        : AerisColors.moneyOut(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transaction'),

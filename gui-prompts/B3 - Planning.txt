@@ -1,0 +1,20 @@
+Create a UI design sheet (landscape 3:2) with 6 phone screens for the finance app "AERIS":
+1. Insights — cards: "You spent 18% less on food than last month", "Projected month-end: ₹41,200", budget projection bars, "Ask Aeris" button.
+2. Analytics — range selector (Week/Month/Year), line trend chart, category donut with legend, calendar heatmap of spending days.
+3. Budgets — list of category budgets with progress bars (Food ₹8,200/₹10,000, Shopping over budget in red), "Suggest budgets ✨" button.
+4. Goals — goal cards with circular progress: "Goa trip ₹18k/₹40k", "Emergency fund", "New laptop", target dates.
+5. Subscriptions — monthly total ₹2,340 at top, list: Netflix, Spotify, Airtel, iCloud with logos, next due dates, "cancel reminder" toggle.
+6. Accounts — total balance card, accounts list: HDFC Savings, SBI, Cash wallet, Credit card, each with balance and mini spent/received.
+
+DESIGN SYSTEM (apply to every screen, keep it identical across all phones):
+- App name "AERIS" — a private, encrypted personal finance app for India. Currency ₹.
+- Mood: calm, premium, trustworthy fintech — like a mix of CRED's polish and Apple Wallet's clarity. NOT playful, NOT cartoonish.
+- Background: warm off-white #F7F5F0. Cards: pure white, 24px radius, very soft shadow, no borders.
+- Text: deep ink #0F1A1A for headings, muted grey #6B7280 for secondary.
+- ONE accent colour only: deep teal #0F766E (buttons, active tab, progress). Money in = green #15A24A, money out = near-black ink (not red); red #E5484D only for over-budget warnings.
+- Typography: Plus Jakarta Sans. Big bold numbers for amounts (tabular figures), small medium-weight labels. Generous whitespace.
+- Icons: thin 1.5px line icons, rounded. Category icons sit in soft pastel rounded squares.
+- Charts: minimal, thin lines, no gridlines, one accent + greys.
+- Bottom navigation (on main tabs): 4 tabs — Home, Activity, Insights, Me — with a floating round teal "+" button in the centre.
+- Realistic Indian data: Swiggy, Zomato, Uber, Amazon, BigBasket, Airtel recharge, Rent, Salary, PhonePe/GPay UPI.
+- Each phone: modern Android frame (thin bezels, punch-hole camera), 9:19.5 ratio, all text sharp and legible, short labels only.

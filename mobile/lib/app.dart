@@ -13,7 +13,9 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/key_gate.dart';
 import 'screens/splash_screen.dart';
 import 'services/sync_outbox.dart';
+import 'widgets/aeris_toast.dart';
 import 'widgets/app_lock_gate.dart';
+import 'widgets/privacy_shield.dart';
 import 'widgets/sync_status.dart';
 
 class AerisExpenseApp extends ConsumerStatefulWidget {
@@ -27,7 +29,7 @@ class _AerisExpenseAppState extends ConsumerState<AerisExpenseApp>
     with WidgetsBindingObserver {
   // Guards daily-usage writes to at most one per local day (per process).
   String? _lastUsageDay;
-  final _navigatorKey = GlobalKey<NavigatorState>();
+  final _navigatorKey = appNavigatorKey;
 
   @override
   void initState() {
@@ -119,11 +121,15 @@ class _AerisExpenseAppState extends ConsumerState<AerisExpenseApp>
               .copyWith(
             statusBarColor: Colors.transparent,
             systemNavigationBarColor: Colors.transparent,
+            systemStatusBarContrastEnforced: false,
+            systemNavigationBarContrastEnforced: false,
           ),
-          child: SyncShell(
-            navigatorKey: _navigatorKey,
-            signedIn: authState.valueOrNull != null,
-            child: child!,
+          child: PrivacyShield(
+            child: SyncShell(
+              navigatorKey: _navigatorKey,
+              signedIn: authState.valueOrNull != null,
+              child: child!,
+            ),
           ),
         );
       },

@@ -6,6 +6,7 @@ import '../../providers/gamification_provider.dart';
 /// Card ids that the Home screen honours for show/hide (see the
 /// `kHomeCard*` constants in home_screen.dart).
 const dashboardCards = <(String, String)>[
+  ('momentum', 'Momentum — savings, streak, goal'),
   ('categories', 'Top spending categories'),
   ('forecast', 'Month-end forecast'),
   ('checkin', 'Daily check-in reminder'),

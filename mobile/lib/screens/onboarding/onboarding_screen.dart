@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme.dart';
 import '../../services/sms_service.dart';
 import '../../widgets/mascot/aeris_mascot.dart';
+import '../../widgets/aeris_toast.dart';
 
 /// One-time welcome tour shown on first launch (gated by shared_preferences
 /// `onboarded`). Introduces the app, Aeris, SMS auto-import, and budgets.
@@ -88,7 +89,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     height: 7,
                     decoration: BoxDecoration(
                       color: _page == i
-                          ? AerisColors.seed
+                          ? AerisColors.accent(context)
                           : scheme.onSurfaceVariant.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(4),
                     ),
@@ -146,7 +147,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               onPressed: () async {
                 await s.onAction?.call(ref);
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  ScaffoldMessenger.of(context).showToast(
                       const SnackBar(content: Text('Done!')));
                 }
               },

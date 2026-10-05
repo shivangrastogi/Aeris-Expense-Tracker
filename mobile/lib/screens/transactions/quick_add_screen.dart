@@ -12,6 +12,7 @@ import '../../services/nlu_parser.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/discard_guard.dart';
+import '../../widgets/aeris_toast.dart';
 
 /// Type (or dictate via the keyboard mic) one sentence — "spent 200 on chai
 /// yesterday", "got 5000 salary" — and AERIS extracts the amount,
@@ -94,7 +95,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
     final typed = double.tryParse(_amount.text.replaceAll(',', ''));
     if (typed == null || typed <= 0) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Enter a valid amount')));
+          .showToast(const SnackBar(content: Text('Enter a valid amount')));
       return;
     }
     // Typed in the display currency; stored in INR.
@@ -148,7 +149,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
       if (!mounted) return;
       setState(() => _busy = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+          .showToast(SnackBar(content: Text('Could not save: $e')));
       return;
     }
     if (merchant.isNotEmpty) {

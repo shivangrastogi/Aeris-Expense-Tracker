@@ -1,0 +1,20 @@
+Create a UI design sheet (landscape 3:2) with 6 phone screens side by side for the finance app "AERIS":
+1. Splash — centred minimal AERIS wordmark with a subtle teal glow, tagline "Your money. Only yours."
+2. Onboarding — illustration of a lock + coins, title "Encrypted end-to-end", dots pager, "Continue" button.
+3. Login — email + password fields, "Sign in" button, "Continue with phone" text link.
+4. Sign-up — name, email, password, strength meter.
+5. Recovery key — "Save your recovery key" with a key shown as 6 monospace blocks, "Copy" and "I've saved it" buttons, warning note.
+6. Unlock — fingerprint icon, "Unlock AERIS", avatar + name.
+
+DESIGN SYSTEM (apply to every screen, keep it identical across all phones):
+- App name "AERIS" — a private, encrypted personal finance app for India. Currency ₹.
+- Mood: calm, premium, trustworthy fintech — like a mix of CRED's polish and Apple Wallet's clarity. NOT playful, NOT cartoonish.
+- Background: warm off-white #F7F5F0. Cards: pure white, 24px radius, very soft shadow, no borders.
+- Text: deep ink #0F1A1A for headings, muted grey #6B7280 for secondary.
+- ONE accent colour only: deep teal #0F766E (buttons, active tab, progress). Money in = green #15A24A, money out = near-black ink (not red); red #E5484D only for over-budget warnings.
+- Typography: Plus Jakarta Sans. Big bold numbers for amounts (tabular figures), small medium-weight labels. Generous whitespace.
+- Icons: thin 1.5px line icons, rounded. Category icons sit in soft pastel rounded squares.
+- Charts: minimal, thin lines, no gridlines, one accent + greys.
+- Bottom navigation (on main tabs): 4 tabs — Home, Activity, Insights, Me — with a floating round teal "+" button in the centre.
+- Realistic Indian data: Swiggy, Zomato, Uber, Amazon, BigBasket, Airtel recharge, Rent, Salary, PhonePe/GPay UPI.
+- Each phone: modern Android frame (thin bezels, punch-hole camera), 9:19.5 ratio, all text sharp and legible, short labels only.

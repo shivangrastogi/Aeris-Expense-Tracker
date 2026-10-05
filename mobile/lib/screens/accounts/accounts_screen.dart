@@ -119,7 +119,7 @@ class _AccountCard extends ConsumerWidget {
                 children: [
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: AerisColors.seed.withValues(alpha: 0.15),
+                    backgroundColor: AerisColors.accent(context).withValues(alpha: 0.15),
                     child: const Icon(Icons.account_balance, size: 18),
                   ),
                   const SizedBox(width: 10),
@@ -158,7 +158,7 @@ class _AccountCard extends ConsumerWidget {
                     style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
-                        color: bal >= 0 ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context))),
+                        color: bal >= 0 ? AerisColors.moneyIn(context) : AerisColors.danger(context))),
                 const SizedBox(height: 10),
               ] else
                 Padding(
@@ -179,7 +179,7 @@ class _AccountCard extends ConsumerWidget {
                   _metric(
                       context, 'Received', account.received, AerisColors.moneyIn(context)),
                   _metric(context, 'Net', net,
-                      net >= 0 ? AerisColors.moneyIn(context) : AerisColors.moneyOut(context)),
+                      net >= 0 ? AerisColors.moneyIn(context) : AerisColors.danger(context)),
                 ],
               ),
             ],

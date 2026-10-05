@@ -1,0 +1,21 @@
+Create a single wide UI design presentation board (16:9, landscape) showing the complete mobile app "AERIS" as a grid of 24 phone screens, arranged in 4 labelled rows on a light neutral canvas, like a Figma/Dribbble case-study shot.
+
+Row 1 "Welcome": Splash (AERIS logo), Onboarding, Login, Sign-up, Recovery key, Unlock with fingerprint.
+Row 2 "Daily": Home dashboard, Activity list, Transaction detail, Add expense, Voice add, SMS review.
+Row 3 "Plan": Insights, Analytics, Budgets, Goals, Subscriptions, Accounts.
+Row 4 "More": Me/profile, Settings, Ask Aeris chat, Monthly Wrapped, Loans, Statement import.
+
+Small caption under each phone with its name. Consistent design system across all phones.
+
+DESIGN SYSTEM (apply to every screen, keep it identical across all phones):
+- App name "AERIS" — a private, encrypted personal finance app for India. Currency ₹.
+- Mood: calm, premium, trustworthy fintech — like a mix of CRED's polish and Apple Wallet's clarity. NOT playful, NOT cartoonish.
+- Background: warm off-white #F7F5F0. Cards: pure white, 24px radius, very soft shadow, no borders.
+- Text: deep ink #0F1A1A for headings, muted grey #6B7280 for secondary.
+- ONE accent colour only: deep teal #0F766E (buttons, active tab, progress). Money in = green #15A24A, money out = near-black ink (not red); red #E5484D only for over-budget warnings.
+- Typography: Plus Jakarta Sans. Big bold numbers for amounts (tabular figures), small medium-weight labels. Generous whitespace.
+- Icons: thin 1.5px line icons, rounded. Category icons sit in soft pastel rounded squares.
+- Charts: minimal, thin lines, no gridlines, one accent + greys.
+- Bottom navigation (on main tabs): 4 tabs — Home, Activity, Insights, Me — with a floating round teal "+" button in the centre.
+- Realistic Indian data: Swiggy, Zomato, Uber, Amazon, BigBasket, Airtel recharge, Rent, Salary, PhonePe/GPay UPI.
+- Each phone: modern Android frame (thin bezels, punch-hole camera), 9:19.5 ratio, all text sharp and legible, short labels only.

@@ -43,6 +43,14 @@ class Transaction {
   bool get isCredit => direction == TxnDirection.credit;
   double get signed => isDebit ? -amount : amount;
 
+  /// Auto-captured (bank SMS, payment screenshot) and not yet confirmed by
+  /// the user — it waits in the review deck.
+  bool get needsReview => !reviewed;
+
+  /// Came from a payment screenshot: the image is its receipt and there is
+  /// no SMS behind it.
+  bool get fromScreenshot => hasReceipt && smsBody == null;
+
   Map<String, dynamic> toMap() => {
         'amount': amount,
         'direction': direction.name,

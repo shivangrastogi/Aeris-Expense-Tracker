@@ -8,6 +8,7 @@ import '../screens/transactions/add_transaction_screen.dart';
 import '../screens/transactions/quick_add_screen.dart';
 import '../screens/transactions/transaction_detail_screen.dart';
 import '../screens/transactions/voice_capture_screen.dart';
+import '../screens/transactions/screenshot_import_screen.dart';
 import '../screens/transactions/transactions_screen.dart';
 import '../screens/transactions/statement_import_screen.dart';
 import '../screens/profile/edit_profile_screen.dart';
@@ -28,6 +29,9 @@ import '../screens/loans/loans_screen.dart';
 import '../screens/insights/wrapped_screen.dart';
 import '../screens/insights/insights_screen.dart';
 import '../screens/analytics/analytics_screen.dart';
+import '../screens/money/bill_calendar_screen.dart';
+import '../screens/money/net_worth_screen.dart';
+import '../screens/money/report_card_screen.dart';
 import '../models/transaction.dart';
 
 class AppRoutes {
@@ -39,6 +43,7 @@ class AppRoutes {
   static const addTxn = '/transactions/add';
   static const quickAdd = '/transactions/quick-add';
   static const voice = '/voice';
+  static const screenshot = '/transactions/screenshot';
   static const wrapped = '/wrapped';
   static const txnDetail = '/transactions/detail';
   static const transactions = '/transactions';
@@ -60,6 +65,9 @@ class AppRoutes {
   static const loans = '/loans';
   static const insights = '/insights';
   static const analytics = '/analytics';
+  static const bills = '/bills';
+  static const netWorth = '/net-worth';
+  static const reportCard = '/report-card';
 
   static Route<dynamic>? onGenerateRoute(RouteSettings s) {
     Widget page;
@@ -89,6 +97,12 @@ class AppRoutes {
         break;
       case voice:
         page = const VoiceCaptureScreen();
+        break;
+      case screenshot:
+        // Image paths when shared in from another app; none opens the picker.
+        final a = s.arguments;
+        page = ScreenshotImportScreen(
+            initialPaths: a is List<String> ? a : const []);
         break;
       case wrapped:
         page = const WrappedScreen();
@@ -146,7 +160,7 @@ class AppRoutes {
         page = const SubscriptionsScreen();
         break;
       case loans:
-        page = const LoansScreen();
+        page = LoansScreen(openAdd: s.arguments == LoansScreen.openAddSheet);
         break;
       case budgets:
         page = const BudgetsScreen();
@@ -154,12 +168,53 @@ class AppRoutes {
       case insights:
         page = const InsightsScreen();
         break;
+      case bills:
+        page = const BillCalendarScreen();
+        break;
+      case netWorth:
+        page = const NetWorthScreen();
+        break;
+      case reportCard:
+        page = ReportCardScreen(month: s.arguments as DateTime?);
+        break;
       case analytics:
         page = const AnalyticsScreen();
         break;
       default:
         return null;
     }
+    // Capture screens (they pop the keyboard straight away) slide up instead
+    // of zooming: the Zoom transition snapshots the incoming page, and the
+    // keyboard rising mid-animation forced a relayout + re-snapshot on every
+    // frame — the jitter when tapping +.
+    if (s.name == addTxn || s.name == quickAdd || s.name == voice) {
+      return _SlideUpRoute(page: page, settings: s);
+    }
     return MaterialPageRoute(builder: (_) => page, settings: s);
   }
+}
+
+/// A short fade + slide-up, with no snapshotting — cheap enough to run while
+/// the keyboard is opening.
+class _SlideUpRoute<T> extends PageRouteBuilder<T> {
+  _SlideUpRoute({required Widget page, super.settings})
+      : super(
+          transitionDuration: const Duration(milliseconds: 260),
+          reverseTransitionDuration: const Duration(milliseconds: 200),
+          pageBuilder: (_, __, ___) => page,
+          transitionsBuilder: (_, animation, __, child) {
+            final curved = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic);
+            return FadeTransition(
+              opacity: curved,
+              child: SlideTransition(
+                position: Tween(begin: const Offset(0, 0.06), end: Offset.zero)
+                    .animate(curved),
+                child: child,
+              ),
+            );
+          },
+        );
 }

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/aeris_toast.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
@@ -61,7 +62,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Couldn\'t pick image: $e')));
+            .showToast(SnackBar(content: Text('Couldn\'t pick image: $e')));
       }
     }
   }
@@ -128,7 +129,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       if (mounted) {
         setState(() => _busy = false);
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Save failed: $e')));
+            .showToast(SnackBar(content: Text('Save failed: $e')));
       }
     }
   }
@@ -137,7 +138,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = dark ? const Color(0xFF122120) : Colors.white;
+    final cardBg = dark ? AerisColors.cardDark : Colors.white;
 
     final initials = _initials(_name.text.isNotEmpty ? _name.text : 'A');
 
@@ -186,11 +187,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                       height: 30,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: AerisColors.seed,
+                        color: AerisColors.accent(context),
                         border: Border.all(color: scheme.surface, width: 3),
                       ),
-                      child: const Icon(Icons.camera_alt,
-                          size: 15, color: Colors.white),
+                      child: Icon(Icons.camera_alt,
+                          size: 15, color: AerisColors.onAccent(context)),
                     ),
                   ),
                 ),
@@ -235,19 +236,19 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             child: FilledButton(
               onPressed: _busy ? null : _save,
               style: FilledButton.styleFrom(
-                backgroundColor: AerisColors.seed,
+                backgroundColor: AerisColors.accent(context),
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 textStyle:
-                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    const TextStyle(fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w800),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(15)),
               ),
               child: _busy
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 22,
                       height: 22,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2, color: AerisColors.onAccent(context)))
                   : const Text('Save changes'),
             ),
           ),
@@ -261,7 +262,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 _photoRemoved = true;
               }),
               child: Text('Remove photo',
-                  style: TextStyle(color: AerisColors.moneyOut(context), fontSize: 13.5)),
+                  style: TextStyle(color: AerisColors.danger(context), fontSize: 13.5)),
             ),
           ],
         ],
@@ -339,7 +340,7 @@ class _FieldState extends State<_Field> {
             color: widget.cardBg,
             border: Border.all(
                 color: focused
-                    ? AerisColors.seed.withValues(alpha: 0.6)
+                    ? AerisColors.accent(context).withValues(alpha: 0.6)
                     : scheme.onSurface.withValues(alpha: 0.12),
                 width: focused ? 1.5 : 1),
             borderRadius: BorderRadius.circular(13),
@@ -380,8 +381,13 @@ class _FieldState extends State<_Field> {
                           onChanged: widget.onChanged,
                           style: const TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w600),
+                          // The surrounding row draws the field chrome, so
+                          // switch off every themed border and the fill.
                           decoration: const InputDecoration(
                             border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            filled: false,
                             isDense: true,
                             contentPadding: EdgeInsets.zero,
                           ),

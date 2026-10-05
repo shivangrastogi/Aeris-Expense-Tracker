@@ -60,7 +60,7 @@ class _AerisMascotState extends State<AerisMascot>
         MascotMood.happy => AerisColors.moodHappy,
         MascotMood.neutral => AerisColors.moodNeutral,
         MascotMood.worried => AerisColors.moodWorried,
-        MascotMood.celebrate => AerisColors.seed,
+        MascotMood.celebrate => AerisColors.accent(context),
       };
 
   @override

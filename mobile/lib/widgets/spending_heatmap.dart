@@ -52,7 +52,7 @@ class SpendingHeatmap extends ConsumerWidget {
                       : 1.0;
       return a == null
           ? scheme.surfaceContainerHighest.withValues(alpha: 0.35)
-          : AerisColors.seed.withValues(alpha: a);
+          : AerisColors.accent(context).withValues(alpha: a);
     }
 
     Color cellColor(double v) =>
@@ -207,7 +207,10 @@ class SpendingHeatmap extends ConsumerWidget {
                 child: ListView(
                   shrinkWrap: true,
                   padding: const EdgeInsets.only(bottom: 16),
-                  children: [for (final t in items) TransactionTile(txn: t)],
+                  children: [
+                    for (final t in items)
+                      TransactionTile(txn: t, showDate: false)
+                  ],
                 ),
               ),
           ],

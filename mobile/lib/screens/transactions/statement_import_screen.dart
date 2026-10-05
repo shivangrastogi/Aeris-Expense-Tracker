@@ -11,6 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../services/statement_import_service.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/aeris_toast.dart';
 
 class StatementImportScreen extends ConsumerStatefulWidget {
   const StatementImportScreen({super.key});
@@ -135,16 +136,26 @@ class _State extends ConsumerState<StatementImportScreen> {
         uid,
         selected,
         onProgress: (d, t) {
-          if (mounted) setState(() { _done = d; _total = t; });
+          if (mounted)
+            setState(() {
+              _done = d;
+              _total = t;
+            });
         },
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported $saved transaction${saved == 1 ? '' : 's'}.')),
+      ScaffoldMessenger.of(context).showToast(
+        SnackBar(
+            content:
+                Text('Imported $saved transaction${saved == 1 ? '' : 's'}.')),
       );
       Navigator.pop(context);
     } catch (e) {
-      if (mounted) setState(() { _stage = _Stage.review; _error = '$e'; });
+      if (mounted)
+        setState(() {
+          _stage = _Stage.review;
+          _error = '$e';
+        });
     }
   }
 
@@ -174,12 +185,15 @@ class _State extends ConsumerState<StatementImportScreen> {
                         DropdownMenuItem(
                           value: i,
                           child: Text(
-                            header[i].trim().isEmpty ? 'Column ${i + 1}' : header[i].trim(),
+                            header[i].trim().isEmpty
+                                ? 'Column ${i + 1}'
+                                : header[i].trim(),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                     ],
-                    onChanged: (v) => setSheet(() => map = map.withRole(role, v ?? -1)),
+                    onChanged: (v) =>
+                        setSheet(() => map = map.withRole(role, v ?? -1)),
                   ),
                 ),
               ]),
@@ -193,9 +207,11 @@ class _State extends ConsumerState<StatementImportScreen> {
               const Text('Map columns',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
               const SizedBox(height: 4),
-              const Text('Tell AERIS which column is which. Use Debit/Credit '
+              const Text(
+                  'Tell AERIS which column is which. Use Debit/Credit '
                   'for separate columns, or Amount (+ Type) for a single column.',
-                  style: TextStyle(fontSize: 12), textAlign: TextAlign.center),
+                  style: TextStyle(fontSize: 12),
+                  textAlign: TextAlign.center),
               const SizedBox(height: 10),
               picker('Date', ColumnRole.date, map.dateCol),
               picker('Description', ColumnRole.description, map.descCol),
@@ -257,17 +273,22 @@ class _State extends ConsumerState<StatementImportScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               SegmentedButton<TxnDirection>(
                 segments: const [
-                  ButtonSegment(value: TxnDirection.debit, label: Text('Expense')),
-                  ButtonSegment(value: TxnDirection.credit, label: Text('Income')),
+                  ButtonSegment(
+                      value: TxnDirection.debit, label: Text('Expense')),
+                  ButtonSegment(
+                      value: TxnDirection.credit, label: Text('Income')),
                 ],
                 selected: {dir},
                 onSelectionChanged: (s) => setD(() => dir = s.first),
               ),
               const SizedBox(height: 10),
-              TextField(controller: amount, keyboardType: TextInputType.number,
+              TextField(
+                  controller: amount,
+                  keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'Amount (₹)')),
               const SizedBox(height: 10),
-              TextField(controller: desc,
+              TextField(
+                  controller: desc,
                   decoration: const InputDecoration(labelText: 'Description')),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
@@ -282,7 +303,9 @@ class _State extends ConsumerState<StatementImportScreen> {
               ),
               const SizedBox(height: 10),
               Row(children: [
-                Expanded(child: Text('Date: ${DateFormat('d MMM yyyy').format(date)}')),
+                Expanded(
+                    child:
+                        Text('Date: ${DateFormat('d MMM yyyy').format(date)}')),
                 TextButton(
                   onPressed: () async {
                     final d = await showDatePicker(
@@ -299,7 +322,9 @@ class _State extends ConsumerState<StatementImportScreen> {
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
                 setState(() {
@@ -361,7 +386,8 @@ class _State extends ConsumerState<StatementImportScreen> {
             'Pick a statement file from any bank. AERIS reads PDF, CSV and Excel '
             '(.xlsx), figures out the columns, and lets you review everything '
             'before saving. Works with BOB, SBI, HDFC, ICICI and more.',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 22),
@@ -391,8 +417,10 @@ class _State extends ConsumerState<StatementImportScreen> {
           const Text('This PDF is password-protected',
               style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          Text('Bank PDFs are often locked with your account number, DOB or PAN.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          Text(
+              'Bank PDFs are often locked with your account number, DOB or PAN.',
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center),
           const SizedBox(height: 16),
           TextField(
@@ -425,12 +453,14 @@ class _State extends ConsumerState<StatementImportScreen> {
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(_parsed!.fileName,
                 style: const TextStyle(fontWeight: FontWeight.w700),
                 overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
-            Text('${txns.length} found · $selectedCount selected'
+            Text(
+                '${txns.length} found · $selectedCount selected'
                 '${dupCount > 0 ? ' · $dupCount possible duplicate${dupCount == 1 ? '' : 's'} skipped' : ''}',
                 style: const TextStyle(fontSize: 12)),
             if (_parsed!.isTabular)
@@ -444,7 +474,8 @@ class _State extends ConsumerState<StatementImportScreen> {
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                child: Text(_error!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
           ]),
         ),
@@ -490,7 +521,9 @@ class _State extends ConsumerState<StatementImportScreen> {
           '${isCredit ? '+' : '-'}${formatRupees(t.amount)}',
           style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: isCredit ? Colors.green : Theme.of(context).colorScheme.onSurface),
+              color: isCredit
+                  ? Colors.green
+                  : Theme.of(context).colorScheme.onSurface),
         ),
         onTap: () => _editRow(t),
       ),

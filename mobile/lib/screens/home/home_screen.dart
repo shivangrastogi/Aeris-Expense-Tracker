@@ -9,30 +9,39 @@ import '../../models/transaction.dart';
 import '../../models/user_profile.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/budgets_provider.dart';
 import '../../providers/gamification_provider.dart';
+import '../../providers/goals_provider.dart';
 import '../../providers/insights_provider.dart';
 import '../../providers/privacy_provider.dart';
 import '../../providers/transactions_provider.dart';
+import '../../providers/money_providers.dart';
+import '../../services/money_insights.dart';
 import '../../utils/formatters.dart';
 import '../../utils/motion.dart';
-import '../../widgets/aeris_avatar.dart';
 import '../../widgets/budget_ring.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/transaction_tile.dart';
+import '../../widgets/aeris_toast.dart';
 
 // Home dashboard ids the "Customize dashboard" screen can hide.
 const kHomeCardForecast = 'forecast';
 const kHomeCardCheckin = 'checkin';
 const kHomeCardCategories = 'categories';
+const kHomeCardMomentum = 'momentum';
 
 // The hero's spend figure counts up once per app session — the single
 // entrance moment on Home. Everything else paints immediately.
 bool _heroCounted = false;
 
+// Colours used on the dark ink hero, in both themes.
+const _heroMuted = Color(0xB3EAF2F7); // HUD text 70%
+const _heroGood = AerisColors.mint; // "down" trends, safe figures
+const _heroBad = Color(0xFFFF8A98); // over budget
+const _heroUp = AerisColors.amber; // spending up
+
 // ── Home Screen ──────────────────────────────────────────────
 //
-// Three zones: this month (hero + top categories), one "needs attention"
+// Three zones: this month (hero + where it went), one "needs attention"
 // card, and recent activity. Goals, Aeris World and widgets live on the Me
 // tab, so Home stays short and the important number is the loudest thing.
 class HomeScreen extends ConsumerWidget {
@@ -46,23 +55,26 @@ class HomeScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(transactionsStreamProvider),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
           children: [
-            const SafeArea(bottom: false, child: _FlowHeader()),
+            const SafeArea(bottom: false, child: _Header()),
             const _HeroCard(),
+            if (!hidden.contains(kHomeCardMomentum)) ...[
+              const SizedBox(height: 14),
+              const _MomentumCard(),
+            ],
             if (!hidden.contains(kHomeCardCategories)) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               const _TopCategories(),
             ],
-            const SizedBox(height: 16),
-            const _AttentionCard(),
+            const _AttentionSlot(),
             // Always rendered (an empty box when idle). Conditionally inserting
             // the banner here used to shift every keyless child below it, so
             // reconciliation re-matched them by index and churned their
             // elements mid-rebuild during SMS import. A constant slot keeps
             // every sibling at a stable index.
-            _importBanner(importProgress),
-            const SizedBox(height: 22),
+            _importBanner(context, importProgress),
+            const SizedBox(height: 24),
             const _RecentActivitySection(),
           ],
         ),
@@ -70,47 +82,54 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _importBanner(({int done, int total})? p) {
+  Widget _importBanner(BuildContext context, ({int done, int total})? p) {
     if (p == null) return const SizedBox.shrink();
     final pct = p.total == 0 ? null : p.done / p.total;
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Card(
-        color: AerisColors.info.withValues(alpha: 0.10),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2.4, value: pct)),
-            const SizedBox(width: 12),
-            Expanded(
-                child: Text('Importing SMS… ${p.done}/${p.total}',
-                    style: const TextStyle(fontSize: 13))),
-          ]),
-        ),
+      padding: const EdgeInsets.only(top: 14),
+      child: AerisCard(
+        padding: const EdgeInsets.all(14),
+        child: Row(children: [
+          SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2.4, value: pct)),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Text('Importing bank SMS… ${p.done}/${p.total}',
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w600))),
+        ]),
       ),
     );
   }
 }
 
-// ── Flow header: avatar · greeting · eye · mascot ─────────────
-class _FlowHeader extends ConsumerWidget {
-  const _FlowHeader();
+// ── Header: avatar · greeting · bell · eye · Ask Aeris ────────
+class _Header extends ConsumerWidget {
+  const _Header();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(userProfileProvider).asData?.value;
     final hidden = ref.watch(amountHiddenProvider);
-    final aeris = ref.watch(avatarStatusProvider);
+    // The bell only shows a dot when the notifications screen actually has
+    // something: imports (bank SMS, screenshots) waiting for review or a budget about to blow.
+    final pendingSms = ref.watch(transactionsStreamProvider.select((a) =>
+        (a.valueOrNull ?? const <Transaction>[])
+            .any((t) => t.needsReview)));
+    final riskyBudget = ref.watch(insightsProvider.select((a) =>
+        (a.valueOrNull?.budgetProjections ?? const []).any((p) =>
+            p.alreadyOver ||
+            (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))));
 
-    final rawName = profile?.displayName?.split(' ').first ?? 'there';
+    final rawName = profile?.displayName?.trim().split(' ').first ?? '';
     final name = rawName.isEmpty
         ? 'there'
         : rawName[0].toUpperCase() + rawName.substring(1);
     final initials = (profile?.displayName ?? '?')
-        .split(' ')
+        .trim()
+        .split(RegExp(r'\s+'))
         .take(2)
         .map((w) => w.isEmpty ? '' : w[0].toUpperCase())
         .join();
@@ -123,17 +142,14 @@ class _FlowHeader extends ConsumerWidget {
             : 'Good evening';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
+      padding: const EdgeInsets.fromLTRB(0, 10, 0, 18),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Profile avatar — shows the user's photo if set, else initials.
           GestureDetector(
             onTap: () => Navigator.pushNamed(context, AppRoutes.editProfile),
             child: _ProfileAvatar(profile: profile, initials: initials),
           ),
           const SizedBox(width: 12),
-          // Greeting + name
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,61 +157,42 @@ class _FlowHeader extends ConsumerWidget {
               children: [
                 Text(greet,
                     style: TextStyle(
-                        fontSize: 12.5,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w600)),
+                        fontSize: 13,
+                        color: AerisColors.muted(context),
+                        fontWeight: FontWeight.w500)),
+                const SizedBox(height: 1),
                 Text(name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 19,
+                        fontSize: 20,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
-                        height: 1.1)),
+                        height: 1.15)),
               ],
             ),
           ),
-          // Notifications — glass icon button with an unread dot
-          _GlassIconBtn(
+          _RoundIconBtn(
             icon: Icons.notifications_none_rounded,
+            tooltip: 'Notifications',
+            badge: pendingSms || riskyBudget,
             onTap: () => Navigator.pushNamed(context, AppRoutes.notifications),
-            badge: true,
           ),
           const SizedBox(width: 8),
-          // Privacy eye — glass icon button
-          _GlassIconBtn(
+          _RoundIconBtn(
             icon: hidden
                 ? Icons.visibility_off_outlined
                 : Icons.visibility_outlined,
-            onTap: () => ref.read(amountHiddenProvider.notifier).toggle(),
+            tooltip: hidden ? 'Show amounts' : 'Hide amounts',
             active: hidden,
+            onTap: () => ref.read(amountHiddenProvider.notifier).toggle(),
           ),
           const SizedBox(width: 8),
-          // Mascot button — opens AI assistant. The new-GUI header wraps it in
-          // a neutral frosted-glass circle (glassStyle, not a teal plate) with
-          // the avatar clipped inside. TickerMode (in RootShell) pauses the
-          // animation whenever Home isn't the visible tab, so it's cheap.
-          GestureDetector(
+          _RoundIconBtn(
+            icon: Icons.auto_awesome_rounded,
+            tooltip: 'Ask Aeris',
+            active: true,
             onTap: () => Navigator.pushNamed(context, AppRoutes.assistant),
-            child: Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              clipBehavior: Clip.hardEdge,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white.withValues(alpha: 0.07)
-                    : Colors.black.withValues(alpha: 0.05),
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12), width: 1),
-              ),
-              child: AerisAvatar(
-                  skin: aeris.skin,
-                  stage: aeris.stage,
-                  mood: aeris.mood,
-                  size: 36,
-                  glow: false,
-                  animate: true),
-            ),
           ),
         ],
       ),
@@ -203,67 +200,68 @@ class _FlowHeader extends ConsumerWidget {
   }
 }
 
-class _GlassIconBtn extends StatelessWidget {
+class _RoundIconBtn extends StatelessWidget {
   final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
   final bool active;
   final bool badge;
-  const _GlassIconBtn(
-      {required this.icon,
-      required this.onTap,
-      this.active = false,
-      this.badge = false});
+  const _RoundIconBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.active = false,
+    this.badge = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = Theme.of(context).colorScheme.surface;
-    return GestureDetector(
-      onTap: onTap,
-      child: Stack(clipBehavior: Clip.none, children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: active
-                ? AerisColors.seed.withValues(alpha: 0.15)
-                : (isDark
-                    ? Colors.white.withValues(alpha: 0.07)
-                    : Colors.black.withValues(alpha: 0.05)),
-            border: Border.all(
-              color: active
-                  ? AerisColors.seed.withValues(alpha: 0.35)
-                  : Colors.white.withValues(alpha: 0.12),
-              width: 1,
+    final accent = AerisColors.accent(context);
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Stack(clipBehavior: Clip.none, children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: active
+                  ? BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AerisColors.accentSoft(context))
+                  : AerisColors.cardDecoration(context, radius: 21),
+              child: Icon(icon,
+                  size: 20,
+                  color: active
+                      ? accent
+                      : Theme.of(context).colorScheme.onSurface),
             ),
-          ),
-          child: Icon(icon,
-              size: 21,
-              color: active
-                  ? AerisColors.seed
-                  : Theme.of(context).colorScheme.onSurface),
-        ),
-        if (badge)
-          Positioned(
-            top: 2,
-            right: 3,
-            child: Container(
-              width: 9,
-              height: 9,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AerisColors.moneyOut(context),
-                border: Border.all(color: surface, width: 1.5),
+            if (badge)
+              Positioned(
+                top: 1,
+                right: 1,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AerisColors.danger(context),
+                    border: Border.all(
+                        color: AerisColors.canvas(context), width: 2),
+                  ),
+                ),
               ),
-            ),
-          ),
-      ]),
+          ]),
+        ),
+      ),
     );
   }
 }
 
-// ── Profile avatar: user photo if set, else gradient initials ─────────────────
+// ── Profile avatar: user photo if set, else initials ──────────
 class _ProfileAvatar extends StatelessWidget {
   final UserProfile? profile;
   final String initials;
@@ -287,30 +285,28 @@ class _ProfileAvatar extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           image: DecorationImage(image: img, fit: BoxFit.cover),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
         ),
       );
     }
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(
-          shape: BoxShape.circle, gradient: AerisColors.heroGradient),
+      decoration: BoxDecoration(
+          shape: BoxShape.circle, color: AerisColors.accentSoft(context)),
       child: Center(
         child: Text(
           initials.isEmpty ? '?' : initials,
           style: TextStyle(
-              color: Colors.white,
+              color: AerisColors.accent(context),
               fontSize: size * 0.36,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.5),
+              fontWeight: FontWeight.w800),
         ),
       ),
     );
   }
 }
 
-// ── Hero spend card ───────────────────────────────────────────
+// ── Hero: what you've spent, and what's safe to spend ─────────
 class _HeroCard extends ConsumerWidget {
   const _HeroCard();
 
@@ -319,141 +315,114 @@ class _HeroCard extends ConsumerWidget {
     ref.watch(amountHiddenProvider);
     final analytics = ref.watch(analyticsProvider);
     final range = ref.watch(analyticsRangeProvider);
-    final streak = ref.watch(gamificationProvider.select((g) => g.liveStreak));
 
     return analytics.when(
-      data: (s) => _card(context, ref, s, range, streak),
-      loading: () => const SkeletonBox(height: 160, radius: 24),
+      data: (s) => _card(context, s, range),
+      loading: () => const SkeletonBox(height: 188, radius: 26),
       error: (_, __) => const SizedBox.shrink(),
     );
   }
 
-  Widget _card(BuildContext context, WidgetRef ref, AnalyticsSnapshot s,
-      AnalyticsRange range, int streak) {
+  Widget _card(
+      BuildContext context, AnalyticsSnapshot s, AnalyticsRange range) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final mom = _computeMom(s);
-    return GestureDetector(
-      onTap: () => Navigator.pushNamed(context, AppRoutes.transactions,
-          arguments: TxnDirection.debit),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-                color: const Color(0xFF0F766E).withValues(alpha: 0.35),
-                blurRadius: 30,
-                offset: const Offset(0, 12))
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-            decoration: const BoxDecoration(
-              gradient: AerisColors.heroGradient,
+    final isThisMonth = range.kind == RangeKind.thisMonth;
+    return Semantics(
+      button: true,
+      label: 'Spent ${range.label}: ${formatRupees(s.monthExpense)}',
+      child: GestureDetector(
+        onTap: () => Navigator.pushNamed(context, AppRoutes.transactions,
+            arguments: TxnDirection.debit),
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          // A HUD slab: deep navy, a hairline arc edge and an arc glow.
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            gradient: AerisColors.inkGradient,
+            border: Border.all(color: AerisColors.arc.withValues(alpha: 0.22)),
+            boxShadow: [
+              BoxShadow(
+                  color: dark
+                      ? AerisColors.arc.withValues(alpha: 0.14)
+                      : const Color(0x330B1220),
+                  blurRadius: 28,
+                  offset: const Offset(0, 12)),
+            ],
+          ),
+          child: Stack(children: [
+            // Soft arc/violet glows in the corners — the "screen" feel.
+            const Positioned(
+                right: -70, top: -80, child: _Glow(AerisColors.arc, 220)),
+            const Positioned(
+                left: -60, bottom: -110, child: _Glow(AerisColors.violet, 200)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AerisColors.arc,
+                            boxShadow: [
+                              BoxShadow(color: AerisColors.arc, blurRadius: 6)
+                            ]),
+                      ),
+                      const SizedBox(width: 8),
+                      // Flexible: on 320dp phones the wide-tracked caption
+                      // must give way to the range pill, not overflow.
+                      Expanded(
+                        child: Text('SPENT · ${range.label.toUpperCase()}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: hudLabel(context, color: _heroMuted)),
+                      ),
+                      const SizedBox(width: 8),
+                      _RangePill(label: range.label),
+                    ]),
+                    const SizedBox(height: 8),
+                    _HeroAmount(value: s.monthExpense),
+                    if (isThisMonth) ...[
+                      const SizedBox(height: 16),
+                      _BudgetStatus(spent: s.monthExpense),
+                    ],
+                    if (mom != null) ...[
+                      const SizedBox(height: 14),
+                      _momChip(mom),
+                    ],
+                  ]),
             ),
-            child: Stack(clipBehavior: Clip.none, children: [
-              // Decorative circles — clipped by the ClipRRect above
-              Positioned(
-                right: -40,
-                top: -55,
-                child: Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.09)),
-                ),
-              ),
-              Positioned(
-                right: -10,
-                bottom: -60,
-                child: Container(
-                  width: 140,
-                  height: 140,
-                  decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.05)),
-                ),
-              ),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                // Row: label | range pill
-                Row(children: [
-                  Text('Spent · ${range.label}',
-                      style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  _RangePill(label: range.label),
-                ]),
-                const SizedBox(height: 8),
-                _HeroAmount(value: s.monthExpense),
-                if (range.label == AnalyticsRange.thisMonth().label) ...[
-                  const SizedBox(height: 14),
-                  _BudgetBar(spent: s.monthExpense),
-                ],
-                const SizedBox(height: 14),
-                // MoM badge (informational, matches the GUI's non-tappable span)
-                // + streak chip (tappable → "Your streak" sheet, like the GUI).
-                Row(children: [
-                  if (mom != null) ...[
-                    _momBadge(mom),
-                    const SizedBox(width: 8)
-                  ],
-                  GestureDetector(
-                    onTap: () => _showStreakSheet(context, ref),
-                    child: _streakBadge(streak),
-                  ),
-                ]),
-              ]),
-            ]),
-          ), // gradient Container
-        ), // ClipRRect
-      ), // shadow Container
+          ]),
+        ),
+      ),
     );
   }
 
-  Widget _momBadge(({double pct, bool down}) m) {
+  Widget _momChip(({double pct, bool down}) m) {
+    final color = m.down ? _heroGood : _heroUp;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: m.down
-            ? Colors.white.withValues(alpha: 0.92)
-            : Colors.black.withValues(alpha: 0.20),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(99),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(m.down ? Icons.trending_down : Icons.trending_up,
-            size: 15, color: m.down ? const Color(0xFF0F766E) : Colors.white),
-        const SizedBox(width: 3),
-        Text('${m.pct.toStringAsFixed(0)}% vs last month',
+        Icon(m.down ? Icons.trending_down_rounded : Icons.trending_up_rounded,
+            size: 15, color: color),
+        const SizedBox(width: 5),
+        Text(
+            '${m.pct.toStringAsFixed(0)}% ${m.down ? 'less' : 'more'} than last month',
             style: TextStyle(
-                color: m.down ? const Color(0xFF0F766E) : Colors.white,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w800)),
+                color: color, fontSize: 12.5, fontWeight: FontWeight.w700)),
       ]),
     );
   }
 
-  Widget _streakBadge(int streak) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(99)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.local_fire_department,
-            size: 15, color: Color(0xFFFFD9A8)),
-        const SizedBox(width: 4),
-        Text('${streak > 0 ? streak : 0}-day',
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w800)),
-      ]),
-    );
-  }
-
+  /// Compared against last month's total — only while viewing a month.
   ({double pct, bool down})? _computeMom(AnalyticsSnapshot s) {
     if (!s.label.toLowerCase().contains('month')) return null;
     final now = DateTime.now();
@@ -463,6 +432,7 @@ class _HeroCard extends ConsumerWidget {
         s.monthlyExpenseSeries[mk(DateTime(now.year, now.month - 1, 1))] ?? 0;
     if (last <= 0) return null;
     final pct = (cur - last) / last * 100;
+    if (pct.abs() < 1) return null;
     return (pct: pct.abs(), down: cur < last);
   }
 }
@@ -508,10 +478,8 @@ class _HeroAmountState extends State<_HeroAmount> {
           TextSpan(children: [
             TextSpan(
               text: m[1],
-              style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withValues(alpha: 0.75)),
+              style: const TextStyle(
+                  fontSize: 26, fontWeight: FontWeight.w600, color: _heroMuted),
             ),
             TextSpan(text: m[2]),
           ]),
@@ -519,42 +487,61 @@ class _HeroAmountState extends State<_HeroAmount> {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
               color: Colors.white,
-              fontSize: 46,
+              fontSize: 44,
               fontWeight: FontWeight.w800,
               letterSpacing: -1.5,
-              height: 1.0),
+              height: 1.05),
         );
       },
     );
   }
 }
 
-// ── Monthly budget, folded into the hero as one thin bar ──────
-class _BudgetBar extends ConsumerWidget {
+// ── Monthly budget: one thin bar + what's safe to spend per day ─
+class _BudgetStatus extends ConsumerWidget {
   final double spent;
-  const _BudgetBar({required this.spent});
+  const _BudgetStatus({required this.spent});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final budgets = ref.watch(budgetsStreamProvider).asData?.value ?? const [];
+    final budgets = ref.watch(effectiveBudgetsProvider);
     final total = _totalBudget(budgets);
-    const label = TextStyle(
-        color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700);
     if (total <= 0) {
       return GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.pushNamed(context, AppRoutes.budgets),
-        child: Row(children: [
-          Icon(Icons.add_circle_outline,
-              size: 16, color: Colors.white.withValues(alpha: 0.85)),
-          const SizedBox(width: 6),
-          const Text('Set a monthly budget', style: label),
-        ]),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Row(children: [
+            Icon(Icons.savings_outlined, size: 18, color: _heroGood),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text('Set a monthly budget to see what\'s safe to spend',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600)),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 18, color: _heroMuted),
+          ]),
+        ),
       );
     }
+
     final left = total - spent;
     final over = left < 0;
     final v = (spent / total).clamp(0.0, 1.0);
+    final now = DateTime.now();
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final daysLeft = daysInMonth - now.day + 1; // including today
+    final perDay = over ? 0.0 : left / daysLeft;
+
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.pushNamed(context, AppRoutes.budgets),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ClipRRect(
@@ -565,195 +552,540 @@ class _BudgetBar extends ConsumerWidget {
                 ? Duration.zero
                 : const Duration(milliseconds: 900),
             curve: Curves.easeOutCubic,
-            builder: (_, x, __) => LinearProgressIndicator(
-              value: x,
-              minHeight: 6,
-              backgroundColor: Colors.white.withValues(alpha: 0.22),
-              color: over ? const Color(0xFFFFC9C9) : Colors.white,
-            ),
+            builder: (_, x, __) => _GlowBar(value: x, over: over),
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          over
-              ? '${formatRupees(-left, compact: true)} over your '
-                  '${formatRupees(total, compact: true)} budget'
-              : '${formatRupees(left, compact: true)} left of '
-                  '${formatRupees(total, compact: true)}',
-          style: label.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+        const SizedBox(height: 10),
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Expanded(
+            child: Text(
+              over
+                  ? '${formatRupees(-left, compact: true)} over your '
+                      '${formatRupees(total, compact: true)} budget'
+                  : '${formatRupees(left, compact: true)} left of '
+                      '${formatRupees(total, compact: true)}',
+              style: TextStyle(
+                  color: over ? _heroBad : Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700),
+            ),
+          ),
+          if (!over)
+            Text.rich(
+              TextSpan(children: [
+                TextSpan(
+                    text: formatRupees(perDay, compact: true),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800)),
+                TextSpan(
+                    text: daysLeft == 1
+                        ? '/day · last day'
+                        : '/day · $daysLeft days'),
+              ]),
+              style: const TextStyle(
+                  color: _heroMuted,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600),
+            ),
+        ]),
+      ]),
+    );
+  }
+}
+
+/// A soft radial light, for HUD panels.
+class _Glow extends StatelessWidget {
+  final Color color;
+  final double size;
+  const _Glow(this.color, this.size);
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(colors: [
+              color.withValues(alpha: 0.22),
+              color.withValues(alpha: 0.0),
+            ]),
+          ),
+        ),
+      );
+}
+
+/// Budget bar: an arc → violet gradient with a soft glow on a dim track;
+/// turns coral when over budget.
+class _GlowBar extends StatelessWidget {
+  final double value;
+  final bool over;
+  const _GlowBar({required this.value, required this.over});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 7,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      alignment: Alignment.centerLeft,
+      child: FractionallySizedBox(
+        widthFactor: value.clamp(0.0, 1.0),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(99),
+            gradient: over
+                ? const LinearGradient(colors: [_heroBad, AerisColors.coral])
+                : const LinearGradient(
+                    colors: [AerisColors.mint, AerisColors.arc]),
+            boxShadow: [
+              BoxShadow(
+                  color: (over ? AerisColors.coral : AerisColors.arc)
+                      .withValues(alpha: 0.55),
+                  blurRadius: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Momentum: the motivation panel ────────────────────────────
+//
+// Three live numbers that reward good behaviour — how much of your income
+// you're keeping, your check-in streak, and your closest goal — plus one
+// money line that changes every day.
+const _quotes = <(String, String)>[
+  (
+    'Do not save what is left after spending; spend what is left after saving.',
+    'Warren Buffett'
+  ),
+  (
+    'A budget is telling your money where to go instead of wondering where it went.',
+    'Dave Ramsey'
+  ),
+  ('Small daily wins compound into big results.', 'AERIS'),
+  (
+    'Beware of little expenses. A small leak will sink a great ship.',
+    'Benjamin Franklin'
+  ),
+  ('Wealth is what you don\'t see — the cars not bought.', 'Morgan Housel'),
+  ('The habit of saving is itself an education.', 'T.T. Munger'),
+  ('Every rupee you track is a rupee you control.', 'AERIS'),
+  (
+    'It\'s not your salary that makes you rich, it\'s your spending habits.',
+    'Charles A. Jaffe'
+  ),
+  (
+    'Financial freedom is available to those who learn about it and work for it.',
+    'Robert Kiyosaki'
+  ),
+  (
+    'Rich people plan for three generations. Poor people plan for Saturday night.',
+    'Gloria Steinem'
+  ),
+  (
+    'Too many people spend money they haven\'t earned to impress people they don\'t like.',
+    'Will Rogers'
+  ),
+  ('Discipline today, freedom tomorrow.', 'AERIS'),
+  (
+    'The best time to start was yesterday. The next best time is today.',
+    'Proverb'
+  ),
+  ('An investment in knowledge pays the best interest.', 'Benjamin Franklin'),
+];
+
+class _MomentumCard extends ConsumerWidget {
+  const _MomentumCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(amountHiddenProvider);
+    final analytics = ref.watch(analyticsProvider).asData?.value;
+    final range = ref.watch(analyticsRangeProvider);
+    final profile = ref.watch(userProfileProvider).asData?.value;
+    final streak = ref.watch(gamificationProvider.select((g) => g.liveStreak));
+    final goals = ref.watch(goalsStreamProvider).asData?.value ?? const [];
+    final projection = ref.watch(projectionProvider);
+    if (analytics == null) return const SizedBox.shrink();
+
+    // Savings: income recorded in the range, else the profile's monthly
+    // income while looking at this month.
+    var income = analytics.monthIncome;
+    if (income <= 0 && range.kind == RangeKind.thisMonth) {
+      income = profile?.monthlyIncome ?? 0;
+    }
+    final saved = income - analytics.monthExpense;
+    final rate = income > 0 ? saved / income : null;
+
+    // The goal closest to done (but not done yet) is the most motivating.
+    final open = goals.where((g) => !g.isComplete).toList()
+      ..sort((a, b) => b.progress.compareTo(a.progress));
+    final goal = open.isNotEmpty ? open.first : null;
+
+    final now = DateTime.now();
+    final dayOfYear = now.difference(DateTime(now.year)).inDays;
+    final (quote, author) = _quotes[dayOfYear % _quotes.length];
+    final muted = AerisColors.muted(context);
+    final accent = AerisColors.accent(context);
+
+    return AerisCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.bolt_rounded, size: 15, color: accent),
+          const SizedBox(width: 6),
+          Text('MOMENTUM', style: hudLabel(context, color: accent)),
+          const Spacer(),
+          if (rate != null && rate >= 0.2)
+            Text('On track',
+                style: hudLabel(context, color: AerisColors.moneyIn(context))),
+        ]),
+        const SizedBox(height: 14),
+        IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(
+              child: _Stat(
+                label: 'SAVED',
+                value: rate == null
+                    ? '—'
+                    : '${(rate * 100).clamp(-999, 100).toStringAsFixed(0)}%',
+                sub: rate == null
+                    ? 'Add income'
+                    : saved >= 0
+                        ? '${formatRupees(saved, compact: true)} kept'
+                        : '${formatRupees(-saved, compact: true)} over',
+                color: rate == null
+                    ? muted
+                    : rate >= 0
+                        ? AerisColors.moneyIn(context)
+                        : AerisColors.danger(context),
+                onTap: () => Navigator.pushNamed(context,
+                    rate == null ? AppRoutes.editProfile : AppRoutes.insights),
+              ),
+            ),
+            VerticalDivider(width: 1, color: AerisColors.line(context)),
+            Expanded(
+              child: _Stat(
+                label: 'STREAK',
+                value: '$streak',
+                sub: streak == 1 ? 'day' : 'days',
+                color: AerisColors.amber,
+                icon: Icons.local_fire_department_rounded,
+                onTap: () => _showStreakSheet(context),
+              ),
+            ),
+            VerticalDivider(width: 1, color: AerisColors.line(context)),
+            Expanded(
+              child: _Stat(
+                label: 'GOAL',
+                value: goal == null
+                    ? '+'
+                    : '${(goal.progress * 100).toStringAsFixed(0)}%',
+                sub: goal == null ? 'Set one' : goal.title,
+                color: AerisColors.violet,
+                progress: goal?.progress,
+                onTap: () => Navigator.pushNamed(context, AppRoutes.goals),
+              ),
+            ),
+          ]),
+        ),
+        if (projection != null) ...[
+          const SizedBox(height: 12),
+          // Future-you: where today's saving pace lands you.
+          Semantics(
+            button: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.pushNamed(context, AppRoutes.netWorth),
+              child: Row(children: [
+                const Icon(Icons.rocket_launch_outlined,
+                    size: 16, color: AerisColors.violet),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(
+                          text:
+                              'At ${formatRupees(projection.perMonth, compact: true)}/month you\'ll have '),
+                      TextSpan(
+                          text: formatRupees(projection.value, compact: true),
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                      TextSpan(
+                          text:
+                              ' by ${const ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][projection.by.month]} ${projection.by.year}'),
+                    ]),
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurface),
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, size: 18, color: muted),
+              ]),
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: AerisColors.accentSoft(context),
+            borderRadius: BorderRadius.circular(14),
+            border: Border(left: BorderSide(color: accent, width: 3)),
+          ),
+          child: Text.rich(
+            TextSpan(children: [
+              TextSpan(
+                  text: '“$quote”',
+                  style: TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface)),
+              TextSpan(
+                  text: '\n— $author',
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w500, color: muted)),
+            ]),
+          ),
         ),
       ]),
     );
   }
 }
 
-// ── "Your streak" sheet (ports the new GUI StreakSheet) ───────────────────────
-void _showStreakSheet(BuildContext context, WidgetRef ref) {
+class _Stat extends StatelessWidget {
+  final String label;
+  final String value;
+  final String sub;
+  final Color color;
+  final IconData? icon;
+  final double? progress;
+  final VoidCallback onTap;
+
+  const _Stat({
+    required this.label,
+    required this.value,
+    required this.sub,
+    required this.color,
+    required this.onTap,
+    this.icon,
+    this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = AerisColors.muted(context);
+    return Semantics(
+      button: true,
+      label: '$label $value $sub',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(children: [
+            Text(label, style: hudLabel(context, size: 10)),
+            const SizedBox(height: 6),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              if (icon != null) ...[
+                Icon(icon, size: 18, color: color),
+                const SizedBox(width: 2),
+              ],
+              Text(value,
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                      color: color)),
+            ]),
+            const SizedBox(height: 2),
+            Text(sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11.5, fontWeight: FontWeight.w500, color: muted)),
+            if (progress != null) ...[
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 3,
+                  color: color,
+                  backgroundColor: color.withValues(alpha: 0.15),
+                ),
+              ),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ── "Your streak" sheet ───────────────────────────────────────
+void _showStreakSheet(BuildContext context) {
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
-    backgroundColor: Theme.of(context).colorScheme.surface,
-    shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
     builder: (ctx) => Consumer(builder: (ctx, ref2, _) {
       final g = ref2.watch(gamificationProvider);
       final streak = g.liveStreak; // lapses if a day was missed
       final week = g.weekCheckins(); // real Sun→Sat check-in days
       final notifier = ref2.read(gamificationProvider.notifier);
       final done = notifier.checkedInToday;
-      final scheme = Theme.of(ctx).colorScheme;
-
+      final accent = AerisColors.accent(ctx);
       final todayIdx = g.todayWeekIndex; // Sun=0 … Sat=6
       const labels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+      final now = DateTime.now();
+      final noSpend = noSpendWeek(
+        ref2.watch(transactionsStreamProvider).valueOrNull ?? const [],
+        now,
+        weekStart: DateTime(now.year, now.month, now.day)
+            .subtract(Duration(days: todayIdx)),
+      );
+      final noSpendCount = noSpend.where((d) => d == true).length;
 
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Orange streak hero
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFEA580C), Color(0xFFF97316)],
-              ),
-            ),
-            child: Stack(clipBehavior: Clip.none, children: [
-              Positioned(
-                right: -16,
-                bottom: -28,
-                child: Icon(Icons.local_fire_department,
-                    size: 140, color: Colors.white.withValues(alpha: 0.18)),
-              ),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.local_fire_department,
-                    size: 34, color: Color(0xFFFFE0B2)),
-                const SizedBox(height: 6),
-                Text('$streak-day streak',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5)),
-                const SizedBox(height: 2),
-                Text('Keep checking in to grow your Aura',
-                    style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.88),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600)),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    for (var i = 0; i < 7; i++)
-                      _streakDay(
-                        label: labels[i],
-                        checked: i < week.length && week[i],
-                        isToday: i == todayIdx,
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('$streak-day streak',
+                style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5)),
+            const SizedBox(height: 4),
+            Text('Open AERIS and check in once a day to keep it going.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    color: AerisColors.muted(ctx))),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                for (var i = 0; i < 7; i++)
+                  Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i < week.length && week[i]
+                            ? accent
+                            : AerisColors.accentSoft(ctx),
+                        border: i == todayIdx
+                            ? Border.all(color: accent, width: 2)
+                            : null,
                       ),
-                  ],
-                ),
-              ]),
-            ]),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Check in daily to keep your streak alive. Each day earns Aura '
-            'that grows your Aeris garden. Prefer it on your home screen? Add '
-            'the streak widget from Me → Widgets.',
-            style: TextStyle(
-                fontSize: 13,
-                height: 1.5,
-                fontWeight: FontWeight.w600,
-                color: scheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: done
-                  ? null
-                  : () {
-                      final aura = notifier.checkIn();
-                      final messenger = ScaffoldMessenger.of(ctx);
-                      messenger.showSnackBar(SnackBar(
-                        content: Text(aura > 0
-                            ? 'Checked in · +$aura Aura 🔥'
-                            : 'Already checked in today'),
-                        duration: const Duration(seconds: 2),
-                      ));
-                    },
-              style: FilledButton.styleFrom(
-                backgroundColor: AerisColors.seed,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor:
-                    scheme.onSurface.withValues(alpha: 0.12),
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15)),
-                textStyle:
-                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-              ),
-              child:
-                  Text(done ? 'Checked in today ✓' : 'Check in · +15 ✦ Aura'),
+                      child: i < week.length && week[i]
+                          ? Icon(Icons.check_rounded,
+                              size: 18, color: AerisColors.onAccent(ctx))
+                          : null,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(labels[i],
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AerisColors.muted(ctx))),
+                    const SizedBox(height: 4),
+                    // No-spend day badge (past days with ₹0 spent).
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: noSpend[i] == true
+                            ? AerisColors.moneyIn(ctx).withValues(alpha: 0.16)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text('₹0',
+                          style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: noSpend[i] == true
+                                  ? AerisColors.moneyIn(ctx)
+                                  : Colors.transparent)),
+                    ),
+                  ]),
+              ],
             ),
-          ),
-        ]),
+            const SizedBox(height: 12),
+            Text(
+              noSpendCount == 0
+                  ? 'No-spend days earn +10 Aura each — they show up here.'
+                  : '$noSpendCount no-spend day${noSpendCount == 1 ? '' : 's'} this week · +${noSpendCount * 10} Aura',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: noSpendCount == 0
+                      ? AerisColors.muted(ctx)
+                      : AerisColors.moneyIn(ctx)),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: done
+                    ? null
+                    : () {
+                        final aura = notifier.checkIn();
+                        ScaffoldMessenger.of(ctx).showToast(SnackBar(
+                          content: Text(aura > 0
+                              ? 'Checked in · +$aura Aura'
+                              : 'Already checked in today'),
+                          duration: const Duration(seconds: 2),
+                        ));
+                      },
+                child:
+                    Text(done ? 'Checked in today ✓' : 'Check in · +15 Aura'),
+              ),
+            ),
+          ]),
+        ),
       );
     }),
   );
 }
 
-Widget _streakDay(
-    {required String label, required bool checked, required bool isToday}) {
-  return Column(mainAxisSize: MainAxisSize.min, children: [
-    Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: checked ? Colors.white : Colors.white.withValues(alpha: 0.18),
-        border: isToday ? Border.all(color: Colors.white, width: 2) : null,
-      ),
-      child: checked
-          ? const Icon(Icons.check, size: 17, color: Color(0xFFEA580C))
-          : null,
-    ),
-    const SizedBox(height: 5),
-    Text(label,
-        style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.85),
-            fontSize: 10.5,
-            fontWeight: FontWeight.w700)),
-  ]);
-}
-
-// Range selector pill embedded inside hero card
+// Range selector pill embedded inside the hero card
 class _RangePill extends ConsumerWidget {
   final String label;
   const _RangePill({required this.label});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap: () => _showSheet(context, ref),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(99)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(label,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700)),
-          const SizedBox(width: 3),
-          const Icon(Icons.expand_more, color: Colors.white, size: 16),
-        ]),
+    return Semantics(
+      button: true,
+      label: 'Change date range, currently $label',
+      child: GestureDetector(
+        onTap: () => _showSheet(context, ref),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
+          decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(99)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(label,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(width: 2),
+            const Icon(Icons.expand_more_rounded,
+                color: Colors.white, size: 16),
+          ]),
+        ),
       ),
     );
   }
@@ -770,25 +1102,30 @@ class _RangePill extends ConsumerWidget {
       showDragHandle: true,
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('Date range',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            ...options.map((r) => ListTile(
-                  title: Text(r.label,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  leading: Icon(
-                    r.label == label
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_unchecked,
-                    color: r.label == label ? AerisColors.seed : null,
-                  ),
-                  onTap: () {
-                    ref.read(analyticsRangeProvider.notifier).state = r;
-                    Navigator.pop(ctx);
-                  },
-                )),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: Text('Show spending for',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            ),
+            ...options.map((r) {
+              final on = r.label == label;
+              return ListTile(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                title: Text(r.label,
+                    style: TextStyle(
+                        fontWeight: on ? FontWeight.w700 : FontWeight.w500)),
+                trailing: on
+                    ? Icon(Icons.check_rounded, color: AerisColors.accent(ctx))
+                    : null,
+                onTap: () {
+                  ref.read(analyticsRangeProvider.notifier).state = r;
+                  Navigator.pop(ctx);
+                },
+              );
+            }),
           ]),
         ),
       ),
@@ -821,7 +1158,7 @@ List<Budget> _overBudget(
         return bOver.compareTo(aOver);
       });
 
-// ── Top categories: three rings, no card chrome ───────────────
+// ── Where it went: the three biggest categories ───────────────
 class _TopCategories extends ConsumerStatefulWidget {
   const _TopCategories();
 
@@ -836,9 +1173,10 @@ class _TopCategoriesState extends ConsumerState<_TopCategories> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(amountHiddenProvider);
     final analytics = ref.watch(analyticsProvider).asData?.value;
-    final budgets = ref.watch(budgetsStreamProvider).asData?.value ?? const [];
-    if (analytics == null) return const SizedBox(height: 86);
+    final budgets = ref.watch(effectiveBudgetsProvider);
+    if (analytics == null) return const SizedBox(height: 128);
 
     if (!_ready) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -847,7 +1185,7 @@ class _TopCategoriesState extends ConsumerState<_TopCategories> {
     }
 
     // Biggest three spend categories. With a category cap the ring tracks
-    // used/cap; without one it tracks share of the largest category.
+    // used/cap (and warns); without one it shows share of total spend.
     final capFor = <String, double>{
       for (final b in budgets.where((b) => b.categoryId != Budget.totalId))
         b.categoryId: b.monthlyCap,
@@ -856,67 +1194,83 @@ class _TopCategoriesState extends ConsumerState<_TopCategories> {
       ..sort((a, b) => b.value.compareTo(a.value));
     final top3 = top.take(3).toList();
     if (top3.isEmpty) return const SizedBox.shrink();
-    final maxSpend = top3.first.value;
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final spendTotal = top.fold<double>(0, (s, e) => s + e.value);
+    final muted = AerisColors.muted(context);
 
-    return Row(
-      children: [
-        for (final e in top3)
-          Expanded(
-            child: Builder(builder: (context) {
-              final cat = Categories.byId(e.key);
-              final cap = capFor[e.key];
-              final hasCap = cap != null && cap > 0;
-              final v = hasCap ? e.value / cap : e.value / maxSpend;
-              final ringColor = !hasCap
-                  ? cat.color
-                  : v >= 1
-                      ? AerisColors.moneyOut(context)
-                      : v > 0.8
-                          ? AerisColors.warning
-                          : cat.color;
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pushNamed(
-                    context, AppRoutes.transactions,
-                    arguments: e.key),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    BudgetRing(
-                      progress: _ready ? v.clamp(0.0, 1.0) : 0.0,
-                      size: 38,
-                      strokeWidth: 4.5,
-                      color: ringColor,
-                      center: Icon(cat.icon, size: 15, color: cat.color),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(cat.label.split(' ').first,
+    return AerisCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('Where it went',
+              style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3)),
+          const Spacer(),
+          Text(analytics.label,
+              style: TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w600, color: muted)),
+        ]),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final e in top3)
+              Expanded(
+                child: Builder(builder: (context) {
+                  final cat = Categories.byId(e.key);
+                  final cap = capFor[e.key];
+                  final hasCap = cap != null && cap > 0;
+                  final v = hasCap
+                      ? e.value / cap
+                      : (spendTotal == 0 ? 0.0 : e.value / spendTotal);
+                  return Semantics(
+                    button: true,
+                    label: '${cat.label}: ${formatRupees(e.value)}',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.pushNamed(
+                          context, AppRoutes.transactions,
+                          arguments: e.key),
+                      child: Column(children: [
+                        BudgetRing(
+                          progress: _ready ? v : 0.0,
+                          size: 54,
+                          strokeWidth: 5,
+                          color: cat.color,
+                          warnOverflow: hasCap,
+                          center: Icon(cat.icon, size: 20, color: cat.color),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(cat.label.split(RegExp(r' [&/] ')).first,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: muted)),
+                        const SizedBox(height: 2),
+                        Text(formatRupees(e.value, compact: true),
+                            maxLines: 1,
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w800)),
+                        if (hasCap)
+                          Text('of ${formatRupees(cap, compact: true)}',
                               maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                  fontSize: 11.5,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: muted)),
-                          Text(formatRupees(e.value, compact: true),
-                              maxLines: 1,
-                              style: const TextStyle(
-                                  fontSize: 13.5, fontWeight: FontWeight.w800)),
-                        ],
-                      ),
+                                  color: v >= 1
+                                      ? AerisColors.danger(context)
+                                      : muted)),
+                      ]),
                     ),
-                  ],
-                ),
-              );
-            }),
-          ),
-      ],
+                  );
+                }),
+              ),
+          ],
+        ),
+      ]),
     );
   }
 }
@@ -926,36 +1280,43 @@ class _TopCategoriesState extends ConsumerState<_TopCategories> {
 // Several things used to compete for this spot as separate cards. Now only
 // the most urgent shows: over budget › budgets at risk this week › today's
 // check-in › the month-end forecast.
-class _AttentionCard extends ConsumerWidget {
-  const _AttentionCard();
+class _AttentionSlot extends ConsumerWidget {
+  const _AttentionSlot();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final analytics = ref.watch(analyticsProvider).asData?.value;
-    final budgets = ref.watch(budgetsStreamProvider).asData?.value ?? const [];
+    final budgets = ref.watch(effectiveBudgetsProvider);
     final insights = ref.watch(insightsProvider).valueOrNull;
     final hidden = ref.watch(gamificationProvider.select((g) => g.hiddenCards));
     final checkin = ref.watch(gamificationProvider.select(
         (g) => (loaded: g.loaded, done: g.checkedInOn(DateTime.now()))));
 
+    Widget? card;
     if (analytics != null &&
         _overBudget(budgets, analytics.byCategory).isNotEmpty) {
-      return const _OverBudgetCard();
+      card = const _OverBudgetCard();
+    } else {
+      final showForecast =
+          insights != null && !hidden.contains(kHomeCardForecast);
+      final risky = insights?.budgetProjections
+              .where((p) =>
+                  p.alreadyOver ||
+                  (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))
+              .length ??
+          0;
+      if (showForecast && risky > 0) {
+        card = const _ForecastStrip();
+      } else if (checkin.loaded &&
+          !checkin.done &&
+          !hidden.contains(kHomeCardCheckin)) {
+        card = const _CheckinStrip();
+      } else if (showForecast) {
+        card = const _ForecastStrip();
+      }
     }
-    final showForecast =
-        insights != null && !hidden.contains(kHomeCardForecast);
-    final risky = insights?.budgetProjections
-            .where((p) =>
-                p.alreadyOver ||
-                (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))
-            .length ??
-        0;
-    if (showForecast && risky > 0) return const _ForecastStrip();
-    if (checkin.loaded && !checkin.done && !hidden.contains(kHomeCardCheckin)) {
-      return const _CheckinStrip();
-    }
-    if (showForecast) return const _ForecastStrip();
-    return const SizedBox.shrink();
+    if (card == null) return const SizedBox.shrink();
+    return Padding(padding: const EdgeInsets.only(top: 14), child: card);
   }
 }
 
@@ -965,48 +1326,34 @@ class _OverBudgetCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(amountHiddenProvider);
     final analytics = ref.watch(analyticsProvider).asData?.value;
-    final budgets = ref.watch(budgetsStreamProvider).asData?.value ?? const [];
+    final budgets = ref.watch(effectiveBudgetsProvider);
     if (analytics == null) return const SizedBox.shrink();
 
     final byCategory = analytics.byCategory;
     final overBudget = _overBudget(budgets, byCategory);
-
     if (overBudget.isEmpty) return const SizedBox.shrink();
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor =
-        isDark ? const Color(0xFF1F1209) : const Color(0xFFFFF7ED);
-    final borderColor =
-        AerisColors.moneyOut(context).withValues(alpha: isDark ? 0.35 : 0.25);
+    final danger = AerisColors.danger(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-              color: AerisColors.moneyOut(context)
-                  .withValues(alpha: isDark ? 0.12 : 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 3))
-        ],
-      ),
+    return AerisCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      color: dark ? const Color(0xFF2A1718) : const Color(0xFFFFF6F5),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(Icons.warning_amber_rounded,
-              size: 16, color: AerisColors.moneyOut(context)),
+          Icon(Icons.error_outline_rounded, size: 18, color: danger),
           const SizedBox(width: 6),
-          Text('Over budget',
+          Text(
+              overBudget.length == 1
+                  ? 'Over budget'
+                  : '${overBudget.length} budgets over',
               style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: AerisColors.moneyOut(context))),
+                  fontSize: 14.5, fontWeight: FontWeight.w800, color: danger)),
         ]),
-        const SizedBox(height: 8),
-        for (final b in overBudget.take(4)) _tile(context, b, byCategory),
+        const SizedBox(height: 10),
+        for (final b in overBudget.take(3)) _tile(context, b, byCategory),
       ]),
     );
   }
@@ -1015,129 +1362,108 @@ class _OverBudgetCard extends ConsumerWidget {
     final cat = Categories.byId(b.categoryId);
     final spent = byCategory[b.categoryId] ?? 0;
     final over = spent - b.monthlyCap;
-    final pct = b.monthlyCap > 0 ? (spent / b.monthlyCap).clamp(0.0, 2.0) : 1.0;
+    final danger = AerisColors.danger(context);
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.pushNamed(context, AppRoutes.transactions,
           arguments: b.categoryId),
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-                color: cat.color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10)),
-            child: Icon(cat.icon, size: 17, color: cat.color),
-          ),
+          _CategoryPlate(category: cat, size: 34),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  Expanded(
-                    child: Text(cat.label,
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w700),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                  Text('+${formatRupees(over, compact: true)} over',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AerisColors.moneyOut(context))),
-                ]),
-                const SizedBox(height: 4),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: pct.clamp(0.0, 1.0),
-                    minHeight: 4,
-                    backgroundColor:
-                        AerisColors.moneyOut(context).withValues(alpha: 0.15),
-                    color: AerisColors.moneyOut(context),
-                  ),
-                ),
+                Text(cat.label,
+                    style: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w700),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                Text(
+                    '${formatRupees(spent, compact: true)} of '
+                    '${formatRupees(b.monthlyCap, compact: true)}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AerisColors.muted(context))),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Icon(Icons.chevron_right,
-              size: 16, color: AerisColors.moneyOut(context)),
+          Text('+${formatRupees(over, compact: true)}',
+              style: TextStyle(
+                  fontSize: 13.5, fontWeight: FontWeight.w800, color: danger)),
+          const SizedBox(width: 2),
+          Icon(Icons.chevron_right_rounded,
+              size: 18, color: AerisColors.muted(context)),
         ]),
       ),
     );
   }
 }
 
+/// Category icon on a soft tinted plate — the house style for categories.
+class _CategoryPlate extends StatelessWidget {
+  final ExpenseCategory category;
+  final double size;
+  const _CategoryPlate({required this.category, this.size = 40});
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+          color: category.color.withValues(alpha: dark ? 0.20 : 0.13),
+          borderRadius: BorderRadius.circular(size * 0.32)),
+      child: Icon(category.icon, size: size * 0.5, color: category.color),
+    );
+  }
+}
+
 // ── Compact check-in strip ────────────────────────────────────
-class _CheckinStrip extends ConsumerStatefulWidget {
+class _CheckinStrip extends ConsumerWidget {
   const _CheckinStrip();
 
   @override
-  ConsumerState<_CheckinStrip> createState() => _CheckinStripState();
-}
-
-class _CheckinStripState extends ConsumerState<_CheckinStrip> {
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Watch only the fields this strip renders — not the whole gamification
-    // object — so aura ticks, avatar changes and garden edits elsewhere don't
-    // rebuild it. The record compares by value, so a rebuild fires only when one
-    // of these three actually changes.
+    // object — so aura ticks elsewhere don't rebuild it.
     final s = ref.watch(gamificationProvider.select((g) => (
           loaded: g.loaded,
           streak: g.liveStreak,
           checkedIn: g.checkedInOn(DateTime.now()),
         )));
-    final ctrl = ref.read(gamificationProvider.notifier);
     if (!s.loaded) return const SizedBox.shrink();
 
     final streak = s.streak; // lapses if a day was missed
     final checkedIn = s.checkedIn;
     final bonus = (streak * 5).clamp(0, 60);
+    final accent = AerisColors.accent(context);
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF14221F) : Colors.white;
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.09)
-        : Colors.black.withValues(alpha: 0.08);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-              blurRadius: isDark ? 12 : 8,
-              offset: const Offset(0, 3))
-        ],
-      ),
+    return AerisCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      onTap: () => _showStreakSheet(context),
       child: Row(children: [
-        // Flame / check icon box
         Container(
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: checkedIn
-                ? AerisColors.moneyIn(context).withValues(alpha: 0.15)
-                : const Color(0xFFF97316).withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(13),
+            color: AerisColors.accentSoft(context),
           ),
           child: Icon(
-            checkedIn ? Icons.task_alt : Icons.local_fire_department,
-            size: 22,
-            color: checkedIn ? AerisColors.moneyIn(context) : Colors.white,
+            checkedIn
+                ? Icons.task_alt_rounded
+                : Icons.local_fire_department_rounded,
+            size: 21,
+            color: accent,
           ),
         ),
         const SizedBox(width: 12),
-        // Text
         Expanded(
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1148,63 +1474,50 @@ class _CheckinStripState extends ConsumerState<_CheckinStrip> {
                       ? 'Checked in · $streak day${streak == 1 ? '' : 's'}'
                       : streak > 0
                           ? 'Keep your $streak-day streak'
-                          : 'Start your streak today',
+                          : 'Start a streak today',
                   style: const TextStyle(
-                      fontSize: 13.5, fontWeight: FontWeight.w800),
+                      fontSize: 14, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   checkedIn
                       ? 'See you tomorrow'
-                      : 'Daily check-in · claim Aura',
+                      : 'Daily check-in · +${15 + bonus} Aura',
                   style: TextStyle(
-                      fontSize: 11.5,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600),
+                      fontSize: 12,
+                      color: AerisColors.muted(context),
+                      fontWeight: FontWeight.w500),
                 ),
               ]),
         ),
         const SizedBox(width: 8),
-        // Claim / Done button
-        GestureDetector(
-          onTap: checkedIn
+        FilledButton(
+          onPressed: checkedIn
               ? null
               : () {
-                  final awarded = ctrl.checkIn();
-                  if (awarded > 0 && mounted) {
+                  final notifier = ref.read(gamificationProvider.notifier);
+                  final awarded = notifier.checkIn();
+                  if (awarded > 0) {
                     // Read the streak *after* check-in — never guess with +1,
                     // which was wrong whenever the streak had lapsed.
                     final newStreak =
                         ref.read(gamificationProvider).checkinStreak;
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content:
-                          Text('+$awarded Aura · $newStreak-day streak 🔥'),
+                    ScaffoldMessenger.of(context).showToast(SnackBar(
+                      content: Text('+$awarded Aura · $newStreak-day streak'),
                       duration: const Duration(seconds: 2),
                     ));
                   }
                 },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-            decoration: BoxDecoration(
-              color: checkedIn
-                  ? Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest
-                      .withValues(alpha: 0.6)
-                  : AerisColors.seed,
-              borderRadius: BorderRadius.circular(99),
-            ),
-            child: Text(
-              checkedIn ? 'Done ✓' : '+${15 + bonus} ✦',
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
-                  color: checkedIn
-                      ? Theme.of(context).colorScheme.onSurfaceVariant
-                      : Colors.white),
-            ),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 38),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            shape: const StadiumBorder(),
+            textStyle: const TextStyle(
+                fontFamily: kFontFamily,
+                fontSize: 13,
+                fontWeight: FontWeight.w800),
           ),
+          child: Text(checkedIn ? 'Done' : 'Check in'),
         ),
       ]),
     );
@@ -1217,84 +1530,63 @@ class _ForecastStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(amountHiddenProvider);
     final insights = ref.watch(insightsProvider).valueOrNull;
     if (insights == null) return const SizedBox.shrink();
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF14221F) : Colors.white;
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.09)
-        : Colors.black.withValues(alpha: 0.08);
 
     final riskyCount = insights.budgetProjections
         .where((p) =>
             p.alreadyOver || (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))
         .length;
-
     final estimate = insights.monthEstimate.estimate;
+    final tone =
+        riskyCount > 0 ? AerisColors.warning : AerisColors.accent(context);
 
-    return GestureDetector(
+    return AerisCard(
+      padding: const EdgeInsets.all(14),
       onTap: () => Navigator.pushNamed(context, AppRoutes.insights),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: borderColor),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-                blurRadius: isDark ? 12 : 8,
-                offset: const Offset(0, 3))
-          ],
+      child: Row(children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+              color: tone.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(13)),
+          child: Icon(Icons.insights_rounded, size: 21, color: tone),
         ),
-        child: Row(children: [
-          // Icon box
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-                color: AerisColors.warning.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.online_prediction,
-                size: 22, color: AerisColors.warning),
-          ),
-          const SizedBox(width: 13),
-          // Text
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                    height: 1.4),
-                children: [
-                  const TextSpan(text: 'On pace for '),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              style: TextStyle(
+                  fontSize: 13.5,
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                  height: 1.4),
+              children: [
+                const TextSpan(text: 'On pace for '),
+                TextSpan(
+                  text: formatRupees(estimate),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const TextSpan(text: ' this month'),
+                if (riskyCount > 0) ...[
+                  const TextSpan(text: ' · '),
                   TextSpan(
-                    text: formatRupees(estimate),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    text:
+                        '$riskyCount budget${riskyCount == 1 ? '' : 's'} at risk',
+                    style: const TextStyle(
+                        color: AerisColors.warning,
+                        fontWeight: FontWeight.w700),
                   ),
-                  const TextSpan(text: ' this month'),
-                  if (riskyCount > 0) ...[
-                    const TextSpan(text: ' · '),
-                    TextSpan(
-                      text:
-                          '$riskyCount budget${riskyCount == 1 ? '' : 's'} at risk',
-                      style: const TextStyle(
-                          color: AerisColors.warning,
-                          fontWeight: FontWeight.w800),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          Icon(Icons.chevron_right,
-              color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ]),
-      ),
+        ),
+        const SizedBox(width: 6),
+        Icon(Icons.chevron_right_rounded, color: AerisColors.muted(context)),
+      ]),
     );
   }
 }
@@ -1310,24 +1602,21 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
+      padding: const EdgeInsets.only(bottom: 6, left: 2),
       child: Row(children: [
         Text(title,
             style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
-                letterSpacing: -0.5)),
+                letterSpacing: -0.4)),
         const Spacer(),
-        GestureDetector(
-          onTap: onAction,
-          child: Row(children: [
-            Text(action,
-                style: TextStyle(
-                    color: AerisColors.ink(context),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700)),
-            const Icon(Icons.chevron_right, size: 17, color: AerisColors.seed),
-          ]),
+        TextButton(
+          onPressed: onAction,
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, 36),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+          child: Text(action),
         ),
       ]),
     );
@@ -1341,61 +1630,30 @@ class _RecentActivitySection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(amountHiddenProvider);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _SectionHeader(
-        title: 'Recent activity',
-        action: 'All',
-        onAction: () => Navigator.pushNamed(context, AppRoutes.transactions),
-      ),
-      const _RecentActivityList(),
-    ]);
-  }
-}
-
-class _RecentActivityList extends ConsumerWidget {
-  const _RecentActivityList();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF14221F) : Colors.white;
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.09)
-        : Colors.black.withValues(alpha: 0.08);
-
     final recent = ref.watch(recentTransactionsProvider(5));
     return recent.when(
       data: (list) {
-        if (list.isEmpty) return _empty(context);
-        return Container(
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-                  blurRadius: isDark ? 12 : 8,
-                  offset: const Offset(0, 3))
-            ],
+        if (list.isEmpty) return const _FirstRunCard();
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _SectionHeader(
+            title: 'Recent',
+            action: 'See all',
+            onAction: () =>
+                Navigator.pushNamed(context, AppRoutes.transactions),
           ),
-          child: Column(
-            children: [
-              for (int i = 0; i < list.length; i++) ...[
-                TransactionTile(txn: list[i]),
-                if (i < list.length - 1)
-                  Divider(
-                    height: 1,
-                    indent: 16,
-                    endIndent: 16,
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.06)
-                        : Colors.black.withValues(alpha: 0.05),
-                  ),
+          AerisCard(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              children: [
+                for (int i = 0; i < list.length; i++) ...[
+                  TransactionTile(txn: list[i]),
+                  if (i < list.length - 1)
+                    const Divider(height: 1, indent: 70, endIndent: 16),
+                ],
               ],
-            ],
+            ),
           ),
-        );
+        ]);
       },
       loading: () => Column(
         children: List.generate(
@@ -1405,24 +1663,68 @@ class _RecentActivityList extends ConsumerWidget {
                 radius: 12,
                 margin: EdgeInsets.symmetric(vertical: 4))),
       ),
-      error: (e, _) => Text('Could not load: $e'),
+      error: (e, _) => AerisCard(
+        child: Text('Could not load your transactions.\n$e',
+            style: TextStyle(color: AerisColors.muted(context))),
+      ),
     );
   }
+}
 
-  Widget _empty(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 30),
-        child: Column(children: [
-          Icon(Icons.receipt_long_outlined,
-              size: 44, color: Theme.of(context).colorScheme.onSurfaceVariant),
-          const SizedBox(height: 10),
-          const Text(
-            'No transactions yet.\nTap + to add one.',
-            textAlign: TextAlign.center,
+/// Shown instead of "Recent" until the first transaction exists: a new user
+/// gets the ways in, not an empty list.
+class _FirstRunCard extends StatelessWidget {
+  const _FirstRunCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = AerisColors.muted(context);
+    return AerisCard(
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+              color: AerisColors.accentSoft(context),
+              borderRadius: BorderRadius.circular(15)),
+          child: Icon(Icons.receipt_long_rounded,
+              color: AerisColors.accent(context)),
+        ),
+        const SizedBox(height: 14),
+        const Text('Log your first expense',
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3)),
+        const SizedBox(height: 4),
+        Text(
+            'Tap + to add one, hold + for voice and more, or bring in your '
+            'history from a bank statement.',
+            style: TextStyle(
+                fontSize: 13.5,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+                color: muted)),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(
+            child: FilledButton(
+              onPressed: () => Navigator.pushNamed(context, AppRoutes.addTxn,
+                  arguments: TxnDirection.debit),
+              child: const Text('Add expense'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.importStatement),
+              child: const Text('Import'),
+            ),
           ),
         ]),
-      ),
+      ]),
     );
   }
 }

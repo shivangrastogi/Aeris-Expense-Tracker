@@ -12,7 +12,9 @@ import '../../providers/gamification_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/motion.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/receipt_field.dart';
 import '../../widgets/text_input_dialog.dart';
+import '../../widgets/aeris_toast.dart';
 
 class SmsReviewScreen extends ConsumerStatefulWidget {
   const SmsReviewScreen({super.key});
@@ -88,7 +90,7 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
     final awarded =
         ref.read(gamificationProvider.notifier).rewardCategorization(txn.id);
     if (awarded > 0) {
-      messenger.showSnackBar(SnackBar(
+      messenger.showToast(SnackBar(
         content: Text('+$awarded Aura for categorising 🎉'),
         duration: const Duration(seconds: 2),
       ));
@@ -115,7 +117,7 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
     }
     _exitSelectMode();
     final n = txns.length;
-    messenger.showSnackBar(SnackBar(
+    messenger.showToast(SnackBar(
       content: Text(
         totalAura > 0
             ? 'Added $n transaction${n == 1 ? '' : 's'} · +$totalAura Aura 🎉'
@@ -128,7 +130,9 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
   Future<void> _ignoreOne(BuildContext context, Transaction txn) async {
     final uid = ref.read(currentUserIdProvider);
     if (uid == null) return;
-    await ref.read(firestoreServiceProvider).deleteTransaction(uid, txn.id);
+    final fs = ref.read(firestoreServiceProvider);
+    await fs.deleteTransaction(uid, txn.id);
+    if (txn.hasReceipt) await fs.deleteReceipt(uid, txn.id);
   }
 
   Future<void> _ignoreBulk(BuildContext context, List<Transaction> txns) async {
@@ -137,11 +141,12 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
     final fs = ref.read(firestoreServiceProvider);
     for (final t in txns) {
       await fs.deleteTransaction(uid, t.id);
+      if (t.hasReceipt) await fs.deleteReceipt(uid, t.id);
     }
     _exitSelectMode();
     final n = txns.length;
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showToast(SnackBar(
         content: Text('Removed $n transaction${n == 1 ? '' : 's'}'),
         duration: const Duration(seconds: 2),
       ));
@@ -170,8 +175,8 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
     HapticFeedback.selectionClick();
     setState(() => _gone.add(txn.id));
     await fs.deleteTransaction(uid, txn.id);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(
+    messenger.hideToast();
+    final toast = messenger.showToast(SnackBar(
       content: const Text('Ignored'),
       duration: const Duration(seconds: 4),
       action: SnackBarAction(
@@ -182,6 +187,14 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
         },
       ),
     ));
+    // The screenshot goes only once the undo window has passed.
+    if (txn.hasReceipt) {
+      toast.closed.then((reason) {
+        if (reason != SnackBarClosedReason.action) {
+          fs.deleteReceipt(uid, txn.id);
+        }
+      });
+    }
   }
 
   /// Category chips for the deck: the parsed guess first, then the categories
@@ -190,7 +203,7 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
     final counts = <String, int>{};
     for (final t in all) {
       if (t.direction == txn.direction &&
-          (t.reviewed || t.source != TxnSource.sms)) {
+          t.reviewed) {
         counts[t.categoryId] = (counts[t.categoryId] ?? 0) + 1;
       }
     }
@@ -258,7 +271,7 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
     final txnsAsync = ref.watch(transactionsStreamProvider);
     final dark = Theme.of(context).brightness == Brightness.dark;
     final scheme = Theme.of(context).colorScheme;
-    final cardBg = dark ? const Color(0xFF122120) : Colors.white;
+    final cardBg = dark ? AerisColors.cardDark : Colors.white;
 
     return Scaffold(
       body: SafeArea(
@@ -267,10 +280,7 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
           error: (e, _) => Center(child: Text('$e')),
           data: (list) {
             final pending = list
-                .where((t) =>
-                    t.source == TxnSource.sms &&
-                    !t.reviewed &&
-                    !_gone.contains(t.id))
+                .where((t) => t.needsReview && !_gone.contains(t.id))
                 .toList();
             final deck = _deck && !_selectMode;
 
@@ -305,7 +315,7 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
                             Text(
                               _selectMode
                                   ? '${_selected.length} selected'
-                                  : 'Review SMS imports',
+                                  : 'Review imports',
                               style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w800,
@@ -475,13 +485,13 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.mark_email_read_rounded,
-                size: 52, color: AerisColors.seed.withValues(alpha: 0.5)),
+                size: 52, color: AerisColors.accent(context).withValues(alpha: 0.5)),
             const SizedBox(height: 14),
             const Text('All clear',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             Text(
-              'Auto-imported SMS transactions land here so you can '
+              'Bank SMS and payment screenshots land here so you can '
               'verify or correct them before they\'re finalised.',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -535,7 +545,7 @@ class _BulkActionBar extends StatelessWidget {
                   child: _BulkBtn(
                     label: 'Ignore sel.',
                     icon: Icons.delete_outline_rounded,
-                    color: AerisColors.moneyOut(context),
+                    color: AerisColors.danger(context),
                     onTap: onIgnoreSelected,
                   ),
                 ),
@@ -545,7 +555,7 @@ class _BulkActionBar extends StatelessWidget {
                   child: _BulkBtn(
                     label: 'Add selected',
                     icon: Icons.check_circle_outline_rounded,
-                    color: AerisColors.seed,
+                    color: AerisColors.accent(context),
                     filled: true,
                     onTap: onAddSelected,
                   ),
@@ -558,7 +568,7 @@ class _BulkActionBar extends StatelessWidget {
                   child: _BulkBtn(
                     label: 'Delete all',
                     icon: Icons.delete_sweep_rounded,
-                    color: AerisColors.moneyOut(context),
+                    color: AerisColors.danger(context),
                     onTap: onIgnoreAll,
                   ),
                 ),
@@ -568,7 +578,7 @@ class _BulkActionBar extends StatelessWidget {
                   child: _BulkBtn(
                     label: 'Add all',
                     icon: Icons.playlist_add_check_rounded,
-                    color: AerisColors.seed,
+                    color: AerisColors.accent(context),
                     filled: true,
                     onTap: onAddAll,
                   ),
@@ -610,14 +620,14 @@ class _BulkBtn extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 17, color: filled ? Colors.white : color),
+              Icon(icon, size: 17, color: filled ? AerisColors.on(color) : color),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: filled ? Colors.white : color,
+                  color: filled ? AerisColors.on(color) : color,
                 ),
               ),
             ],
@@ -677,11 +687,11 @@ class _SmsCard extends ConsumerWidget {
         duration: const Duration(milliseconds: 180),
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: selected ? AerisColors.seed.withValues(alpha: 0.08) : cardBg,
+          color: selected ? AerisColors.accent(context).withValues(alpha: 0.08) : cardBg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected
-                ? AerisColors.seed.withValues(alpha: 0.5)
+                ? AerisColors.accent(context).withValues(alpha: 0.5)
                 : scheme.onSurface.withValues(alpha: 0.08),
             width: selected ? 1.5 : 1,
           ),
@@ -711,7 +721,7 @@ class _SmsCard extends ConsumerWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: AerisColors.seed.withValues(alpha: 0.1),
+                              color: AerisColors.accent(context).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(99),
                             ),
                             child: Text(txn.smsSender!,
@@ -730,6 +740,7 @@ class _SmsCard extends ConsumerWidget {
                                 height: 1.4,
                                 color: scheme.onSurface.withValues(alpha: 0.6)),
                           ),
+                        if (txn.fromScreenshot) _ShotStrip(txn: txn),
                       ],
                     ),
                   ),
@@ -742,17 +753,17 @@ class _SmsCard extends ConsumerWidget {
                       height: 24,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: selected ? AerisColors.seed : Colors.transparent,
+                        color: selected ? AerisColors.accent(context) : Colors.transparent,
                         border: Border.all(
                           color: selected
-                              ? AerisColors.seed
+                              ? AerisColors.accent(context)
                               : scheme.onSurface.withValues(alpha: 0.3),
                           width: 2,
                         ),
                       ),
                       child: selected
-                          ? const Icon(Icons.check_rounded,
-                              size: 14, color: Colors.white)
+                          ? Icon(Icons.check_rounded,
+                              size: 14, color: AerisColors.onAccent(context))
                           : null,
                     )
                   else if (edited)
@@ -889,7 +900,7 @@ class _SmsCard extends ConsumerWidget {
                         label: 'Add',
                         icon: Icons.add_rounded,
                         color: Colors.white,
-                        bgColor: AerisColors.seed,
+                        bgColor: AerisColors.accent(context),
                         onTap: onAccept,
                       ),
                     ),
@@ -898,7 +909,7 @@ class _SmsCard extends ConsumerWidget {
                     // the same screen the Activity list opens.
                     _SquareIconBtn(
                       icon: Icons.edit_outlined,
-                      color: AerisColors.seed,
+                      color: AerisColors.accent(context),
                       onTap: onEdit,
                     ),
                     if (txn.smsSender != null) ...[
@@ -944,7 +955,7 @@ class _SmsCard extends ConsumerWidget {
     await fs.blockSender(uid, sender);
     await fs.deleteTransaction(uid, txn.id);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.of(context).showToast(
         SnackBar(content: Text('Blocked $sender — future messages ignored.')));
   }
 }
@@ -1143,11 +1154,11 @@ class _BlockBtn extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: AerisColors.moneyOut(context).withValues(alpha: 0.1),
+          color: AerisColors.danger(context).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(Icons.block_rounded,
-            size: 18, color: AerisColors.moneyOut(context)),
+            size: 18, color: AerisColors.danger(context)),
       ),
     );
   }
@@ -1181,9 +1192,84 @@ class _Skeleton extends StatelessWidget {
   }
 }
 
+// ── Screenshot the transaction was read from ──────────────────
+//
+// For an entry added from a payment screenshot: the image (tap to open it
+// full-screen) next to what was read, so it can be checked against the source.
+class _ShotStrip extends ConsumerStatefulWidget {
+  final Transaction txn;
+  const _ShotStrip({super.key, required this.txn});
+
+  @override
+  ConsumerState<_ShotStrip> createState() => _ShotStripState();
+}
+
+class _ShotStripState extends ConsumerState<_ShotStrip> {
+  Uint8List? _image;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final uid = ref.read(currentUserIdProvider);
+    if (uid == null) return;
+    final bytes = await ref
+        .read(firestoreServiceProvider)
+        .fetchReceipt(uid, widget.txn.id);
+    if (mounted && bytes != null) {
+      setState(() => _image = Uint8List.fromList(bytes));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.txn;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final img = _image;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: img == null ? null : () => showReceiptViewer(context, img),
+      child: Row(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: img == null
+              ? Container(
+                  width: 40,
+                  height: 56,
+                  color: muted.withValues(alpha: 0.12),
+                  child: Icon(Icons.image_outlined, size: 18, color: muted),
+                )
+              : Image.memory(img,
+                  width: 40,
+                  height: 56,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
+                  cacheWidth: 120),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            [
+              'From a screenshot · tap to check',
+              if (t.upiVpa != null) t.upiVpa!,
+              if (t.reference != null) 'UTR ${t.reference}',
+            ].join('\n'),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, height: 1.4, color: muted),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
 // ── One-at-a-time review deck ─────────────────────────────────
 //
-// The top pending SMS as a single card. Tap a category chip to add it under
+// The top pending import as a single card. Tap a category chip to add it under
 // that category; swipe right to add as suggested; swipe left to ignore.
 class _ReviewDeck extends StatelessWidget {
   final Transaction txn;
@@ -1302,6 +1388,10 @@ class _ReviewDeck extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, height: 1.4, color: muted)),
           ],
+          if (txn.fromScreenshot) ...[
+            const SizedBox(height: 10),
+            _ShotStrip(key: ValueKey('shot-${txn.id}'), txn: txn),
+          ],
           const SizedBox(height: 16),
           Text('Add as', style: TextStyle(fontSize: 12.5, color: muted)),
           const SizedBox(height: 8),
@@ -1336,7 +1426,7 @@ class _ReviewDeck extends StatelessWidget {
           key: ValueKey('deck-${txn.id}'),
           background: swipeBg(AerisColors.moneyIn(context), Icons.check_rounded,
               'Add', Alignment.centerLeft),
-          secondaryBackground: swipeBg(AerisColors.moneyOut(context),
+          secondaryBackground: swipeBg(AerisColors.danger(context),
               Icons.close_rounded, 'Ignore', Alignment.centerRight),
           onDismissed: (dir) => dir == DismissDirection.startToEnd
               ? onAccept(categoryId)

@@ -214,7 +214,7 @@ class _ChallengeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final (Color color, IconData icon) = switch (status.state) {
       ChallengeState.won => (AerisColors.moneyIn(context), Icons.emoji_events),
-      ChallengeState.failed => (AerisColors.moneyOut(context), Icons.heart_broken),
+      ChallengeState.failed => (AerisColors.danger(context), Icons.heart_broken),
       ChallengeState.active => (AerisColors.info, Icons.bolt),
       ChallengeState.upcoming => (AerisColors.warning, Icons.schedule),
     };

@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/routes.dart';
 import '../../core/theme.dart';
 import '../../models/budget.dart';
 import '../../models/category.dart';
+import '../../models/goal.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/budgets_provider.dart';
+import '../../providers/goals_provider.dart';
+import '../../providers/money_providers.dart';
 import '../../providers/privacy_provider.dart';
 import '../../providers/transactions_provider.dart';
+import '../../services/money_insights.dart';
 import '../../services/prediction_service.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/aeris_toast.dart';
 
 class BudgetsScreen extends ConsumerWidget {
   const BudgetsScreen({super.key});
@@ -22,6 +28,12 @@ class BudgetsScreen extends ConsumerWidget {
     ref.watch(amountHiddenProvider);
     final budgets = ref.watch(budgetsStreamProvider);
     final analytics = ref.watch(analyticsProvider);
+    // Caps as they apply this month (stored cap + any rolled-over leftover).
+    final effective = {
+      for (final b in ref.watch(effectiveBudgetsProvider))
+        b.categoryId: b.monthlyCap
+    };
+    final rolled = ref.watch(rolledOverProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Budgets'),
@@ -48,7 +60,11 @@ class BudgetsScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 80),
             children: [
-              _totalCard(context, ref, total, monthSpent),
+              _totalCard(context, ref, total, monthSpent,
+                  effectiveCap: effective[Budget.totalId],
+                  rolledIn: rolled[Budget.totalId] ?? 0),
+              const SizedBox(height: 8),
+              const _RolloverCard(),
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 14, 4, 2),
                 child: Text('Per-category caps',
@@ -57,7 +73,8 @@ class BudgetsScreen extends ConsumerWidget {
               ...allCats.map((c) {
                 final b = list.where((x) => x.categoryId == c.id).firstOrNull;
                 final spent = byCat[c.id] ?? 0;
-                final cap = b?.monthlyCap ?? 0;
+                final cap = b == null ? 0.0 : (effective[c.id] ?? b.monthlyCap);
+                final extra = rolled[c.id] ?? 0;
                 final pct = (cap > 0 ? spent / cap : 0.0).clamp(0.0, 1.5);
                 final overflow = pct > 1.0;
                 return Card(
@@ -72,6 +89,7 @@ class BudgetsScreen extends ConsumerWidget {
                       children: [
                         Text(cap > 0
                             ? '${formatRupees(spent)} of ${formatRupees(cap)}'
+                                '${extra > 0 ? ' · +${formatRupees(extra, compact: true)} rolled over' : ''}'
                             : 'No cap set — currently ${formatRupees(spent)}'),
                         const SizedBox(height: 6),
                         if (cap > 0)
@@ -80,7 +98,7 @@ class BudgetsScreen extends ConsumerWidget {
                             child: LinearProgressIndicator(
                               value: pct > 1.0 ? 1.0 : pct,
                               minHeight: 6,
-                              color: overflow ? AerisColors.moneyOut(context) : c.color,
+                              color: overflow ? AerisColors.danger(context) : c.color,
                               backgroundColor: c.color.withValues(alpha: 0.15),
                             ),
                           ),
@@ -102,20 +120,22 @@ class BudgetsScreen extends ConsumerWidget {
 
   // ── Total monthly budget (one overall cap, not per-category) ──
   Widget _totalCard(
-      BuildContext context, WidgetRef ref, Budget? total, double spent) {
-    final cap = total?.monthlyCap ?? 0;
+      BuildContext context, WidgetRef ref, Budget? total, double spent,
+      {double? effectiveCap, double rolledIn = 0}) {
+    final storedCap = total?.monthlyCap ?? 0;
+    final cap = total == null ? 0.0 : (effectiveCap ?? storedCap);
     final pct = cap > 0 ? (spent / cap).clamp(0.0, 1.0) : 0.0;
     final over = cap > 0 && spent > cap;
     final left = cap - spent;
     return Card(
-      color: AerisColors.seed.withValues(alpha: 0.08),
+      color: AerisColors.accent(context).withValues(alpha: 0.08),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              const Icon(Icons.account_balance_wallet, color: AerisColors.seed),
+              Icon(Icons.account_balance_wallet, color: AerisColors.accent(context)),
               const SizedBox(width: 10),
               const Expanded(
                 child: Text('Total monthly budget',
@@ -137,7 +157,8 @@ class BudgetsScreen extends ConsumerWidget {
                   },
                 ),
               TextButton(
-                onPressed: () => _editTotal(context, ref, cap),
+                // Edit the stored cap, never the rolled-over figure.
+                onPressed: () => _editTotal(context, ref, storedCap),
                 child: Text(cap > 0 ? 'Edit' : 'Set'),
               ),
             ]),
@@ -148,8 +169,8 @@ class BudgetsScreen extends ConsumerWidget {
                 child: LinearProgressIndicator(
                   value: pct,
                   minHeight: 10,
-                  color: over ? AerisColors.moneyOut(context) : AerisColors.seed,
-                  backgroundColor: AerisColors.seed.withValues(alpha: 0.15),
+                  color: over ? AerisColors.danger(context) : AerisColors.accent(context),
+                  backgroundColor: AerisColors.accent(context).withValues(alpha: 0.15),
                 ),
               ),
               const SizedBox(height: 8),
@@ -159,9 +180,20 @@ class BudgetsScreen extends ConsumerWidget {
                     : '${formatRupees(spent)} of ${formatRupees(cap)} · ${formatRupees(left < 0 ? 0 : left)} left',
                 style: TextStyle(
                     fontSize: 13,
-                    color: over ? AerisColors.moneyOut(context) : null,
+                    color: over ? AerisColors.danger(context) : null,
                     fontWeight: FontWeight.w600),
               ),
+              if (rolledIn > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Includes ${formatRupees(rolledIn)} rolled over from last month',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AerisColors.moneyIn(context)),
+                  ),
+                ),
             ] else
               const Padding(
                 padding: EdgeInsets.only(top: 6),
@@ -217,7 +249,7 @@ class BudgetsScreen extends ConsumerWidget {
           );
     } catch (e) {
       messenger
-          .showSnackBar(SnackBar(content: Text('Could not save budget: $e')));
+          .showToast(SnackBar(content: Text('Could not save budget: $e')));
     }
   }
 
@@ -248,7 +280,7 @@ class BudgetsScreen extends ConsumerWidget {
       if (cap > 0) suggestions.add((cat: cat, cap: cap));
     }
     if (suggestions.isEmpty) {
-      messenger.showSnackBar(const SnackBar(
+      messenger.showToast(const SnackBar(
           content: Text(
               'Not enough spending history yet to suggest budgets — check back after a couple of months.')));
       return;
@@ -332,7 +364,7 @@ class BudgetsScreen extends ConsumerWidget {
               id: s.cat, categoryId: s.cat, monthlyCap: s.cap, updatedAt: now));
       n++;
     }
-    messenger.showSnackBar(SnackBar(
+    messenger.showToast(SnackBar(
         content:
             Text('Set $n budget${n == 1 ? '' : 's'} from your spending 🎯')));
   }
@@ -340,4 +372,123 @@ class BudgetsScreen extends ConsumerWidget {
 
 extension on Iterable<Budget> {
   Budget? get firstOrNull => isEmpty ? null : first;
+}
+
+/// Budget rollover: carry last month's unspent budget into this month, or
+/// move it into a savings goal (once per month).
+class _RolloverCard extends ConsumerStatefulWidget {
+  const _RolloverCard();
+
+  @override
+  ConsumerState<_RolloverCard> createState() => _RolloverCardState();
+}
+
+class _RolloverCardState extends ConsumerState<_RolloverCard> {
+  String? _sweptMonth;
+
+  String get _monthKey {
+    final now = DateTime.now();
+    return '${now.year}-${now.month}';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) setState(() => _sweptMonth = p.getString('leftover_swept'));
+    });
+  }
+
+  double _leftover() {
+    final budgets = ref.read(budgetsStreamProvider).valueOrNull ?? const [];
+    final txns = ref.read(transactionsStreamProvider).valueOrNull ?? const [];
+    final left = BudgetRollover.leftovers(budgets, txns, DateTime.now());
+    // The overall budget if there is one, else the per-category leftovers.
+    return left[Budget.totalId] ??
+        left.entries
+            .where((e) => e.key != Budget.totalId)
+            .fold<double>(0, (s, e) => s + e.value);
+  }
+
+  Future<void> _sweep(double amount) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final goals = (ref.read(goalsStreamProvider).valueOrNull ?? const [])
+        .where((g) => !g.isComplete)
+        .toList();
+    if (goals.isEmpty) {
+      messenger.showToast(const SnackBar(
+          content: Text('Create a savings goal first (Me → Goals).')));
+      return;
+    }
+    final goal = await showModalBottomSheet<Goal>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Move ${formatRupees(amount)} into…',
+              style:
+                  const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          for (final g in goals)
+            ListTile(
+              leading: Text(g.emoji, style: const TextStyle(fontSize: 22)),
+              title: Text(g.title),
+              subtitle: Text(
+                  '${formatRupees(g.saved)} of ${formatRupees(g.target)}'),
+              onTap: () => Navigator.pop(ctx, g),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (goal == null) return;
+    final uid = ref.read(currentUserIdProvider);
+    if (uid == null) return;
+    await ref
+        .read(firestoreServiceProvider)
+        .setGoal(uid, goal.copyWith(saved: goal.saved + amount));
+    (await SharedPreferences.getInstance()).setString('leftover_swept', _monthKey);
+    if (mounted) setState(() => _sweptMonth = _monthKey);
+    messenger.showToast(SnackBar(
+        content: Text('${formatRupees(amount)} moved to ${goal.title}')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(transactionsStreamProvider);
+    ref.watch(budgetsStreamProvider);
+    final on = ref.watch(rolloverProvider);
+    final left = _leftover();
+    final swept = _sweptMonth == _monthKey;
+    return AerisCard(
+      padding: const EdgeInsets.fromLTRB(16, 6, 8, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: on,
+          onChanged: (v) => ref.read(rolloverProvider.notifier).set(v),
+          title: const Text('Roll unused budget into next month',
+              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+          subtitle: Text(left > 0
+              ? 'Last month you had ${formatRupees(left)} left over'
+              : 'Unspent budget carries over (up to one month\'s cap)'),
+        ),
+        if (!on && left > 0 && !swept)
+          TextButton.icon(
+            onPressed: () => _sweep(left),
+            icon: const Icon(Icons.savings_outlined, size: 18),
+            label: Text('Or move ${formatRupees(left)} into a goal'),
+          ),
+        if (swept)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text('Last month\'s leftover is already in a goal ✓',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AerisColors.moneyIn(context))),
+          ),
+      ]),
+    );
+  }
 }

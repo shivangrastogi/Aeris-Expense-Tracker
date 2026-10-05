@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:another_telephony/telephony.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
@@ -50,7 +51,12 @@ Future<void> smsBackgroundHandler(SmsMessage message) async {
     final blocked =
         (prefs.getStringList('blocked_senders') ?? const []).toSet();
     await SmsImportService.instance.persistOne(uid, parsed, blocked);
-  } catch (_) {
-    /* background best-effort; foreground backfill is the fallback */
+  } catch (e, st) {
+    // Background best-effort — the foreground backfill is the fallback — but
+    // report it, so OEM background kills / key-restore failures are visible.
+    try {
+      await FirebaseCrashlytics.instance
+          .recordError(e, st, reason: 'sms background handler');
+    } catch (_) {}
   }
 }
