@@ -263,7 +263,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _categoryId,
+                  initialValue: _categoryId,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Category'),
                   items: [

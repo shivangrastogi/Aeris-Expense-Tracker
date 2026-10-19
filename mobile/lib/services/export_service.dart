@@ -54,12 +54,13 @@ class ExportService {
     s.name = 'Summary';
     double income = 0, expense = 0;
     for (final t in txns) {
+      if (t.isInternal) continue; // own-account transfer / share payback
       if (t.isRefund) {
         expense -= t.amount; // money back, not income
       } else if (t.isCredit) {
         income += t.amount;
       } else {
-        expense += t.amount;
+        expense += t.spendAmount;
       }
     }
     if (expense < 0) expense = 0;
@@ -107,7 +108,13 @@ class ExportService {
       sh.getRangeByIndex(r, 2).setText(t.merchant ?? '');
       sh.getRangeByIndex(r, 3).setText(Categories.byId(t.categoryId).label);
       sh.getRangeByIndex(r, 4).setText(
-          t.isRefund ? 'Refund' : (t.isCredit ? 'Income' : 'Expense'));
+          t.selfTransfer
+              ? 'Own transfer'
+              : t.isSettlement
+                  ? 'Share paid back'
+                  : t.isRefund
+                      ? 'Refund'
+                      : (t.isCredit ? 'Income' : 'Expense'));
       final amt = sh.getRangeByIndex(r, 5);
       amt.setNumber(t.amount);
       amt.numberFormat = _money;
@@ -167,8 +174,8 @@ class ExportService {
   void _categories(xlsio.Workbook wb, List<Transaction> txns) {
     final sh = wb.worksheets.addWithName('Categories');
     final byCat = <String, double>{};
-    for (final t in txns.where((t) => t.isDebit)) {
-      byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.amount;
+    for (final t in txns.where((t) => t.isSpend)) {
+      byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.spendAmount;
     }
     final entries = byCat.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -204,13 +211,14 @@ class ExportService {
     final exp = <String, double>{};
     final inc = <String, double>{};
     for (final t in txns) {
+      if (t.isInternal) continue; // own-account transfer / share payback
       final k = '${t.timestamp.year}-${t.timestamp.month.toString().padLeft(2, '0')}';
       if (t.isRefund) {
         exp[k] = (exp[k] ?? 0) - t.amount; // money back, not income
       } else if (t.isCredit) {
         inc[k] = (inc[k] ?? 0) + t.amount;
       } else {
-        exp[k] = (exp[k] ?? 0) + t.amount;
+        exp[k] = (exp[k] ?? 0) + t.spendAmount;
       }
     }
     exp.updateAll((_, v) => v < 0 ? 0 : v);
@@ -248,8 +256,8 @@ class ExportService {
   void _topMerchants(xlsio.Workbook wb, List<Transaction> txns) {
     final sh = wb.worksheets.addWithName('Top Merchants');
     final byM = <String, double>{};
-    for (final t in txns.where((t) => t.isDebit && (t.merchant ?? '').isNotEmpty)) {
-      byM[t.merchant!] = (byM[t.merchant!] ?? 0) + t.amount;
+    for (final t in txns.where((t) => t.isSpend && (t.merchant ?? '').isNotEmpty)) {
+      byM[t.merchant!] = (byM[t.merchant!] ?? 0) + t.spendAmount;
     }
     final entries = byM.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));

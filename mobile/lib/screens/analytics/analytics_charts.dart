@@ -38,7 +38,7 @@ class _ChartsTabState extends ConsumerState<_ChartsTab> {
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
           children: [
-            Align(
+            const Align(
               alignment: Alignment.centerRight,
               child: _RangePillBtn(),
             ),

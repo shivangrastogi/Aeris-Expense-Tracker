@@ -117,7 +117,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.32),
+                        color: const Color(0xFF8A7ED3).withValues(alpha: 0.32),
                         blurRadius: 22,
                         offset: const Offset(0, 8)),
                   ],
@@ -767,7 +767,7 @@ Transaction? subscriptionPaidThisMonth(WidgetRef ref, Subscription s) {
   final name = s.name.trim().toLowerCase();
   final txns = ref.read(transactionsStreamProvider).valueOrNull ?? const [];
   for (final t in txns) {
-    if (!t.isDebit ||
+    if (!t.isSpend ||
         t.timestamp.year != now.year ||
         t.timestamp.month != now.month ||
         (t.amount - s.amount).abs() >= 0.01) {

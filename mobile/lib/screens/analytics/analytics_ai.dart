@@ -14,11 +14,21 @@ class _AITabState extends ConsumerState<_AITab> {
   int _insightIdx = 0;
   int _reactKey = 0;
 
-  static const _insights = [
-    'Your food spend is tracking 18% below last month — nice work 🎉',
-    'You\'ve had some great no-spend days this month!',
-    'Review any unused subscriptions to save more each month.',
-  ];
+  /// Lines for "Aeris says" — all computed from the user's own data.
+  static List<String> _lines(InsightsBundle b) => [
+        for (final p in b.budgetProjections.where((p) => p.alreadyOver).take(2))
+          '${Categories.byId(p.categoryId).label} is over its '
+              '${formatRupees(p.cap)} budget this month.',
+        for (final p in b.budgetProjections
+            .where((p) => !p.alreadyOver && p.daysUntilExceed != null)
+            .take(2))
+          'At this pace ${Categories.byId(p.categoryId).label} goes over '
+              'budget in ${p.daysUntilExceed} days.',
+        for (final r in b.recommendations.take(3)) '${r.title} — ${r.body}',
+        for (final a in b.anomalies.take(2))
+          'Unusual: ${formatRupees(a.amount)}'
+              '${a.merchant == null ? '' : ' at ${a.merchant}'} — ${a.reason}',
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -32,14 +42,18 @@ class _AITabState extends ConsumerState<_AITab> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
         children: [
           const _WeeklyRecapCard(),
-          _AerisSaysCard(
-            insightIdx: _insightIdx,
-            reactKey: _reactKey,
-            onTap: () => setState(() {
-              _insightIdx = (_insightIdx + 1) % _insights.length;
-              _reactKey++;
-            }),
-          ).animate().fadeIn(duration: 280.ms),
+          () {
+            final lines = _lines(bundle);
+            return _AerisSaysCard(
+              lines: lines,
+              insightIdx: lines.isEmpty ? 0 : _insightIdx % lines.length,
+              reactKey: _reactKey,
+              onTap: () => setState(() {
+                _insightIdx++;
+                _reactKey++;
+              }),
+            ).animate().fadeIn(duration: 280.ms);
+          }(),
           const SizedBox(height: 12),
           _PredictionBanner(estimate: bundle.monthEstimate)
               .animate()
@@ -54,7 +68,7 @@ class _AITabState extends ConsumerState<_AITab> {
           ],
           const _SectionHead('Recommendations'),
           if (bundle.recommendations.isEmpty)
-            _EmptyCard('Nothing to flag yet — keep using the app!'),
+            const _EmptyCard('Nothing to flag yet — keep using the app!'),
           for (final r in bundle.recommendations.take(4))
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -65,7 +79,7 @@ class _AITabState extends ConsumerState<_AITab> {
           const SizedBox(height: 10),
           const _SectionHead('Anomalies'),
           if (bundle.anomalies.isEmpty)
-            _EmptyCard('Nothing anomalous in recent activity.'),
+            const _EmptyCard('Nothing anomalous in recent activity.'),
           for (final a in bundle.anomalies.take(3))
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -74,7 +88,7 @@ class _AITabState extends ConsumerState<_AITab> {
                   .fadeIn(duration: 280.ms, delay: 180.ms),
             ),
           const SizedBox(height: 10),
-          _AskAerisBtn().animate().fadeIn(duration: 280.ms, delay: 220.ms),
+          const _AskAerisBtn().animate().fadeIn(duration: 280.ms, delay: 220.ms),
         ],
       ),
     );
@@ -84,16 +98,14 @@ class _AITabState extends ConsumerState<_AITab> {
 // ─── Aeris says card ───────────────────────────────────────────────────────
 
 class _AerisSaysCard extends StatelessWidget {
+  final List<String> lines;
   final int insightIdx, reactKey;
   final VoidCallback onTap;
   const _AerisSaysCard(
-      {required this.insightIdx, required this.reactKey, required this.onTap});
-
-  static const _insights = [
-    'Your food spend is tracking 18% below last month — nice work 🎉',
-    'You\'ve had some great no-spend days this month!',
-    'Review any unused subscriptions to save more each month.',
-  ];
+      {required this.lines,
+      required this.insightIdx,
+      required this.reactKey,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -127,12 +139,35 @@ class _AerisSaysCard extends StatelessWidget {
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
                     child: Text(
-                      _insights[insightIdx],
+                      lines.isEmpty
+                          ? 'Nothing stands out yet. After a few weeks of '
+                              'transactions, AERIS spots patterns here.'
+                          : lines[insightIdx],
                       key: ValueKey(insightIdx),
                       style: const TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
                           height: 1.45),
+                    ),
+                  ),
+                  if (lines.length > 1)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text('Tap for the next · ${insightIdx + 1} of ${lines.length}',
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              color: AerisColors.muted(context))),
+                    ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact),
+                      onPressed: () =>
+                          Navigator.pushNamed(context, AppRoutes.assistant),
+                      icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                      label: const Text('Ask Aeris a question'),
                     ),
                   ),
                 ],
@@ -160,16 +195,16 @@ class _PredictionBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: const [
           BoxShadow(
-              color: Color(0x4D6366F1), blurRadius: 24, offset: Offset(0, 8)),
+              color: Color(0x336C7FC4), blurRadius: 24, offset: Offset(0, 8)),
         ],
       ),
       child: Stack(children: [
-        Positioned(
+        const Positioned(
           right: -10,
           top: -10,
           child: Opacity(
             opacity: 0.2,
-            child: const Icon(Icons.online_prediction,
+            child: Icon(Icons.online_prediction,
                 size: 110, color: Colors.white),
           ),
         ),
@@ -339,22 +374,22 @@ class _RecoCard extends StatelessWidget {
     final (Color c, Color tint, IconData fallback) = switch (r.severity) {
       InsightSeverity.warning => (
           AerisColors.warning,
-          const Color(0x1AE08C00),
+          const Color(0x1AC9952E),
           Icons.restaurant
         ),
       InsightSeverity.info => (
           AerisColors.info,
-          const Color(0x1A3B82F6),
+          const Color(0x1A5F8CCB),
           Icons.subscriptions
         ),
       InsightSeverity.positive => (
           AerisColors.moneyIn(context),
-          const Color(0x1A15A24A),
+          const Color(0x1A2E8656),
           Icons.savings
         ),
       InsightSeverity.alert => (
           AerisColors.danger(context),
-          const Color(0x1AE5484D),
+          const Color(0x1ABF433A),
           Icons.priority_high
         ),
     };
@@ -488,7 +523,7 @@ class _AskAerisBtn extends StatelessWidget {
           ],
         ),
         child: Row(children: [
-          AerisMascot(mood: MascotMood.happy, size: 40),
+          const AerisMascot(mood: MascotMood.happy, size: 40),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

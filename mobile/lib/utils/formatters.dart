@@ -81,3 +81,16 @@ String relativeDate(DateTime d) {
 String monthLabel(DateTime d) => DateFormat('MMMM yyyy').format(d);
 String shortMonth(DateTime d) => DateFormat('MMM yy').format(d);
 String shortDay(DateTime d) => DateFormat('d MMM').format(d);
+
+/// "today, 11:59 AM" / "Yesterday, 9:02 AM" / "3 Oct, 6:10 PM" — when a
+/// figure (like a bank balance) was last reported.
+String asOfLabel(DateTime d) {
+  final now = DateTime.now();
+  final today = d.year == now.year && d.month == now.month && d.day == now.day;
+  return today ? 'today, ${relativeDate(d)}' : relativeDate(d);
+}
+
+/// "5 Nov" (this year) / "5 Nov 2027".
+String shortDate(DateTime d) => d.year == DateTime.now().year
+    ? DateFormat('d MMM').format(d)
+    : DateFormat('d MMM yyyy').format(d);

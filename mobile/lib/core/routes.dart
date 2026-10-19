@@ -11,11 +11,16 @@ import '../screens/transactions/voice_capture_screen.dart';
 import '../screens/transactions/screenshot_import_screen.dart';
 import '../screens/transactions/transactions_screen.dart';
 import '../screens/transactions/statement_import_screen.dart';
+import '../screens/profile/about_screen.dart';
+import '../screens/profile/account_screen.dart';
+import '../screens/profile/categories_screen.dart';
 import '../screens/profile/edit_profile_screen.dart';
 import '../screens/profile/settings_screen.dart';
 import '../screens/profile/widgets_screen.dart';
-import '../screens/profile/widget_configure_screen.dart';
+import '../screens/gamification/customize_dashboard_screen.dart';
 import '../screens/accounts/accounts_screen.dart';
+import '../screens/split/people_screen.dart';
+import '../screens/split/shared_screen.dart';
 import '../screens/gamification/aeris_world_screen.dart';
 import '../screens/gamification/village_screen.dart';
 import '../screens/sms_inbox/sms_review_screen.dart';
@@ -49,12 +54,17 @@ class AppRoutes {
   static const transactions = '/transactions';
   static const importStatement = '/transactions/import';
   static const accounts = '/accounts';
+  static const shared = '/shared';
   static const aerisWorld = '/aeris-world';
   static const village = '/village';
   static const editProfile = '/profile/edit';
   static const settings = '/settings';
+  static const account = '/settings/account';
+  static const categories = '/settings/categories';
+  static const about = '/settings/about';
+  static const people = '/people';
+  static const customizeHome = '/settings/customize-home';
   static const widgets = '/widgets';
-  static const widgetConfigure = '/widget-configure';
   static const smsReview = '/sms/review';
   static const notifications = '/notifications';
   static const budgetEdit = '/budgets/edit';
@@ -123,6 +133,9 @@ class AppRoutes {
       case accounts:
         page = const AccountsScreen();
         break;
+      case shared:
+        page = const SharedScreen();
+        break;
       case aerisWorld:
         page = const AerisWorldScreen();
         break;
@@ -135,11 +148,23 @@ class AppRoutes {
       case settings:
         page = const SettingsScreen();
         break;
+      case account:
+        page = const AccountScreen();
+        break;
+      case categories:
+        page = const CategoriesScreen();
+        break;
+      case about:
+        page = const AboutScreen();
+        break;
+      case people:
+        page = const PeopleScreen();
+        break;
+      case customizeHome:
+        page = const CustomizeDashboardScreen();
+        break;
       case widgets:
         page = const WidgetsScreen();
-        break;
-      case widgetConfigure:
-        page = const WidgetConfigureScreen();
         break;
       case smsReview:
         page = const SmsReviewScreen();

@@ -28,7 +28,8 @@ class BudgetsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(amountHiddenProvider);
     final budgets = ref.watch(budgetsStreamProvider);
-    final analytics = ref.watch(analyticsProvider);
+    // Calendar month — caps are monthly, whatever range Insights shows.
+    final snap = ref.watch(monthAnalyticsProvider);
     // Caps as they apply this month (stored cap + any rolled-over leftover).
     final effective = {
       for (final b in ref.watch(effectiveBudgetsProvider))
@@ -50,7 +51,6 @@ class BudgetsScreen extends ConsumerWidget {
         loading: () => const BudgetListSkeleton(),
         error: (e, _) => Center(child: Text('$e')),
         data: (list) {
-          final snap = analytics.asData?.value;
           final byCat = snap?.byCategory ?? const {};
           final monthSpent = snap?.monthExpense ?? 0;
           final total =

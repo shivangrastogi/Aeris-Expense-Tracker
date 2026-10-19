@@ -85,21 +85,15 @@ class ProfileScreen extends ConsumerWidget {
               ),
               _Row(
                 icon: Icons.calendar_month_outlined,
-                title: 'Bill calendar',
-                subtitle: 'What\'s due and when — reminded a day before',
+                title: 'Bills & subscriptions',
+                subtitle: 'What\'s due, card dues and renewals',
                 onTap: () => go(AppRoutes.bills),
               ),
               _Row(
-                icon: Icons.autorenew_rounded,
-                title: 'Subscriptions',
-                subtitle: 'Bills and renewals',
-                onTap: () => go(AppRoutes.subscriptions),
-              ),
-              _Row(
-                icon: Icons.handshake_outlined,
-                title: 'Lent & borrowed',
-                subtitle: 'Money between you and friends',
-                onTap: () => go(AppRoutes.loans),
+                icon: Icons.people_alt_outlined,
+                title: 'People',
+                subtitle: 'Shared bills, lent & borrowed',
+                onTap: () => go(AppRoutes.people),
               ),
             ]),
             const SizedBox(height: 22),
@@ -160,7 +154,7 @@ class ProfileScreen extends ConsumerWidget {
             ]),
             const SizedBox(height: 22),
             OutlinedButton.icon(
-              onPressed: () => _signOut(context, ref),
+              onPressed: () => signOutWithCheck(context, ref),
               icon: const Icon(Icons.logout_rounded, size: 19),
               label: const Text('Sign out'),
               style: OutlinedButton.styleFrom(
@@ -467,7 +461,7 @@ class _Row extends StatelessWidget {
 
 /// Signs out — but first warns if changes are still waiting to sync, since
 /// they'd be rejected by the server once the session is gone.
-Future<void> _signOut(BuildContext context, WidgetRef ref) async {
+Future<void> signOutWithCheck(BuildContext context, WidgetRef ref) async {
   final box = SyncOutbox.instance;
   await box.refresh();
   if (box.count > 0 && !await box.syncNow() && context.mounted) {

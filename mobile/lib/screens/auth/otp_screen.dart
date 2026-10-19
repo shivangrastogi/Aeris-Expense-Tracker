@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auth_provider.dart';
@@ -49,7 +50,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
               decoration: const InputDecoration(labelText: 'OTP'),
             ),
             const SizedBox(height: 12),
-            if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+            if (_error != null) Text(_error!, style: const TextStyle(color: AerisColors.debit)),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: _busy ? null : _confirm,

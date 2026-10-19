@@ -45,9 +45,9 @@ class AssistantService {
             !t.timestamp.isBefore(period.start) &&
             !t.timestamp.isAfter(period.end))
         .toList();
-    final debits = inRange.where((t) => t.isDebit).toList();
+    final debits = inRange.where((t) => t.isSpend).toList();
     // Refunds are money back, not income.
-    final credits = inRange.where((t) => t.isCredit && !t.isRefund).toList();
+    final credits = inRange.where((t) => t.isIncoming && !t.isRefund).toList();
     double sum(Iterable<Transaction> ts) =>
         ts.fold(0.0, (a, b) => a + b.amount);
 
@@ -85,13 +85,13 @@ class AssistantService {
       if (debits.isEmpty) return "No spending ${period.label} yet.";
       final byCat = <String, double>{};
       for (final t in debits) {
-        byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.amount;
+        byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.spendAmount;
       }
       // Top merchant question?
       if (_has(q, ['merchant', 'shop', 'store', 'where'])) {
         final byMerch = <String, double>{};
         for (final t in debits.where((t) => (t.merchant ?? '').isNotEmpty)) {
-          byMerch[t.merchant!] = (byMerch[t.merchant!] ?? 0) + t.amount;
+          byMerch[t.merchant!] = (byMerch[t.merchant!] ?? 0) + t.spendAmount;
         }
         if (byMerch.isNotEmpty) {
           final top = byMerch.entries.reduce((a, b) => a.value > b.value ? a : b);
@@ -111,7 +111,7 @@ class AssistantService {
       }
       final byCat = <String, double>{};
       for (final t in debits) {
-        byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.amount;
+        byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.spendAmount;
       }
       final over = budgets
           .where((b) => b.monthlyCap > 0 && (byCat[b.categoryId] ?? 0) > b.monthlyCap)
@@ -151,7 +151,7 @@ class AssistantService {
       final top3 = recent
           .take(3)
           .map((t) =>
-              '• ${formatRupees(t.amount)}${t.merchant != null ? " at ${t.merchant}" : ""}')
+              '• ${formatRupees(t.spendAmount)}${t.merchant != null ? " at ${t.merchant}" : ""}')
           .join('\n');
       return "Your most recent expenses:\n$top3";
     }

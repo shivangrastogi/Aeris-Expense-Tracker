@@ -7,12 +7,14 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -143,6 +145,29 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
+        // UPI app payment notifications (see UpiNotificationListener).
+        val notifChannel = MethodChannel(messenger, "aeris/notif")
+        notifChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isEnabled" -> result.success(
+                    NotificationManagerCompat.getEnabledListenerPackages(this)
+                        .contains(packageName),
+                )
+                "openSettings" -> {
+                    startActivity(
+                        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                    result.success(true)
+                }
+                "drain" -> result.success(UpiNotificationListener.drain(this))
+                else -> result.notImplemented()
+            }
+        }
+        UpiNotificationListener.onQueued = {
+            runOnUiThread { notifChannel.invokeMethod("queued", null) }
+        }
+
         EventChannel(messenger, "aeris/voice/events").setStreamHandler(
             object : EventChannel.StreamHandler {
                 override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
@@ -262,6 +287,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun onDestroy() {
+        UpiNotificationListener.onQueued = null
         speech?.destroy()
         speech = null
         super.onDestroy()

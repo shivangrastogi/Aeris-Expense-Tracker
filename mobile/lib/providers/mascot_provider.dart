@@ -16,7 +16,7 @@ class MascotState {
 /// Maps the user's real money situation to Aeris's mood + a one-liner.
 /// Prefers the top recommendation for the speech bubble when there is one.
 final mascotProvider = Provider<MascotState>((ref) {
-  final analytics = ref.watch(analyticsProvider).asData?.value;
+  final analytics = ref.watch(monthAnalyticsProvider);
   final budgets = ref.watch(budgetsStreamProvider).asData?.value ?? const [];
   final profile = ref.watch(userProfileProvider).asData?.value;
   final insights = ref.watch(insightsProvider).valueOrNull;

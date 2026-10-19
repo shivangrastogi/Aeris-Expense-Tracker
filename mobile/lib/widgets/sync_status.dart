@@ -132,7 +132,7 @@ class _SyncStrip extends StatelessWidget {
           'Offline space $pct% full — connect to the internet now',
         ),
       OutboxLevel.warn => (
-          const Color(0xFFF59E0B),
+          const Color(0xFFC9952E),
           Colors.black,
           Icons.cloud_off,
           'Offline space $pct% full · ${_changes(box.count)} waiting',

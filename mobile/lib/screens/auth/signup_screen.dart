@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
-import '../../models/avatar_skin.dart';
+import '../../widgets/brand_mark.dart';
 import '../../providers/auth_provider.dart';
-import '../../widgets/aeris_avatar.dart';
 import 'auth_widgets.dart';
-import '../../widgets/aeris_toast.dart';
+import '../../widgets/recovery_key_dialog.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -42,104 +40,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           email: _email.text,
           password: _pwd.text,
           displayName: _name.text.trim());
-      if (mounted) await _showRecoveryKey(recoveryKey);
+      if (mounted) await showRecoveryKeyDialog(context, recoveryKey);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       setState(() => _error = _friendlyError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  Future<void> _showRecoveryKey(String key) {
-    bool saved = false;
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (d) => StatefulBuilder(
-        builder: (d, setLocal) => AlertDialog(
-          title: const Text('Save your recovery key'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Your data is end-to-end encrypted — not even we can read it. '
-                'If you forget your password, this key is the ONLY way to get '
-                'your transactions back. Store it somewhere safe; we can\'t '
-                'show it again or recover it for you.',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest
-                      .withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final block in key.split('-'))
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surface
-                              .withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          block,
-                          style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 2),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: key));
-                    ScaffoldMessenger.of(context).showToast(
-                        const SnackBar(content: Text('Recovery key copied')));
-                  },
-                  icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('Copy'),
-                ),
-              ),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                value: saved,
-                onChanged: (v) => setLocal(() => saved = v ?? false),
-                title: const Text("I've saved my recovery key",
-                    style: TextStyle(fontSize: 13)),
-              ),
-            ],
-          ),
-          actions: [
-            FilledButton(
-              onPressed: saved ? () => Navigator.pop(d) : null,
-              child: const Text('Continue'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -159,22 +66,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     children: [
                       const SizedBox(height: 14),
                       // ── Brand ──────────────────────────────────────
-                      Row(
+                      const Row(
                         children: [
-                          SizedBox(
-                            width: 48,
-                            height: 48,
-                            child: AerisAvatar(
-                              skin: Avatars.byId('sprout'),
-                              stage: 1,
-                              mood: AvatarMood.happy,
-                              size: 48,
-                              glow: false,
-                              animate: true,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Text('A.E.R.I.S',
+                          AerisBrandMark(size: 40),
+                          SizedBox(width: 12),
+                          Text('AERIS',
                               style: TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w800,
@@ -230,9 +126,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         icon: Icons.lock_outline,
                         hint: 'Password',
                         obscure: true,
-                        validator: (v) => (v == null || v.length < 6)
-                            ? 'Min 6 characters'
-                            : null,
+                        helper: 'At least 8 characters, with a letter and a '
+                            'number. It also unlocks your encrypted data.',
+                        validator: passwordProblem,
                       ),
 
                       if (_error != null) ...[

@@ -18,7 +18,7 @@ class BossesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final analytics = ref.watch(analyticsProvider).valueOrNull;
+    final analytics = ref.watch(monthAnalyticsProvider);
     final budgets = (ref.watch(budgetsStreamProvider).valueOrNull ?? const [])
         .where((b) => b.monthlyCap > 0 && b.categoryId != Budget.totalId)
         .toList();

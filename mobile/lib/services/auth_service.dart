@@ -7,11 +7,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user_profile.dart';
+import 'card_dues.dart';
 import 'category_rules.dart';
 import 'crypto_service.dart';
 import 'firestore_service.dart';
 import 'key_vault.dart';
 import 'sms_import_service.dart';
+import 'sms_templates.dart';
 
 class AuthService {
   AuthService._();
@@ -206,6 +208,98 @@ class AuthService {
     await KeyVault.instance.setDek(uid, dek);
   }
 
+  /// Re-confirm the signed-in user's password with Firebase (required before
+  /// sensitive changes) and return their keys doc + salt.
+  Future<({User user, Map<String, dynamic>? keys})> _reauth(
+      String password) async {
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) {
+      throw Exception('Sign in with email to do this.');
+    }
+    try {
+      await user.reauthenticateWithCredential(
+          EmailAuthProvider.credential(email: email, password: password));
+    } on FirebaseAuthException catch (e) {
+      throw Exception(e.code == 'wrong-password' || e.code == 'invalid-credential'
+          ? 'That password is not right.'
+          : (e.message ?? 'Could not confirm your password.'));
+    }
+    return (user: user, keys: await FirestoreService.instance.fetchKeys(user.uid));
+  }
+
+  /// Change the login password AND re-wrap the vault key under it, so the
+  /// encrypted data keeps opening with the new password.
+  Future<void> changePassword(
+      {required String current, required String next}) async {
+    final r = await _reauth(current);
+    final keys = r.keys;
+    Map<String, dynamic>? rewrapped;
+    if (keys != null) {
+      final cs = CryptoService.instance;
+      final salt = base64Decode(keys['salt'] as String);
+      final dek = await cs.decryptBytes(
+          keys['wrapPw'] as String, await cs.deriveKek(current, salt));
+      rewrapped = {
+        ...keys,
+        'wrapPw': await cs.encryptBytes(dek, await cs.deriveKek(next, salt)),
+      };
+    }
+    await r.user.updatePassword(next);
+    if (rewrapped != null) {
+      await FirestoreService.instance.saveKeys(r.user.uid, rewrapped);
+    }
+  }
+
+  /// Make a NEW recovery key (the old one stops working) and return it so the
+  /// UI can show it once. Needs the password, to prove it's the owner.
+  Future<String> regenerateRecoveryKey(String password) async {
+    final r = await _reauth(password);
+    final keys = r.keys;
+    if (keys == null) throw Exception('This account has no encryption keys.');
+    final cs = CryptoService.instance;
+    final salt = base64Decode(keys['salt'] as String);
+    final dek = await cs.decryptBytes(
+        keys['wrapPw'] as String, await cs.deriveKek(password, salt));
+    final recoveryKey = cs.generateRecoveryKey();
+    await FirestoreService.instance.saveKeys(r.user.uid, {
+      ...keys,
+      'wrapRec': await cs.encryptBytes(
+          dek, await cs.deriveRecoveryKek(recoveryKey, salt)),
+    });
+    return recoveryKey;
+  }
+
+  /// Permanently delete the account: every transaction, budget, goal, key and
+  /// setting stored for it, then the login itself, then this device's copy.
+  Future<void> deleteAccount(String password) async {
+    final r = await _reauth(password);
+    final uid = r.user.uid;
+    await FirestoreService.instance.deleteAllUserData(uid);
+    await signOutLocalOnly(uid);
+    await r.user.delete();
+  }
+
+  /// The local half of [signOut]: forget this account's keys and per-account
+  /// prefs on this device.
+  Future<void> signOutLocalOnly(String uid) async {
+    _unlockCompleter = null;
+    await KeyVault.instance.clear(uid);
+    try {
+      final p = await SharedPreferences.getInstance();
+      for (final k in _perAccountPrefs) {
+        await p.remove(k);
+      }
+      for (final k in p.getKeys().where((k) => k.startsWith('gam_'))) {
+        await p.remove(k);
+      }
+      await CategoryRules.instance.clear();
+      await SmsTemplates.instance.clear();
+      await CardDues.instance.clear();
+      SmsImportService.instance.reset();
+    } catch (_) {}
+  }
+
   /// For accounts created before E2E existed: generate keys (if missing) and
   /// re-encrypt all existing plaintext data. Returns a fresh recovery key when
   /// keys had to be created (so the UI can show it once), else null.
@@ -257,6 +351,7 @@ class AuthService {
     'sms_hwm_ms',
     'last_sms_sync',
     'sms_recent_hashes',
+    'sms_reparse_version',
     'streak_current',
     'streak_best',
     'streak_last',
@@ -266,25 +361,17 @@ class AuthService {
   ];
 
   Future<void> signOut() async {
-    _unlockCompleter = null;
-    final uid = _auth.currentUser?.uid;
-    if (uid != null) await KeyVault.instance.clear(uid);
     // Clear the keys the background SMS isolate uses, so it can't write to the
     // signed-out account on the next incoming SMS — and everything else that
     // belongs to this account rather than the device, so the next person to
     // sign in on this phone starts clean. Device settings (theme, currency,
     // app lock, privacy eye) stay.
-    try {
-      final p = await SharedPreferences.getInstance();
-      for (final k in _perAccountPrefs) {
-        await p.remove(k);
-      }
-      for (final k in p.getKeys().where((k) => k.startsWith('gam_'))) {
-        await p.remove(k);
-      }
-      await CategoryRules.instance.clear();
-      SmsImportService.instance.reset();
-    } catch (_) {}
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      await signOutLocalOnly(uid);
+    } else {
+      _unlockCompleter = null;
+    }
     await _auth.signOut();
   }
 

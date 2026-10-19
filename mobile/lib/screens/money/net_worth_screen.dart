@@ -49,7 +49,7 @@ class NetWorthScreen extends ConsumerWidget {
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('NET WORTH',
                   style: hudLabel(context,
-                      color: const Color(0xB3EAF2F7))),
+                      color: const Color(0xB3E6E8EB))),
               const SizedBox(height: 8),
               Text(formatRupees(w.total),
                   style: const TextStyle(
@@ -74,7 +74,7 @@ class NetWorthScreen extends ConsumerWidget {
                   'you\'ll have ${formatRupees(projection.value, compact: true)} '
                   'by ${_months[projection.by.month]} ${projection.by.year}',
                   style: const TextStyle(
-                      color: Color(0xB3EAF2F7),
+                      color: Color(0xB3E6E8EB),
                       fontSize: 13,
                       fontWeight: FontWeight.w600),
                 ),

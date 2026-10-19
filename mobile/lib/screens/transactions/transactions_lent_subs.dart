@@ -69,7 +69,7 @@ class _LentTab extends ConsumerWidget {
               ),
             if (pending.isNotEmpty) ...[
               Row(children: [
-                Icon(Icons.access_time, size: 16, color: AerisColors.warning),
+                const Icon(Icons.access_time, size: 16, color: AerisColors.warning),
                 const SizedBox(width: 6),
                 Text(
                   'Pending ${pending.length}',
@@ -165,8 +165,8 @@ class _LentTab extends ConsumerWidget {
               ),
             ListTile(
               leading: const CircleAvatar(
-                backgroundColor: Color(0x3315A24A),
-                child: Icon(Icons.check, color: Color(0xFF15A24A)),
+                backgroundColor: Color(0x332E8656),
+                child: Icon(Icons.check, color: Color(0xFF2E8656)),
               ),
               title:
                   Text(l.borrowed ? 'Mark as paid back' : 'Mark as received'),
@@ -192,8 +192,8 @@ class _LentTab extends ConsumerWidget {
           ] else
             ListTile(
               leading: const CircleAvatar(
-                backgroundColor: Color(0x33F59E0B),
-                child: Icon(Icons.undo, color: Color(0xFFF59E0B)),
+                backgroundColor: Color(0x33C9952E),
+                child: Icon(Icons.undo, color: Color(0xFFC9952E)),
               ),
               title: const Text('Mark as pending'),
               onTap: () async {
@@ -207,8 +207,8 @@ class _LentTab extends ConsumerWidget {
             ),
           ListTile(
             leading: const CircleAvatar(
-              backgroundColor: Color(0x33EF4444),
-              child: Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
+              backgroundColor: Color(0x33BF433A),
+              child: Icon(Icons.delete_outline, color: Color(0xFFBF433A)),
             ),
             title: const Text('Delete'),
             onTap: () async {
@@ -465,7 +465,7 @@ class _LentTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: l.isSettled
                         ? AerisColors.moneyIn(context).withValues(alpha: 0.15)
-                        : const Color(0xFFD97706).withValues(alpha: 0.15),
+                        : const Color(0xFFA9711C).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -475,7 +475,7 @@ class _LentTile extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                         color: l.isSettled
                             ? AerisColors.moneyIn(context)
-                            : const Color(0xFFD97706)),
+                            : const Color(0xFFA9711C)),
                   ),
                 ),
               ]),
@@ -486,13 +486,13 @@ class _LentTile extends StatelessWidget {
 
   static Color _colorForName(String name) {
     final colors = [
-      const Color(0xFF0EA5A4),
-      const Color(0xFF8B5CF6),
-      const Color(0xFF15A24A),
-      const Color(0xFFD97706),
-      const Color(0xFFEC4899),
-      const Color(0xFF3B82F6),
-      const Color(0xFFEF4444),
+      const Color(0xFF2F8F80),
+      const Color(0xFF8A7ED3),
+      const Color(0xFF2E8656),
+      const Color(0xFFA9711C),
+      const Color(0xFFC9789A),
+      const Color(0xFF5F8CCB),
+      const Color(0xFFBF433A),
     ];
     final hash = name.codeUnits.fold(0, (h, c) => (h * 31 + c) & 0x7FFFFFFF);
     return colors[hash % colors.length];

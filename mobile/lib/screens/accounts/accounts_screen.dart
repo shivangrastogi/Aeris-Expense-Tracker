@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../providers/accounts_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/prefs_data_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
 import '../transactions/transactions_screen.dart';
 import '../../utils/amount_input_formatter.dart';
+import '../../widgets/text_input_dialog.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -32,8 +34,9 @@ class AccountsScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
               children: [
                 Text(
-                  'Set an opening balance to see a true running balance. '
-                  'Tap an account to see its activity.',
+                  'Balances come from your bank SMS. For an account whose SMS '
+                  'show no balance, set an opening balance instead. Tap an '
+                  'account to see its activity.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
@@ -99,6 +102,21 @@ class _AccountCard extends ConsumerWidget {
     }
   }
 
+  Future<void> _rename(BuildContext context, WidgetRef ref) async {
+    final uid = ref.read(currentUserIdProvider);
+    final name = await promptText(context,
+        title: 'Name ${accountLabel(account.key)}',
+        initial: account.nickname,
+        hint: 'e.g. HDFC salary, SBI savings',
+        helper: 'Leave empty to remove the name.',
+        capitalization: TextCapitalization.words);
+    if (name == null || uid == null) return;
+    final names = ref.read(accountNamesProvider).valueOrNull ?? const {};
+    await ref
+        .read(firestoreServiceProvider)
+        .setAccountName(uid, account.key, name, names);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final net = account.net;
@@ -134,6 +152,7 @@ class _AccountCard extends ConsumerWidget {
                             style: const TextStyle(
                                 fontWeight: FontWeight.w800, fontSize: 16)),
                         Text(
+                          '${account.nickname != null ? '${accountLabel(account.key)} · ' : ''}'
                           '${account.count} txns'
                           '${account.lastTxn != null ? ' · last ${relativeDate(account.lastTxn!)}' : ''}',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -144,17 +163,33 @@ class _AccountCard extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Set opening balance',
-                    icon: const Icon(Icons.tune, size: 20),
-                    onPressed: () => _setOpeningBalance(context, ref),
-                  ),
+                  if (account.key != unassignedAccount)
+                    PopupMenuButton<String>(
+                      tooltip: 'Account options',
+                      icon: const Icon(Icons.more_vert_rounded, size: 20),
+                      onSelected: (v) => v == 'rename'
+                          ? _rename(context, ref)
+                          : _setOpeningBalance(context, ref),
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                            value: 'rename',
+                            child: Text(account.nickname == null
+                                ? 'Name this account'
+                                : 'Rename')),
+                        const PopupMenuItem(
+                            value: 'opening', child: Text('Opening balance')),
+                      ],
+                    ),
                 ],
               ),
               const SizedBox(height: 12),
-              // Live balance (only when an opening balance is set).
+              // Live balance: as the bank last reported it, else opening +
+              // tracked activity.
               if (bal != null) ...[
-                Text('Current balance',
+                Text(
+                    account.bankBalance != null
+                        ? 'Balance · per bank SMS, ${asOfLabel(account.bankBalanceAt!)}'
+                        : 'Current balance',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 Text(formatRupees(bal),
@@ -163,7 +198,7 @@ class _AccountCard extends ConsumerWidget {
                         fontWeight: FontWeight.w900,
                         color: bal >= 0 ? AerisColors.moneyIn(context) : AerisColors.danger(context))),
                 const SizedBox(height: 10),
-              ] else
+              ] else if (account.key != unassignedAccount)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: TextButton.icon(

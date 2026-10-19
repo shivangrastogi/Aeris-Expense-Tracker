@@ -1,39 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Budget 2x2 widget — glass card with a real circular ring (drawn as a
-     bitmap in AerisBudgetWidgetProvider) + "₹X left/over", mirroring the
-     in-app preview. RemoteViews-safe views only. -->
+<!-- 2x2 budget ring: % used drawn as a bitmap ring, amount left below. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
-    android:padding="14dp"
-    android:background="@drawable/aeris_glass_bg">
+    android:padding="12dp"
+    android:background="@drawable/w_bg">
 
     <ImageView
         android:id="@+id/widget_ring"
-        android:layout_width="74dp"
-        android:layout_height="74dp"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:scaleType="fitCenter" />
 
     <TextView
         android:id="@+id/widget_ring_left"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="6dp"
         android:text="—"
-        android:textColor="#15A24A"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        android:textColor="@color/w_text"
+        android:textSize="15sp"
+        android:fontFamily="sans-serif-medium"
+        android:maxLines="1" />
 
     <TextView
         android:id="@+id/widget_ring_cap"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="left"
-        android:textColor="#7A8A88"
-        android:textSize="10sp"
-        android:textStyle="bold" />
-
+        android:text="left this month"
+        android:textColor="@color/w_muted"
+        android:textSize="10.5sp"
+        android:maxLines="1" />
 </LinearLayout>

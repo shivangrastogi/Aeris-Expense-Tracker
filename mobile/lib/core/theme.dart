@@ -3,56 +3,66 @@ import 'package:flutter/material.dart';
 /// The bundled UI font, registered with all its weights in pubspec.yaml.
 const kFontFamily = 'PlusJakartaSans';
 
-/// Design tokens for AERIS Expense — the "Arc" design language, borrowed
-/// from the AERIS desktop HUD.
+/// Design tokens for AERIS Expense — "Graphite", a calm, professional look.
 ///
-/// Dark-first: a near-black void, deep navy panels with hairline edges, and
-/// ONE interactive accent — arc cyan — with violet as its gradient partner.
-/// Money in is mint, spending stays plain ink (it's normal, not an alarm),
-/// coral is reserved for real warnings. Everything brightness-dependent goes
-/// through a `(context)` helper so light and dark stay in step.
+/// Neutral surfaces (soft grey / graphite, never pure black), ONE quiet
+/// accent — steel blue — and colour only where it means something: green for
+/// money in, amber for "needs you", red for warnings. Spending stays plain
+/// ink (it's normal, not an alarm). No neon, no glows. Everything
+/// brightness-dependent goes through a `(context)` helper so light and dark
+/// stay in step.
 class AerisColors {
   AerisColors._();
 
-  /// Brand accent / default theme seed — arc cyan.
-  static const seed = Color(0xFF37E0EA);
+  /// Brand accent / default theme seed — steel blue.
+  static const seed = Color(0xFF4F86C6);
 
-  /// Deep cyan for accent *text* on light surfaces (~5:1 on white).
-  static const seedInk = Color(0xFF0E7490);
+  /// Deep steel blue for accent *text* on light surfaces (~5:1 on white).
+  static const seedInk = Color(0xFF2B5F9E);
 
-  // ── HUD palette ────────────────────────────────────────────
-  static const arc = Color(0xFF37E0EA);
-  static const violet = Color(0xFF7C6CFF);
-  static const mint = Color(0xFF54F0C0);
-  static const amber = Color(0xFFFFB454);
-  static const coral = Color(0xFFFF5A6E);
+  // ── Supporting palette (muted; names kept from the old HUD palette) ──
+  /// Soft steel blue — the accent as it reads on dark panels.
+  static const arc = Color(0xFF7AA6DA);
+
+  /// Iris — the one secondary hue (goals, gradients' far end).
+  static const violet = Color(0xFF8C82CF);
+
+  /// Soft green — good / money in on dark.
+  static const mint = Color(0xFF63B98F);
+
+  /// Muted amber — streaks, "needs you".
+  static const amber = Color(0xFFD2A35A);
+
+  /// Soft red — warnings on dark.
+  static const coral = Color(0xFFD9786F);
 
   // ── Neutrals ───────────────────────────────────────────────
-  static const bgLight = Color(0xFFEEF2F7); // cool lab-grey canvas
+  static const bgLight = Color(0xFFF3F4F6); // soft grey canvas
   static const cardLight = Color(0xFFFFFFFF);
-  static const inkLight = Color(0xFF0B1220); // headings, amounts
-  static const mutedLight = Color(0xFF5B6B82); // secondary text
-  static const lineLight = Color(0xFFDCE3EC); // hairlines
+  static const inkLight = Color(0xFF151A22); // headings, amounts
+  static const mutedLight = Color(0xFF5E6978); // secondary text (5.6:1)
+  static const lineLight = Color(0xFFE3E6EB); // hairlines
 
-  static const bgDark = Color(0xFF06080D); // void
-  static const cardDark = Color(0xFF0D131D); // panel
-  static const inkDark = Color(0xFFEAF2F7);
-  static const mutedDark = Color(0xFF7C8AA0);
-  static const lineDark = Color(0xFF1B2536);
+  static const bgDark = Color(0xFF0F1115); // graphite canvas
+  static const cardDark = Color(0xFF181B21); // panel
+  static const inkDark = Color(0xFFE6E8EB);
+  static const mutedDark = Color(0xFF9199A5);
+  static const lineDark = Color(0xFF272B33);
 
   /// The interactive accent for the current theme — follows the user's accent
-  /// choice (Customize dashboard); neon in dark mode, deepened in light mode.
+  /// choice (Customize dashboard); softened in dark mode, deepened in light.
   static Color accent(BuildContext context) =>
       Theme.of(context).colorScheme.primary;
 
-  /// Text/icons drawn ON an accent fill (dark on neon, white on deep cyan).
+  /// Text/icons drawn ON an accent fill (dark on the soft dark-mode tone,
+  /// white on the deep light-mode tone).
   static Color onAccent(BuildContext context) =>
       Theme.of(context).colorScheme.onPrimary;
 
-  /// Readable text/icon colour for ANY solid fill: near-black on bright
-  /// (neon) fills, white on deep ones.
+  /// Readable text/icon colour for ANY solid fill: near-black on light fills,
+  /// white on deep ones.
   static Color on(Color fill) => fill.computeLuminance() > 0.35
-      ? const Color(0xFF06080D)
+      ? const Color(0xFF111418)
       : Colors.white;
 
   /// Accent for text. Same as [accent]: the theme picks a tone that reads on
@@ -86,66 +96,65 @@ class AerisColors {
   static bool _dark(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark;
 
-  static const credit = Color(0xFF059669); // money in — light
+  static const credit = Color(0xFF2E8656); // money in — light (4.6:1)
   static const creditDark = mint; // money in — dark
-  static const debit = Color(0xFFE11D48); // danger — light
+  static const debit = Color(0xFFBF433A); // danger — light (5.3:1)
   static const debitDark = coral; // danger — dark
-  static const warning = Color(0xFFD97706);
-  static const info = Color(0xFF3B82F6);
+  static const warning = Color(0xFFA9711C); // text-safe amber (4.6:1)
+  static const info = Color(0xFF3D73B0);
 
   /// Old names for the canvas, kept for existing call sites.
   static const surfaceTintLight = bgLight;
   static const surfaceTintDark = bgDark;
 
-  // Mascot / status moods — also reused for delight accents.
-  static const moodHappy = Color(0xFF22C55E);
+  // Mascot / status moods.
+  static const moodHappy = Color(0xFF4C9A6C);
   static const moodNeutral = arc;
-  static const moodWorried = Color(0xFFF59E0B);
-  static const moodAlert = Color(0xFFEF4444);
+  static const moodWorried = Color(0xFFC9952E);
+  static const moodAlert = Color(0xFFC0443B);
 
-  /// Arc gradient — the signature cyan → violet sweep (add button, progress,
-  /// avatars). Deep enough at both ends to carry white text.
+  /// Accent fill for primary surfaces that carry white text (add button,
+  /// avatars) — a barely-there steel-blue → slate-indigo shift, not a sweep.
   static const heroGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF0E7490), Color(0xFF5B4FD6)],
+    colors: [Color(0xFF3A6EAD), Color(0xFF3F5596)],
   );
 
-  /// The neon version for glows, bars and the add button on dark panels.
+  /// The same on dark panels (lighter, still quiet).
   static const arcGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [arc, violet],
+    colors: [Color(0xFF6F9CD3), Color(0xFF6E86C4)],
   );
 
-  /// The Home hero HUD panel — a deep navy slab with a faint arc glow.
+  /// The Home hero panel — a flat graphite slab in both themes.
   static const inkGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF10223A), Color(0xFF080D17)],
+    colors: [Color(0xFF20252E), Color(0xFF181C23)],
   );
 
-  /// Soft accent gradient for secondary cards.
+  /// Secondary accent fill (goal / feature cards).
   static const violetGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF7C6CFF), Color(0xFF4F46E5)],
+    colors: [Color(0xFF6C7CC2), Color(0xFF5867A9)],
   );
 
-  // Category palette — used in pie / stacked-bar charts.
+  /// Chart palette — muted, and validated (dataviz checks: lightness band,
+  /// chroma, colour-blind separation of neighbours, contrast) on BOTH the
+  /// white and the graphite surface. Use in this fixed order; never cycle
+  /// past it — fold extra series into "Other".
   static const categoryPalette = <Color>[
-    arc,
-    Color(0xFFFFB454),
-    violet,
-    Color(0xFFFF6FB5),
-    mint,
-    coral,
-    Color(0xFF4F9BFF),
-    Color(0xFF2DD4BF),
-    Color(0xFFB794FF),
-    Color(0xFFFF8A4C),
-    Color(0xFF22D3EE),
-    Color(0xFFA3E635),
+    Color(0xFF5F8CCB), // steel blue
+    Color(0xFFC97A52), // terracotta
+    Color(0xFF2FA287), // teal
+    Color(0xFFB0902F), // ochre
+    Color(0xFFC9789A), // rose
+    Color(0xFF5F9A4C), // sage
+    Color(0xFF8A7ED3), // iris
+    Color(0xFFC96A66), // brick
   ];
 
   /// The standard panel: white with a soft cool shadow in light mode, a
@@ -173,12 +182,12 @@ class AerisColors {
   }
 }
 
-/// HUD-style caption: small caps with wide tracking ("SPENT · THIS MONTH").
+/// Small-caps caption ("SPENT · THIS MONTH") — modest tracking.
 TextStyle hudLabel(BuildContext context, {Color? color, double size = 11}) =>
     TextStyle(
       fontSize: size,
       fontWeight: FontWeight.w700,
-      letterSpacing: 1.6,
+      letterSpacing: 0.9,
       color: color ?? AerisColors.muted(context),
     );
 
@@ -264,23 +273,30 @@ TextTheme _tabular(TextTheme t) {
   );
 }
 
-/// The accent tone for [brightness], for any seed hue.
+/// The accent tone for [brightness], for any seed hue (including the user's
+/// accent choice).
 ///
-/// Light mode darkens the seed until white text on it passes AA (~4.5:1).
-/// Dark mode keeps it neon — lifted if needed so it glows on the void — and
-/// the theme's onPrimary switches the text on it to near-black.
+/// Saturation is capped first so no choice turns neon. Light mode then
+/// darkens until white text on it passes AA (~4.5:1). Dark mode lightens
+/// just enough to read on graphite (luminance ~0.30) — soft, not glowing —
+/// and the theme's onPrimary puts near-black text on it.
 Color accentFor(Brightness brightness, Color seed) {
-  final hsl = HSLColor.fromColor(seed);
+  var hsl = HSLColor.fromColor(seed);
+  final maxSat = brightness == Brightness.dark ? 0.52 : 0.58;
+  if (hsl.saturation > maxSat) hsl = hsl.withSaturation(maxSat);
+  var c = hsl.toColor();
   if (brightness == Brightness.dark) {
-    var c = seed;
-    for (var l = hsl.lightness; c.computeLuminance() < 0.40 && l < 0.9;) {
+    for (var l = hsl.lightness; c.computeLuminance() < 0.30 && l < 0.85;) {
       l += 0.02;
+      c = hsl.withLightness(l).toColor();
+    }
+    for (var l = hsl.lightness; c.computeLuminance() > 0.42 && l > 0.3;) {
+      l -= 0.02;
       c = hsl.withLightness(l).toColor();
     }
     return c;
   }
-  var c = seed;
-  for (var l = hsl.lightness; c.computeLuminance() > 0.18 && l > 0.1;) {
+  for (var l = hsl.lightness; c.computeLuminance() > 0.17 && l > 0.1;) {
     l -= 0.02;
     c = hsl.withLightness(l).toColor();
   }
@@ -303,21 +319,21 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
     primary: accent,
     // Neon accent in dark mode → near-black text on it; deep accent in light
     // mode → white text.
-    onPrimary: dark ? const Color(0xFF04121A) : Colors.white,
+    onPrimary: dark ? const Color(0xFF0E141C) : Colors.white,
     secondary: AerisColors.violet,
     surface: card,
     onSurface: ink,
     onSurfaceVariant: muted,
     surfaceTint: Colors.transparent,
-    surfaceContainerLowest: dark ? const Color(0xFF04060A) : Colors.white,
+    surfaceContainerLowest: dark ? const Color(0xFF0B0D10) : Colors.white,
     surfaceContainerLow:
-        dark ? const Color(0xFF0A0F17) : const Color(0xFFF7F9FC),
-    surfaceContainer: dark ? const Color(0xFF111926) : const Color(0xFFE9EEF5),
+        dark ? const Color(0xFF14171C) : const Color(0xFFF8F9FA),
+    surfaceContainer: dark ? const Color(0xFF1D2128) : const Color(0xFFECEEF1),
     surfaceContainerHigh:
-        dark ? const Color(0xFF16202F) : const Color(0xFFE3E9F1),
+        dark ? const Color(0xFF22262E) : const Color(0xFFE6E9ED),
     surfaceContainerHighest:
-        dark ? const Color(0xFF1D2939) : const Color(0xFFDCE3EC),
-    outline: dark ? const Color(0xFF42506A) : const Color(0xFF94A3B8),
+        dark ? const Color(0xFF2A2F38) : const Color(0xFFE0E3E8),
+    outline: dark ? const Color(0xFF4A515C) : const Color(0xFF9AA3AF),
     outlineVariant: line,
     error: dark ? AerisColors.debitDark : AerisColors.debit,
   );
@@ -377,7 +393,7 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
     // on white sheets alike; focus swaps the hairline for the accent.
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: dark ? const Color(0xFF0A0F17) : Colors.white,
+      fillColor: dark ? const Color(0xFF14171C) : Colors.white,
       prefixIconColor: muted,
       labelStyle: jakarta(14, FontWeight.w500, color: muted),
       floatingLabelStyle: jakarta(14, FontWeight.w600, color: accent),
@@ -468,7 +484,7 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
       backgroundColor: card,
       surfaceTintColor: Colors.transparent,
       modalBackgroundColor: card,
-      dragHandleColor: dark ? const Color(0xFF2A3749) : const Color(0xFFCBD5E1),
+      dragHandleColor: dark ? const Color(0xFF353A44) : const Color(0xFFD1D5DB),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     ),
@@ -481,10 +497,10 @@ ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: dark ? const Color(0xFF1B2536) : AerisColors.inkLight,
+      backgroundColor: dark ? const Color(0xFF272B33) : AerisColors.inkLight,
       contentTextStyle: jakarta(13.5, FontWeight.w600,
           color: dark ? AerisColors.inkDark : Colors.white),
-      actionTextColor: dark ? AerisColors.arc : const Color(0xFF67E8F9),
+      actionTextColor: dark ? AerisColors.arc : const Color(0xFF9CC3EC),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
     popupMenuTheme: PopupMenuThemeData(

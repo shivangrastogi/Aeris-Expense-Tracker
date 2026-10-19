@@ -23,3 +23,10 @@
 # Play Core (deferred components) is referenced by the Flutter embedding but
 # not shipped; don't fail the build over it.
 -dontwarn com.google.android.play.core.**
+
+# google_mlkit_text_recognition references the optional Chinese / Devanagari /
+# Japanese / Korean recognizer modules; only the Latin one is shipped.
+-dontwarn com.google.mlkit.vision.text.chinese.**
+-dontwarn com.google.mlkit.vision.text.devanagari.**
+-dontwarn com.google.mlkit.vision.text.japanese.**
+-dontwarn com.google.mlkit.vision.text.korean.**

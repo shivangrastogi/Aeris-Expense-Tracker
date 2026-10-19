@@ -126,36 +126,38 @@ class AnalyticsSnapshot {
     final merchants = <String, double>{};
 
     for (final t in txns) {
+      // Own-account transfers and share paybacks are neither spend nor income.
+      if (t.isInternal) continue;
       final mk =
           '${t.timestamp.year}-${t.timestamp.month.toString().padLeft(2, '0')}';
       // A refund isn't income: it reduces what was spent.
       if (t.isRefund) {
-        mExp[mk] = (mExp[mk] ?? 0) - t.amount;
+        mExp[mk] = (mExp[mk] ?? 0) - t.spendAmount;
       } else if (t.isCredit) {
-        mInc[mk] = (mInc[mk] ?? 0) + t.amount;
+        mInc[mk] = (mInc[mk] ?? 0) + t.spendAmount;
       } else {
-        mExp[mk] = (mExp[mk] ?? 0) + t.amount;
+        mExp[mk] = (mExp[mk] ?? 0) + t.spendAmount;
       }
 
       // Restrict the dashboard aggregates to the selected range.
       if (t.timestamp.isBefore(start) || t.timestamp.isAfter(end)) continue;
       if (t.isRefund) {
-        refundSum += t.amount;
+        refundSum += t.spendAmount;
         continue;
       }
       if (t.isCredit) {
-        inSum += t.amount;
+        inSum += t.spendAmount;
         continue;
       }
-      outSum += t.amount;
-      byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.amount;
+      outSum += t.spendAmount;
+      byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.spendAmount;
       countByCat[t.categoryId] = (countByCat[t.categoryId] ?? 0) + 1;
       final dk = '${t.timestamp.year}-'
           '${t.timestamp.month.toString().padLeft(2, '0')}-'
           '${t.timestamp.day.toString().padLeft(2, '0')}';
-      daily[dk] = (daily[dk] ?? 0) + t.amount;
+      daily[dk] = (daily[dk] ?? 0) + t.spendAmount;
       if (t.merchant != null && t.merchant!.isNotEmpty) {
-        merchants[t.merchant!] = (merchants[t.merchant!] ?? 0) + t.amount;
+        merchants[t.merchant!] = (merchants[t.merchant!] ?? 0) + t.spendAmount;
       }
     }
 
@@ -274,10 +276,28 @@ String _signature(List<Transaction> txns, AnalyticsRange range) {
   var h = 17;
   for (final t in txns) {
     h = 0x1fffffff & (h * 31 + t.id.hashCode);
-    h = 0x1fffffff & (h * 31 + t.amount.hashCode);
+    h = 0x1fffffff & (h * 31 + t.spendAmount.hashCode);
     h = 0x1fffffff & (h * 31 + t.timestamp.millisecondsSinceEpoch);
     h = 0x1fffffff & (h * 31 + t.direction.index);
     h = 0x1fffffff & (h * 31 + t.categoryId.hashCode);
   }
   return '${txns.length}|${range.start}|${range.end}|${range.label}|$h';
 }
+
+/// The CURRENT CALENDAR MONTH, independent of the range selector. Anything
+/// that compares spend with a monthly budget (Budgets, over-budget cards,
+/// bosses, the mascot's mood…) must use this — comparing a monthly cap with
+/// "Last 3 months" of spend showed every budget as blown.
+final monthAnalyticsProvider = Provider<AnalyticsSnapshot?>((ref) {
+  final txns = ref.watch(transactionsStreamProvider).valueOrNull;
+  if (txns == null) return null;
+  final range = AnalyticsRange.thisMonth();
+  final sig = _signature(txns, range);
+  final c = _monthCache;
+  if (c != null && c.sig == sig) return c.snapshot;
+  final snap = AnalyticsSnapshot.from(txns, range);
+  _monthCache = (sig: sig, snapshot: snap);
+  return snap;
+});
+
+({String sig, AnalyticsSnapshot snapshot})? _monthCache;

@@ -32,10 +32,10 @@ class SpendingHeatmap extends ConsumerWidget {
 
     final daily = <DateTime, double>{};
     for (final t in txns) {
-      if (!t.isDebit) continue;
+      if (!t.isSpend) continue;
       final d = DateTime(t.timestamp.year, t.timestamp.month, t.timestamp.day);
       if (d.isBefore(firstMonday) || d.isAfter(today)) continue;
-      daily[d] = (daily[d] ?? 0) + t.amount;
+      daily[d] = (daily[d] ?? 0) + t.spendAmount;
     }
     final maxV =
         daily.values.isEmpty ? 0.0 : daily.values.reduce((a, b) => a > b ? a : b);
@@ -175,7 +175,7 @@ class SpendingHeatmap extends ConsumerWidget {
       BuildContext context, DateTime day, double total, List<Transaction> txns) {
     final items = txns
         .where((t) =>
-            t.isDebit &&
+            t.isSpend &&
             t.timestamp.year == day.year &&
             t.timestamp.month == day.month &&
             t.timestamp.day == day.day)

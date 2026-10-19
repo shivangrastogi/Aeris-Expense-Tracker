@@ -92,7 +92,7 @@ class _SegPill extends StatelessWidget {
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _pill(context, 0, Icons.bar_chart_rounded, 'Charts'),
-        _pill(context, 1, Icons.psychology_outlined, 'AI'),
+        _pill(context, 1, Icons.lightbulb_outline_rounded, 'Tips'),
         _pill(context, 2, Icons.savings_outlined, 'Future'),
       ]),
     );

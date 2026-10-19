@@ -423,7 +423,7 @@ class _TransactionsTabState extends ConsumerState<_TransactionsTab> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.delete_outline_rounded,
                         size: 18, color: AerisColors.danger(context)),
-                    SizedBox(width: 6),
+                    const SizedBox(width: 6),
                     Text('Delete',
                         style: TextStyle(
                             color: AerisColors.danger(context),
@@ -448,7 +448,7 @@ class _TransactionsTabState extends ConsumerState<_TransactionsTab> {
                         children: [
                           Icon(Icons.category_outlined,
                               size: 18, color: AerisColors.onAccent(context)),
-                          SizedBox(width: 6),
+                          const SizedBox(width: 6),
                           Text('Recategorize',
                               style: TextStyle(
                                   color: AerisColors.onAccent(context),

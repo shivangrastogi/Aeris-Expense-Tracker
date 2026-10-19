@@ -21,7 +21,7 @@ class BudgetRing extends StatelessWidget {
     required this.progress,
     this.size = 132,
     this.strokeWidth = 12,
-    this.color = const Color(0xFF0F766E),
+    this.color = const Color(0xFF2A6F66),
     this.center,
     this.duration = const Duration(milliseconds: 900),
     this.warnOverflow = true,
@@ -44,7 +44,7 @@ class BudgetRing extends StatelessWidget {
           // Blend toward red as a budget ring fills past 80%.
           final over =
               warnOverflow ? ((progress - 0.8) / 0.2).clamp(0.0, 1.0) : 0.0;
-          final ringColor = Color.lerp(color, const Color(0xFFE5484D), over)!;
+          final ringColor = Color.lerp(color, const Color(0xFFBF433A), over)!;
           return CustomPaint(
             painter: _RingPainter(
               progress: v,

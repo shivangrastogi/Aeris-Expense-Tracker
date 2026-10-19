@@ -47,25 +47,31 @@ class _BillCalendarState extends ConsumerState<BillCalendarScreen> {
     final now = DateTime.now();
     final lastDay = DateTime(_month.year, _month.month + 1, 0).day;
     // day → bills due that day in the shown month
+    // A one-off due (card statement) only shows in its own month.
+    bool inMonth(Bill b) =>
+        b.exactDue == null ||
+        (b.exactDue!.year == _month.year && b.exactDue!.month == _month.month);
     final byDay = <int, List<Bill>>{};
-    for (final b in bills) {
+    for (final b in bills.where(inMonth)) {
       byDay.putIfAbsent(b.day.clamp(1, lastDay), () => []).add(b);
     }
-    final monthTotal = bills.fold<double>(0, (s, b) => s + b.amount);
+    final monthTotal =
+        bills.where(inMonth).fold<double>(0, (s, b) => s + b.amount);
     final upcoming = [...bills]
       ..sort((a, b) => a.nextDue(now).compareTo(b.nextDue(now)));
     final shown = _selectedDay == null ? null : byDay[_selectedDay] ?? const [];
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bill calendar'),
+        title: const Text('Bills & subscriptions'),
         actions: [
-          IconButton(
-            tooltip: 'Subscriptions',
-            icon: const Icon(Icons.edit_calendar_outlined),
+          TextButton.icon(
+            icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+            label: const Text('Subscriptions'),
             onPressed: () =>
                 Navigator.pushNamed(context, AppRoutes.subscriptions),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: ListView(

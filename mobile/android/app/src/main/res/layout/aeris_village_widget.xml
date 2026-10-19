@@ -1,57 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 2x2 Aeris Town: level, Aura balance, what to do next. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="14dp"
-    android:background="@drawable/aeris_village_bg">
-
-    <LinearLayout
-        android:layout_width="match_parent"
+    android:padding="16dp"
+    android:background="@drawable/w_bg">
+    <TextView
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/widget_village_lvl"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/aeris_chip_dark"
-            android:paddingLeft="9dp"
-            android:paddingRight="9dp"
-            android:paddingTop="3dp"
-            android:paddingBottom="3dp"
-            android:text="🏰 Lv 1"
-            android:textColor="#FFFFFFFF"
-            android:textSize="10.5sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-
-        <TextView
-            android:id="@+id/widget_village_aura"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/aeris_chip_dark"
-            android:paddingLeft="9dp"
-            android:paddingRight="9dp"
-            android:paddingTop="3dp"
-            android:paddingBottom="3dp"
-            android:text="⚡ 0"
-            android:textColor="#FFFFFFFF"
-            android:textSize="10.5sp"
-            android:textStyle="bold" />
-    </LinearLayout>
+        android:text="Aeris Town"
+        android:textAllCaps="true"
+        android:letterSpacing="0.12"
+        android:textColor="@color/w_muted"
+        android:textSize="10sp"
+        android:fontFamily="sans-serif-medium" />
 
     <TextView
+        android:id="@+id/widget_village_lvl"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:text="Level 1"
+        android:textColor="@color/w_text"
+        android:textSize="24sp"
+        android:fontFamily="sans-serif-medium" />
+
+    <TextView
+        android:id="@+id/widget_village_aura"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0 Aura"
+        android:textColor="@color/w_accent"
+        android:textSize="13sp"
+        android:fontFamily="sans-serif-medium" />
+
+    <TextView
+        android:id="@+id/widget_village_sub"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:gravity="center"
-        android:text="🏡   🏛️   🌳"
-        android:textSize="28sp" />
-
+        android:layout_marginTop="2dp"
+        android:text="Earn Aura with good habits"
+        android:textColor="@color/w_muted"
+        android:textSize="11sp"
+        android:maxLines="2"
+        android:ellipsize="end" />
 </LinearLayout>

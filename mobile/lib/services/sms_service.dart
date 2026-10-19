@@ -3,6 +3,7 @@ import 'package:another_telephony/telephony.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'card_dues.dart';
 import 'sms_background.dart';
 import 'sms_parser.dart';
 
@@ -37,8 +38,10 @@ class SmsService {
   /// Parse the inbox and RETURN the parsed transactions (no stream emit, no
   /// persistence). Lets callers persist in a controlled, progress-reported
   /// loop instead of flooding the live stream — which kept the UI smooth.
-  Future<List<ParsedSms>> scanInbox({DateTime? since}) async {
-    if (!await hasPermission()) return const [];
+  /// Card statements found on the way (not transactions) come back too.
+  Future<({List<ParsedSms> txns, List<CardStatement> statements})> scanInbox(
+      {DateTime? since}) async {
+    if (!await hasPermission()) return (txns: <ParsedSms>[], statements: <CardStatement>[]);
     final since0 = since ?? DateTime.now().subtract(const Duration(days: 90));
     final filter = SmsFilter.where(SmsColumn.DATE)
         .greaterThan(since0.millisecondsSinceEpoch.toString());
@@ -50,6 +53,7 @@ class SmsService {
       sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
     );
     final out = <ParsedSms>[];
+    final statements = <CardStatement>[];
     for (var i = 0; i < messages.length; i++) {
       final m = messages[i];
       final parsed = SmsParser.parse(
@@ -59,10 +63,21 @@ class SmsService {
             ? DateTime.fromMillisecondsSinceEpoch(m.date!)
             : DateTime.now(),
       );
-      if (parsed != null) out.add(parsed);
+      if (parsed != null) {
+        out.add(parsed);
+      } else {
+        final s = SmsParser.parseStatement(
+          sender: m.address ?? '',
+          body: m.body ?? '',
+          receivedAt: m.date != null
+              ? DateTime.fromMillisecondsSinceEpoch(m.date!)
+              : DateTime.now(),
+        );
+        if (s != null) statements.add(s);
+      }
       if (i % 25 == 24) await Future<void>.delayed(Duration.zero);
     }
-    return out;
+    return (txns: out, statements: statements);
   }
 
   /// Walk the full inbox once and emit every parseable transaction.
@@ -115,7 +130,11 @@ class SmsService {
               ? DateTime.fromMillisecondsSinceEpoch(msg.date!)
               : DateTime.now(),
         );
-        if (parsed == null) return;
+        if (parsed == null) {
+          CardDues.instance.recordFrom(
+              msg.address ?? '', msg.body ?? '', msg.date);
+          return;
+        }
         _ctrl.add(parsed);
         onTxn?.call(parsed);
       },

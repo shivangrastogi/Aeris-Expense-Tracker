@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/routes.dart';
 import '../../core/theme.dart';
@@ -7,15 +8,20 @@ import '../../models/budget.dart';
 import '../../models/category.dart';
 import '../../models/transaction.dart';
 import '../../models/user_profile.dart';
+import '../../providers/accounts_provider.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/gamification_provider.dart';
 import '../../providers/goals_provider.dart';
 import '../../providers/insights_provider.dart';
 import '../../providers/privacy_provider.dart';
+import '../../providers/setup_provider.dart';
+import '../../providers/split_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../providers/money_providers.dart';
 import '../../services/money_insights.dart';
+import '../../services/notification_intake.dart';
+import '../../services/sms_service.dart';
 import '../../utils/formatters.dart';
 import '../../utils/motion.dart';
 import '../../widgets/budget_ring.dart';
@@ -28,16 +34,18 @@ const kHomeCardForecast = 'forecast';
 const kHomeCardCheckin = 'checkin';
 const kHomeCardCategories = 'categories';
 const kHomeCardMomentum = 'momentum';
+const kHomeCardBalances = 'balances';
 
 // The hero's spend figure counts up once per app session — the single
 // entrance moment on Home. Everything else paints immediately.
 bool _heroCounted = false;
 
-// Colours used on the dark ink hero, in both themes.
-const _heroMuted = Color(0xB3EAF2F7); // HUD text 70%
+// Colours used on the graphite hero, in both themes.
+const _heroMuted = Color(0xB3E6E8EB); // caption text 70%
 const _heroGood = AerisColors.mint; // "down" trends, safe figures
-const _heroBad = Color(0xFFFF8A98); // over budget
+const _heroBad = Color(0xFFE8968E); // over budget
 const _heroUp = AerisColors.amber; // spending up
+const _heroBar = Color(0xFF8DB3E0); // budget used, within cap
 
 // ── Home Screen ──────────────────────────────────────────────
 //
@@ -59,6 +67,8 @@ class HomeScreen extends ConsumerWidget {
           children: [
             const SafeArea(bottom: false, child: _Header()),
             const _HeroCard(),
+            const _SetupCard(),
+            if (!hidden.contains(kHomeCardBalances)) const _BalancesCard(),
             if (!hidden.contains(kHomeCardMomentum)) ...[
               const SizedBox(height: 14),
               const _MomentumCard(),
@@ -185,7 +195,14 @@ class _Header extends ConsumerWidget {
                 : Icons.visibility_outlined,
             tooltip: hidden ? 'Show amounts' : 'Hide amounts',
             active: hidden,
-            onTap: () => ref.read(amountHiddenProvider.notifier).toggle(),
+            onTap: () {
+              ref.read(amountHiddenProvider.notifier).toggle();
+              ScaffoldMessenger.of(context).showToast(SnackBar(
+                  duration: const Duration(milliseconds: 1600),
+                  content: Text(hidden
+                      ? 'Amounts shown'
+                      : 'Amounts hidden — tap the eye again to show')));
+            },
           ),
           const SizedBox(width: 8),
           _RoundIconBtn(
@@ -336,26 +353,22 @@ class _HeroCard extends ConsumerWidget {
             arguments: TxnDirection.debit),
         child: Container(
           clipBehavior: Clip.antiAlias,
-          // A HUD slab: deep navy, a hairline arc edge and an arc glow.
+          // A flat graphite panel with a hairline edge — the one dark,
+          // emphatic surface on Home.
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(24),
             gradient: AerisColors.inkGradient,
-            border: Border.all(color: AerisColors.arc.withValues(alpha: 0.22)),
-            boxShadow: [
-              BoxShadow(
-                  color: dark
-                      ? AerisColors.arc.withValues(alpha: 0.14)
-                      : const Color(0x330B1220),
-                  blurRadius: 28,
-                  offset: const Offset(0, 12)),
-            ],
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            boxShadow: dark
+                ? null
+                : const [
+                    BoxShadow(
+                        color: Color(0x1F151A22),
+                        blurRadius: 20,
+                        offset: Offset(0, 8)),
+                  ],
           ),
           child: Stack(children: [
-            // Soft arc/violet glows in the corners — the "screen" feel.
-            const Positioned(
-                right: -70, top: -80, child: _Glow(AerisColors.arc, 220)),
-            const Positioned(
-                left: -60, bottom: -110, child: _Glow(AerisColors.violet, 200)),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
               child: Column(
@@ -366,11 +379,7 @@ class _HeroCard extends ConsumerWidget {
                         width: 6,
                         height: 6,
                         decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AerisColors.arc,
-                            boxShadow: [
-                              BoxShadow(color: AerisColors.arc, blurRadius: 6)
-                            ]),
+                            shape: BoxShape.circle, color: _heroBar),
                       ),
                       const SizedBox(width: 8),
                       // Flexible: on 320dp phones the wide-tracked caption
@@ -552,7 +561,7 @@ class _BudgetStatus extends ConsumerWidget {
                 ? Duration.zero
                 : const Duration(milliseconds: 900),
             curve: Curves.easeOutCubic,
-            builder: (_, x, __) => _GlowBar(value: x, over: over),
+            builder: (_, x, __) => _BudgetBar(value: x, over: over),
           ),
         ),
         const SizedBox(height: 10),
@@ -593,34 +602,11 @@ class _BudgetStatus extends ConsumerWidget {
   }
 }
 
-/// A soft radial light, for HUD panels.
-class _Glow extends StatelessWidget {
-  final Color color;
-  final double size;
-  const _Glow(this.color, this.size);
-
-  @override
-  Widget build(BuildContext context) => IgnorePointer(
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(colors: [
-              color.withValues(alpha: 0.22),
-              color.withValues(alpha: 0.0),
-            ]),
-          ),
-        ),
-      );
-}
-
-/// Budget bar: an arc → violet gradient with a soft glow on a dim track;
-/// turns coral when over budget.
-class _GlowBar extends StatelessWidget {
+/// Budget bar: a soft blue fill on a dim track; soft red when over budget.
+class _BudgetBar extends StatelessWidget {
   final double value;
   final bool over;
-  const _GlowBar({required this.value, required this.over});
+  const _BudgetBar({required this.value, required this.over});
 
   @override
   Widget build(BuildContext context) {
@@ -636,16 +622,7 @@ class _GlowBar extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(99),
-            gradient: over
-                ? const LinearGradient(colors: [_heroBad, AerisColors.coral])
-                : const LinearGradient(
-                    colors: [AerisColors.mint, AerisColors.arc]),
-            boxShadow: [
-              BoxShadow(
-                  color: (over ? AerisColors.coral : AerisColors.arc)
-                      .withValues(alpha: 0.55),
-                  blurRadius: 8),
-            ],
+            color: over ? _heroBad : _heroBar,
           ),
         ),
       ),
@@ -720,7 +697,10 @@ class _MomentumCard extends ConsumerWidget {
       income = profile?.monthlyIncome ?? 0;
     }
     final saved = income - analytics.monthExpense;
-    final rate = income > 0 ? saved / income : null;
+    // Nothing recorded yet: a savings rate from profile income alone would
+    // read "100% kept · On track" before the user has done anything.
+    final noData = analytics.monthExpense <= 0 && analytics.monthIncome <= 0;
+    final rate = income > 0 && !noData ? saved / income : null;
 
     // The goal closest to done (but not done yet) is the most motivating.
     final open = goals.where((g) => !g.isComplete).toList()
@@ -755,7 +735,7 @@ class _MomentumCard extends ConsumerWidget {
                     ? '—'
                     : '${(rate * 100).clamp(-999, 100).toStringAsFixed(0)}%',
                 sub: rate == null
-                    ? 'Add income'
+                    ? (noData && income > 0 ? 'No spends yet' : 'Add income')
                     : saved >= 0
                         ? '${formatRupees(saved, compact: true)} kept'
                         : '${formatRupees(-saved, compact: true)} over',
@@ -765,7 +745,7 @@ class _MomentumCard extends ConsumerWidget {
                         ? AerisColors.moneyIn(context)
                         : AerisColors.danger(context),
                 onTap: () => Navigator.pushNamed(context,
-                    rate == null ? AppRoutes.editProfile : AppRoutes.insights),
+                    income <= 0 ? AppRoutes.editProfile : AppRoutes.insights),
               ),
             ),
             VerticalDivider(width: 1, color: AerisColors.line(context)),
@@ -1159,6 +1139,261 @@ List<Budget> _overBudget(
       });
 
 // ── Where it went: the three biggest categories ───────────────
+/// "Finish setting up" — the steps that make AERIS automatic, each one tap
+/// away. Hidden once all are done or the user hides it. Re-checks when the
+/// app resumes (permissions are granted in Android settings).
+class _SetupCard extends ConsumerStatefulWidget {
+  const _SetupCard();
+
+  @override
+  ConsumerState<_SetupCard> createState() => _SetupCardState();
+}
+
+class _SetupCardState extends ConsumerState<_SetupCard>
+    with WidgetsBindingObserver {
+  static const _hiddenKey = 'setup_card_hidden';
+  bool? _hidden;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) setState(() => _hidden = p.getBool(_hiddenKey) ?? false);
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) ref.invalidate(setupStatusProvider);
+  }
+
+  void _toast(String m) =>
+      ScaffoldMessenger.of(context).showToast(SnackBar(content: Text(m)));
+
+  Future<void> _hide() async {
+    await (await SharedPreferences.getInstance()).setBool(_hiddenKey, true);
+    if (mounted) setState(() => _hidden = true);
+    _toast('Hidden — everything is still in Settings.');
+  }
+
+  Future<void> _sms() async {
+    if (await SmsService.instance.requestPermission()) {
+      _toast('Bank SMS will be read on your phone, privately.');
+    } else if (mounted) {
+      // Sideloaded apps need "Allow restricted settings" first; Settings
+      // explains that path.
+      Navigator.pushNamed(context, AppRoutes.settings);
+    }
+    ref.invalidate(setupStatusProvider);
+  }
+
+  Future<void> _reminders() async {
+    _toast(await turnOnReminders(ref)
+        ? 'Reminders on — bills, card dues, money owed and a weekly recap.'
+        : 'Notifications are off for AERIS in Android settings.');
+    ref.invalidate(setupStatusProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hidden != false) return const SizedBox.shrink();
+    final s = ref.watch(setupStatusProvider).valueOrNull;
+    if (s == null || s.complete) return const SizedBox.shrink();
+    final muted = AerisColors.muted(context);
+
+    final steps = <(bool, IconData, String, String, VoidCallback)>[
+      (s.sms, Icons.sms_outlined, 'Read bank SMS',
+          'Transactions add themselves', _sms),
+      (s.notifications, Icons.notifications_active_outlined,
+          'Catch UPI app payments', 'Google Pay, PhonePe, Paytm',
+          () => NotificationIntake.instance.openSettings()),
+      (s.income, Icons.payments_outlined, 'Add your monthly income',
+          'For your savings rate', () =>
+              Navigator.pushNamed(context, AppRoutes.editProfile)),
+      (s.budget, Icons.savings_outlined, 'Set a monthly budget',
+          'See what\'s safe to spend', () =>
+              Navigator.pushNamed(context, AppRoutes.budgets)),
+      (s.reminders, Icons.alarm_on_outlined, 'Turn on reminders',
+          'Bills, card dues, money owed', _reminders),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: AerisCard(
+        padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Expanded(
+              child: Text('Finish setting up',
+                  style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3)),
+            ),
+            Text('${s.done} of ${SetupStatus.total}',
+                style: TextStyle(
+                    fontSize: 12.5, fontWeight: FontWeight.w600, color: muted)),
+            TextButton(onPressed: _hide, child: const Text('Hide')),
+          ]),
+          Padding(
+            padding: const EdgeInsets.only(right: 8, bottom: 4),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                  value: s.done / SetupStatus.total, minHeight: 5),
+            ),
+          ),
+          for (final (done, icon, title, sub, onTap) in steps)
+            ListTile(
+              contentPadding: const EdgeInsets.only(right: 4),
+              dense: true,
+              enabled: !done,
+              leading: Icon(done ? Icons.check_circle_rounded : icon,
+                  color: done ? AerisColors.moneyIn(context) : null),
+              title: Text(title,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      decoration: done ? TextDecoration.lineThrough : null)),
+              subtitle: done ? null : Text(sub),
+              trailing: done ? null : const Icon(Icons.chevron_right_rounded),
+              onTap: done ? null : onTap,
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Bank balances as the banks last reported them in SMS, plus unpaid card
+/// bills. Hidden until there's at least one of either.
+class _BalancesCard extends ConsumerWidget {
+  const _BalancesCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(amountHiddenProvider);
+    final accounts = ref
+        .watch(accountsProvider)
+        .where((a) => a.bankBalance != null)
+        .toList()
+      ..sort((a, b) => b.bankBalanceAt!.compareTo(a.bankBalanceAt!));
+    final dues = ref.watch(cardDuesProvider).valueOrNull ?? const [];
+    final low = ref.watch(lowBalanceLimitProvider);
+    final owed = ref.watch(owedToYouProvider);
+    final owedTotal = owed.values.fold<double>(0, (s, v) => s + v);
+    if (accounts.isEmpty && dues.isEmpty && owed.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final muted = AerisColors.muted(context);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    Widget row(IconData icon, String title, String sub, String value,
+            Color? valueColor) =>
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Row(children: [
+            Icon(icon, size: 20, color: muted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w700)),
+                  Text(sub,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: muted)),
+                ],
+              ),
+            ),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: valueColor)),
+          ]),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: AerisCard(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        onTap: () => Navigator.pushNamed(context, AppRoutes.accounts),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Text('Balances',
+                style: TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3)),
+            const Spacer(),
+            if (accounts.isNotEmpty)
+              Text('From bank SMS',
+                  style: TextStyle(
+                      fontSize: 12.5, fontWeight: FontWeight.w600, color: muted)),
+          ]),
+          for (final a in accounts.take(3))
+            row(
+              Icons.account_balance_outlined,
+              a.label,
+              'as of ${asOfLabel(a.bankBalanceAt!)}',
+              formatRupees(a.bankBalance!, decimals: true),
+              low > 0 && a.bankBalance! < low ? AerisColors.danger(context) : null,
+            ),
+          for (final d in dues.take(2))
+            () {
+              final days = DateTime(d.dueDate.year, d.dueDate.month,
+                      d.dueDate.day)
+                  .difference(today)
+                  .inDays;
+              final when = days < 0
+                  ? 'overdue since ${shortDate(d.dueDate)}'
+                  : days == 0
+                      ? 'due today'
+                      : days == 1
+                          ? 'due tomorrow'
+                          : 'due ${shortDate(d.dueDate)} · in $days days';
+              return row(
+                Icons.credit_card_outlined,
+                d.label,
+                d.minimum == null
+                    ? when
+                    : '$when · min ${formatRupees(d.minimum!)}',
+                formatRupees(d.total, decimals: true),
+                days <= 2 ? AerisColors.danger(context) : null,
+              );
+            }(),
+          if (owed.isNotEmpty)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.pushNamed(context, AppRoutes.people),
+              child: row(
+                Icons.call_split_rounded,
+                'Owed to you',
+                owed.length == 1
+                    ? 'from ${owed.keys.single} · shared bills'
+                    : 'from ${owed.length} people · shared bills',
+                formatRupees(owedTotal, decimals: true),
+                null,
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
 class _TopCategories extends ConsumerStatefulWidget {
   const _TopCategories();
 
@@ -1186,9 +1421,14 @@ class _TopCategoriesState extends ConsumerState<_TopCategories> {
 
     // Biggest three spend categories. With a category cap the ring tracks
     // used/cap (and warns); without one it shows share of total spend.
+    // Monthly caps only make sense against this month's spend; for other
+    // ranges the rings show share of spend instead.
+    final isMonth =
+        ref.watch(analyticsRangeProvider).kind == RangeKind.thisMonth;
     final capFor = <String, double>{
-      for (final b in budgets.where((b) => b.categoryId != Budget.totalId))
-        b.categoryId: b.monthlyCap,
+      if (isMonth)
+        for (final b in budgets.where((b) => b.categoryId != Budget.totalId))
+          b.categoryId: b.monthlyCap,
     };
     final top = analytics.byCategory.entries.where((e) => e.value > 0).toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -1285,7 +1525,8 @@ class _AttentionSlot extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final analytics = ref.watch(analyticsProvider).asData?.value;
+    // Over-budget is a calendar-month question, not the selected range.
+    final analytics = ref.watch(monthAnalyticsProvider);
     final budgets = ref.watch(effectiveBudgetsProvider);
     final insights = ref.watch(insightsProvider).valueOrNull;
     final hidden = ref.watch(gamificationProvider.select((g) => g.hiddenCards));
@@ -1327,7 +1568,7 @@ class _OverBudgetCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(amountHiddenProvider);
-    final analytics = ref.watch(analyticsProvider).asData?.value;
+    final analytics = ref.watch(monthAnalyticsProvider);
     final budgets = ref.watch(effectiveBudgetsProvider);
     if (analytics == null) return const SizedBox.shrink();
 

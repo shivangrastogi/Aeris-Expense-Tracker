@@ -90,6 +90,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- Reads payment notifications from UPI apps (Google Pay, PhonePe,
+             Paytm…) once the user grants notification access in Settings.
+             Only those apps are read; parsed on-device. -->
+        <service
+            android:name=".UpiNotificationListener"
+            android:label="AERIS payment capture"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- Home-screen widget (streak + budget), updated via home_widget. -->
         <receiver
             android:name=".AerisWidgetProvider"
@@ -189,5 +202,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Re-renders all widgets after midnight and when the clock or time
+             zone changes, so "today", the month and the streak roll over. -->
+        <receiver
+            android:name=".WidgetTickReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

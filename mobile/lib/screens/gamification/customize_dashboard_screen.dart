@@ -7,14 +7,17 @@ import '../../providers/gamification_provider.dart';
 /// `kHomeCard*` constants in home_screen.dart).
 const dashboardCards = <(String, String)>[
   ('momentum', 'Momentum — savings, streak, goal'),
+  ('balances', 'Bank balances & card bills'),
   ('categories', 'Top spending categories'),
   ('forecast', 'Month-end forecast'),
   ('checkin', 'Daily check-in reminder'),
 ];
 
+// Calm alternatives to the default steel blue: teal, indigo, sage, plum,
+// slate, terracotta. accentFor() tones each for light / dark.
 const _accents = <int>[
-  0xFF0EA5A4, 0xFF38BDF8, 0xFFFB7185,
-  0xFF34D399, 0xFFA78BFA, 0xFFFBBF24,
+  0xFF2F8F80, 0xFF5C6BC0, 0xFF5E8F4E,
+  0xFF8E6C9E, 0xFF64748B, 0xFFB8704A,
 ];
 
 class CustomizeDashboardScreen extends ConsumerWidget {

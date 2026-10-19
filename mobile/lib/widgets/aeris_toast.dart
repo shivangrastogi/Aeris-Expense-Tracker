@@ -167,7 +167,7 @@ class _ToastViewState extends State<_ToastView>
             : mq.viewPadding.bottom) +
         104;
     final bg = widget.bar.backgroundColor ??
-        (dark ? const Color(0xFF1B2536) : AerisColors.inkLight);
+        (dark ? const Color(0xFF272B33) : AerisColors.inkLight);
     final fg = dark ? AerisColors.inkDark : Colors.white;
     final action = widget.bar.action;
 
@@ -195,12 +195,10 @@ class _ToastViewState extends State<_ToastView>
                     color: bg,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                        color: AerisColors.arc
-                            .withValues(alpha: dark ? 0.28 : 0.0)),
+                        color: Colors.white.withValues(alpha: dark ? 0.08 : 0.0)),
                     boxShadow: [
                       BoxShadow(
-                        color: (dark ? AerisColors.arc : Colors.black)
-                            .withValues(alpha: dark ? 0.14 : 0.22),
+                        color: Colors.black.withValues(alpha: dark ? 0.40 : 0.22),
                         blurRadius: 22,
                         offset: const Offset(0, 8),
                       ),
@@ -236,7 +234,7 @@ class _ToastViewState extends State<_ToastView>
                         },
                         style: TextButton.styleFrom(
                           foregroundColor:
-                              dark ? AerisColors.arc : const Color(0xFF67E8F9),
+                              dark ? AerisColors.arc : const Color(0xFF9CC3EC),
                           textStyle: const TextStyle(
                               fontFamily: kFontFamily,
                               fontSize: 13.5,

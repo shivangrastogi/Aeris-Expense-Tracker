@@ -55,11 +55,11 @@ class SafeSpend {
     if (budget <= 0) return null;
     double before = 0, today = 0;
     for (final t in txns) {
-      if (!t.isDebit || !_inMonth(t.timestamp, now)) continue;
+      if (!t.isSpend || !_inMonth(t.timestamp, now)) continue;
       if (_sameDay(t.timestamp, now)) {
-        today += t.amount;
+        today += t.spendAmount;
       } else if (t.timestamp.isBefore(now)) {
-        before += t.amount;
+        before += t.spendAmount;
       }
     }
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
@@ -96,7 +96,7 @@ List<bool?> noSpendWeek(List<Transaction> txns, DateTime now,
       : txns.map((t) => t.timestamp).reduce((a, b) => a.isBefore(b) ? a : b);
   final spentDays = <String>{
     for (final t in txns)
-      if (t.isDebit)
+      if (t.isSpend)
         '${t.timestamp.year}-${t.timestamp.month}-${t.timestamp.day}'
   };
   return List.generate(7, (i) {
@@ -130,12 +130,12 @@ class WeeklyRecap {
     final cur = <String, double>{}, prev = <String, double>{};
     final curTx = <Transaction>[];
     for (final t in txns) {
-      if (!t.isDebit || t.timestamp.isAfter(end)) continue;
+      if (!t.isSpend || t.timestamp.isAfter(end)) continue;
       if (!t.timestamp.isBefore(start)) {
-        cur[t.categoryId] = (cur[t.categoryId] ?? 0) + t.amount;
+        cur[t.categoryId] = (cur[t.categoryId] ?? 0) + t.spendAmount;
         curTx.add(t);
       } else if (!t.timestamp.isBefore(prevStart)) {
-        prev[t.categoryId] = (prev[t.categoryId] ?? 0) + t.amount;
+        prev[t.categoryId] = (prev[t.categoryId] ?? 0) + t.spendAmount;
       }
     }
     if (curTx.isEmpty && prev.isEmpty) return null;
@@ -172,7 +172,7 @@ class WeeklyRecap {
       ..sort((a, b) => b.length.compareTo(a.length));
     if (repeat.isNotEmpty) {
       final l = repeat.first;
-      final sum = l.fold<double>(0, (a, t) => a + t.amount);
+      final sum = l.fold<double>(0, (a, t) => a + t.spendAmount);
       final name = l.first.merchant ?? _cat(l.first.categoryId);
       habit =
           '${l.length}× $name (${formatRupees(sum)}) — skipping two saves ~${formatRupees(sum / l.length * 2)}.';
@@ -204,7 +204,7 @@ class WeeklyRecap {
       List<Transaction> txns, DateTime start, DateTime now) {
     final spent = <String>{
       for (final t in txns)
-        if (t.isDebit)
+        if (t.isSpend)
           '${t.timestamp.year}-${t.timestamp.month}-${t.timestamp.day}'
     };
     var n = 0;
@@ -270,11 +270,11 @@ class ReportCard {
       if (first == null || t.timestamp.isBefore(first)) first = t.timestamp;
       if (!_inMonth(t.timestamp, month)) continue;
       anyDays.add(t.timestamp.day);
-      if (t.isDebit) {
-        spent += t.amount;
+      if (t.isSpend) {
+        spent += t.spendAmount;
         spendDays.add(t.timestamp.day);
-      } else if (t.categoryId != 'transfer') {
-        income += t.amount;
+      } else if (t.isIncoming && t.categoryId != 'transfer') {
+        income += t.spendAmount;
       }
     }
     if (income <= 0) income = fallbackIncome;
@@ -405,9 +405,9 @@ class BudgetRollover {
     final byCat = <String, double>{};
     double total = 0;
     for (final t in txns) {
-      if (!t.isDebit || !_inMonth(t.timestamp, last)) continue;
-      byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.amount;
-      total += t.amount;
+      if (!t.isSpend || !_inMonth(t.timestamp, last)) continue;
+      byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.spendAmount;
+      total += t.spendAmount;
     }
     return {
       for (final b in budgets)

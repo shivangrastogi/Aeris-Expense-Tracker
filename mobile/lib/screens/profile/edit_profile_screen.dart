@@ -95,9 +95,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             ),
             if (_photo != null)
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                leading: const Icon(Icons.delete_outline, color: AerisColors.debit),
                 title: const Text('Remove photo',
-                    style: TextStyle(color: Colors.red)),
+                    style: TextStyle(color: AerisColors.debit)),
                 onTap: () {
                   Navigator.pop(context);
                   setState(() {

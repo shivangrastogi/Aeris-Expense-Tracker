@@ -99,8 +99,15 @@ flutter_launcher_icons:
   ios: false
   image_path: "assets/icons/app_icon.png"
   min_sdk_android: 21
-  adaptive_icon_background: "#15C0B4"
+  # "Graphite" icon: steel-blue A on the app's graphite (#181B21).
+  # Sources and the previous icon live in assets/icons/source/.
+  adaptive_icon_background: "#181B21"
   adaptive_icon_foreground: "assets/icons/app_icon_foreground.png"
+  # The foreground/monochrome PNGs are already fitted to the launcher safe
+  # zone, so no extra inset.
+  adaptive_icon_foreground_inset: 0
+  # Android 13+ themed icons (tinted to match the wallpaper).
+  adaptive_icon_monochrome: "assets/icons/app_icon_monochrome.png"
   web:
     generate: false
   windows:

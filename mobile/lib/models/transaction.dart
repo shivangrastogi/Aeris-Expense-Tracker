@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'split.dart';
+
 enum TxnDirection { debit, credit }
 
 enum TxnSource { sms, manual, recurring, imported }
@@ -20,6 +22,23 @@ class Transaction {
   final String? reference; // UPI Ref / UTR / RRN from the SMS
   final String? upiVpa; // payee/payer UPI ID e.g. name@okhdfcbank
   final bool hasReceipt; // an encrypted photo lives at receipts/{id}
+  final double? balance; // account balance the bank SMS printed after this txn
+
+  /// The paired transaction: the other leg of a transfer between your own
+  /// accounts, or (on a refund) the purchase it refunds.
+  final String? linkId;
+
+  /// Money moved between two of YOUR accounts: neither spend nor income.
+  final bool selfTransfer;
+
+  /// A shared bill the user paid: who owes what (see [spendAmount]).
+  final SplitInfo? split;
+
+  /// On a payback: the shared bill ([id]) whose share this settles…
+  final String? settles;
+
+  /// …and whose share it is (the [SplitShare.name]).
+  final String? settlesMember;
 
   const Transaction({
     required this.id,
@@ -37,6 +56,12 @@ class Transaction {
     this.reference,
     this.upiVpa,
     this.hasReceipt = false,
+    this.balance,
+    this.linkId,
+    this.selfTransfer = false,
+    this.split,
+    this.settles,
+    this.settlesMember,
   });
 
   bool get isDebit => direction == TxnDirection.debit;
@@ -45,6 +70,26 @@ class Transaction {
   /// Money back for a purchase. Not income: it's taken off total spend.
   bool get isRefund => isCredit && categoryId == 'refund';
   double get signed => isDebit ? -amount : amount;
+
+  /// Counts as spending in totals (a transfer between your own accounts
+  /// doesn't). Use these — not [isDebit]/[isCredit] — for any aggregate, and
+  /// sum [spendAmount], not [amount].
+  bool get isSpend => isDebit && !selfTransfer;
+
+  /// Counts as income or refund in totals (see [isRefund] to tell them apart).
+  /// A friend paying back their share of a bill is neither.
+  bool get isIncoming => isCredit && !selfTransfer && !isSettlement;
+
+  /// A friend paying back their share of a bill the user paid.
+  bool get isSettlement => settles != null;
+
+  /// Moves money that is neither spend nor income (own-account transfer,
+  /// share payback) — skip it in every total.
+  bool get isInternal => selfTransfer || isSettlement;
+
+  /// What this adds to the user's spending: their own share of a split bill,
+  /// else the whole amount. (Bank balances still use [amount].)
+  double get spendAmount => split?.myShare(amount) ?? amount;
 
   /// Auto-captured (bank SMS, payment screenshot) and not yet confirmed by
   /// the user — it waits in the review deck.
@@ -69,6 +114,12 @@ class Transaction {
         'reference': reference,
         'upiVpa': upiVpa,
         if (hasReceipt) 'receipt': true,
+        if (balance != null) 'balance': balance,
+        if (linkId != null) 'linkId': linkId,
+        if (selfTransfer) 'selfTransfer': true,
+        if (split != null) 'split': split!.toMap(),
+        if (settles != null) 'settles': settles,
+        if (settlesMember != null) 'settlesMember': settlesMember,
       };
 
   factory Transaction.fromMap(String id, Map<String, dynamic> map) =>
@@ -88,6 +139,14 @@ class Transaction {
         reference: map['reference'] as String?,
         upiVpa: map['upiVpa'] as String?,
         hasReceipt: map['receipt'] as bool? ?? false,
+        balance: (map['balance'] as num?)?.toDouble(),
+        linkId: map['linkId'] as String?,
+        selfTransfer: map['selfTransfer'] as bool? ?? false,
+        split: map['split'] is Map
+            ? SplitInfo.fromMap(Map<String, dynamic>.from(map['split'] as Map))
+            : null,
+        settles: map['settles'] as String?,
+        settlesMember: map['settlesMember'] as String?,
       );
 
   Transaction copyWith({
@@ -99,8 +158,17 @@ class Transaction {
     String? note,
     bool? reviewed,
     bool? hasReceipt,
+    double? balance,
+    String? linkId,
+    bool? selfTransfer,
+    SplitInfo? split,
+    String? settles,
+    String? settlesMember,
     bool clearMerchant = false,
     bool clearNote = false,
+    bool clearLink = false,
+    bool clearSplit = false,
+    bool clearSettles = false,
   }) =>
       Transaction(
         id: id,
@@ -118,6 +186,13 @@ class Transaction {
         reference: reference,
         upiVpa: upiVpa,
         hasReceipt: hasReceipt ?? this.hasReceipt,
+        balance: balance ?? this.balance,
+        linkId: clearLink ? null : (linkId ?? this.linkId),
+        selfTransfer: clearLink ? false : (selfTransfer ?? this.selfTransfer),
+        split: clearSplit ? null : (split ?? this.split),
+        settles: clearSettles ? null : (settles ?? this.settles),
+        settlesMember:
+            clearSettles ? null : (settlesMember ?? this.settlesMember),
       );
 
   static TxnDirection _dirFrom(String? s) {

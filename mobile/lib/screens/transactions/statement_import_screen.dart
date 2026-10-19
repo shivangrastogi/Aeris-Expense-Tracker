@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../core/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
@@ -136,11 +137,12 @@ class _State extends ConsumerState<StatementImportScreen> {
         uid,
         selected,
         onProgress: (d, t) {
-          if (mounted)
+          if (mounted) {
             setState(() {
               _done = d;
               _total = t;
             });
+          }
         },
       );
       if (!mounted) return;
@@ -151,11 +153,12 @@ class _State extends ConsumerState<StatementImportScreen> {
       );
       Navigator.pop(context);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _stage = _Stage.review;
           _error = '$e';
         });
+      }
     }
   }
 
@@ -248,7 +251,7 @@ class _State extends ConsumerState<StatementImportScreen> {
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text('Pick at least a Debit/Credit or Amount column.',
-                      style: TextStyle(color: Colors.orange, fontSize: 12)),
+                      style: TextStyle(color: AerisColors.warning, fontSize: 12)),
                 ),
             ]),
           );
@@ -399,7 +402,7 @@ class _State extends ConsumerState<StatementImportScreen> {
           if (_error != null) ...[
             const SizedBox(height: 18),
             Text(_error!,
-                style: const TextStyle(color: Colors.red),
+                style: const TextStyle(color: AerisColors.debit),
                 textAlign: TextAlign.center),
           ],
         ]),
@@ -431,7 +434,7 @@ class _State extends ConsumerState<StatementImportScreen> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(_error!, style: const TextStyle(color: Colors.red)),
+            Text(_error!, style: const TextStyle(color: AerisColors.debit)),
           ],
           const SizedBox(height: 16),
           FilledButton(
@@ -475,7 +478,7 @@ class _State extends ConsumerState<StatementImportScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(_error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    style: const TextStyle(color: AerisColors.debit, fontSize: 12)),
               ),
           ]),
         ),
@@ -514,7 +517,7 @@ class _State extends ConsumerState<StatementImportScreen> {
             const Padding(
               padding: EdgeInsets.only(left: 6),
               child: Text('• maybe dup',
-                  style: TextStyle(fontSize: 11, color: Colors.orange)),
+                  style: TextStyle(fontSize: 11, color: AerisColors.warning)),
             ),
         ]),
         trailing: Text(
@@ -522,7 +525,7 @@ class _State extends ConsumerState<StatementImportScreen> {
           style: TextStyle(
               fontWeight: FontWeight.w700,
               color: isCredit
-                  ? Colors.green
+                  ? AerisColors.credit
                   : Theme.of(context).colorScheme.onSurface),
         ),
         onTap: () => _editRow(t),

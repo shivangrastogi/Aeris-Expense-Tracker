@@ -13,11 +13,11 @@ extension AvatarRarityX on AvatarRarity {
       };
 
   Color get color => switch (this) {
-        AvatarRarity.common => const Color(0xFF94A3B8),
-        AvatarRarity.rare => const Color(0xFF38BDF8),
-        AvatarRarity.epic => const Color(0xFFA78BFA),
-        AvatarRarity.legendary => const Color(0xFFFBBF24),
-        AvatarRarity.mythic => const Color(0xFFFB7185),
+        AvatarRarity.common => const Color(0xFF8B93A1),
+        AvatarRarity.rare => const Color(0xFF5F8CCB),
+        AvatarRarity.epic => const Color(0xFF8A7ED3),
+        AvatarRarity.legendary => const Color(0xFFB0902F),
+        AvatarRarity.mythic => const Color(0xFFC9789A),
       };
 }
 

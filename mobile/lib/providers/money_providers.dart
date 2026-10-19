@@ -2,8 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/budget.dart';
+import '../services/card_dues.dart';
 import '../services/money_insights.dart';
 import '../services/reminder_scheduler.dart';
+import '../services/sms_import_service.dart';
 import 'accounts_provider.dart';
 import 'auth_provider.dart';
 import 'budgets_provider.dart';
@@ -119,10 +121,52 @@ final projectionProvider =
 });
 
 // ── Bills ─────────────────────────────────────────────────────
-/// Saved subscriptions + monthly payments spotted in history.
+/// Saved subscriptions + monthly payments spotted in history + unpaid
+/// credit-card dues read from statement SMS.
 final billsProvider = Provider<List<Bill>>((ref) {
   final subs = ref.watch(subscriptionsStreamProvider).valueOrNull ?? const [];
   final recurring =
       ref.watch(insightsProvider).valueOrNull?.recurring ?? const [];
-  return Bill.from(subs, recurring);
+  final dues = ref.watch(cardDuesProvider).valueOrNull ?? const [];
+  return [
+    ...Bill.from(subs, recurring),
+    for (final d in dues)
+      Bill(
+        name: d.label,
+        amount: d.total,
+        day: d.dueDate.day,
+        categoryId: 'bills',
+        exactDue: d.dueDate,
+      ),
+  ];
 });
+
+/// Unpaid credit-card dues (statement SMS), soonest first. Re-read when this
+/// isolate records one and whenever transactions change (the background SMS
+/// isolate writes them too — a payment there also marks a due paid).
+final cardDuesProvider = StreamProvider<List<CardDue>>((ref) async* {
+  ref.watch(transactionsStreamProvider);
+  yield await CardDues.instance.open(DateTime.now());
+  await for (final _ in CardDues.instance.changes) {
+    yield await CardDues.instance.open(DateTime.now());
+  }
+});
+
+// ── Low-balance alert ─────────────────────────────────────────
+/// Alert when a bank SMS shows a balance under this many rupees (0 = off).
+final lowBalanceLimitProvider =
+    StateNotifierProvider<LowBalanceLimit, int>((_) => LowBalanceLimit());
+
+class LowBalanceLimit extends StateNotifier<int> {
+  LowBalanceLimit() : super(0) {
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) state = p.getInt(SmsImportService.lowBalanceKey) ?? 0;
+    });
+  }
+
+  Future<void> set(int rupees) async {
+    state = rupees;
+    await (await SharedPreferences.getInstance())
+        .setInt(SmsImportService.lowBalanceKey, rupees);
+  }
+}

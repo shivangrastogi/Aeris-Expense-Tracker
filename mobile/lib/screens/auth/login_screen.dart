@@ -3,9 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/routes.dart';
 import '../../core/theme.dart';
-import '../../models/avatar_skin.dart';
+import '../../widgets/brand_mark.dart';
 import '../../providers/auth_provider.dart';
-import '../../widgets/aeris_avatar.dart';
 import 'auth_widgets.dart';
 import '../../widgets/aeris_toast.dart';
 
@@ -119,22 +118,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     children: [
                       const SizedBox(height: 14),
                       // ── Brand ──────────────────────────────────────
-                      Row(
+                      const Row(
                         children: [
-                          SizedBox(
-                            width: 48,
-                            height: 48,
-                            child: AerisAvatar(
-                              skin: Avatars.byId('sprout'),
-                              stage: 1,
-                              mood: AvatarMood.happy,
-                              size: 48,
-                              glow: false,
-                              animate: true,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Text('A.E.R.I.S',
+                          AerisBrandMark(size: 40),
+                          SizedBox(width: 12),
+                          Text('AERIS',
                               style: TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w800,

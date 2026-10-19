@@ -24,7 +24,7 @@ class _FutureSelfScreenState extends ConsumerState<FutureSelfScreen> {
   void initState() {
     super.initState();
     final profile = ref.read(userProfileProvider).asData?.value;
-    final analytics = ref.read(analyticsProvider).valueOrNull;
+    final analytics = ref.read(monthAnalyticsProvider);
     final income = profile?.monthlyIncome ?? 0;
     final spend = analytics?.monthExpense ?? 0;
     final guess = income > 0 ? (income - spend) : (analytics?.monthNet ?? 0);
@@ -136,7 +136,7 @@ class _HorizonCard extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   Text('Invested @8%: ${formatRupees(invested, compact: true)}',
                       style: const TextStyle(
-                          color: Color(0xFF22C55E),
+                          color: Color(0xFF4C9A6C),
                           fontWeight: FontWeight.w700)),
                 ],
               ),

@@ -239,13 +239,15 @@ All computed **on-device** — no data leaves the phone for these:
 
 The play layer. Currency: **Aura** — earned deterministically (each rewardable event pays exactly once, so balances can never drift), **cloud-synced** so it survives reinstalls.
 
-**Earning Aura:** welcome bonus (+50) · daily check-in (+15 + streak bonus) · completing a goal (+200) · finishing a month within total budget (+100) · every no-spend day (+10) · winning challenges (custom reward) · categorising transactions.
+**Earning Aura:** welcome bonus (+50) · daily check-in (+15 + streak bonus) · completing a goal (+200) · finishing a month within total budget (+100) · every no-spend day (+10) · winning challenges (custom reward) · categorising transactions. Only events on or after the day you started count — importing old SMS history doesn't pay out retroactive no-spend days or months. **Your level comes only from these habits.**
+
+**Gems** (rare): 7 / 30 / 100 / 365-day streaks (+5 / +15 / +40 / +120), each month under budget (+10), each finished goal (+10), each won challenge (+3). Spent on finishing town construction early.
 
 **Sections:**
 - **Avatar store** — spend Aura to unlock avatar skins; equip one; avatars **evolve** in stages with level (level = f(lifetime Aura)); mood reflects real finances.
 - **Challenges** — create personal challenges ("No food delivery for 7 days", "Keep shopping under ₹2,000 this week"); evaluated automatically against live transactions; win → Aura.
 - **Bosses** — every budgeted category is a "boss"; the cap is its shield, spending chips it away; end the month within cap → boss defeated.
-- **Garden** — a calm custom-painted world that grows with Aura (~every 120 Aura plants/upgrades something), gentle breeze sway, fully offline. The "zen mode" of the app.
+- **Aeris Town** — a custom-painted isometric night city (no emoji), cloud-synced. Place and upgrade buildings with Aura; construction takes real minutes/hours (gems finish it now). Producers (House, Farm, Market, Vault) make Aura **per real day** and hold one day's worth, so it's a daily visit like the check-in. Town Aura is spendable but never raises your level. Collections are ×1.5 on days you checked in and ×0.5 ("storm") while you're over this month's budget; each decoration adds +5% (max +50%). The Town Hall level unlocks buildings, raises the per-type limit and at level 4 adds a builder; the Workshop adds another. Removing a building refunds half its price. "How it works" (?) in the town explains all of this.
 - **Future Self** — projection of where current saving habits lead (motivational visualisation).
 - **Customize dashboard** — show/hide Home cards; pick the app **accent color** (re-seeds the entire theme).
 
@@ -276,8 +278,11 @@ The play layer. Currency: **Aura** — earned deterministically (each rewardable
 4. **Dedupe:** HMAC dedupe tags (reference/UTR-based when present), a 1000-entry local cache to avoid network checks, plus a Firestore ledger as cross-device truth.
 5. **Blocked senders** are skipped everywhere.
 
-### 14.2 Android home-screen widget
-- Shows **🔥 streak** (count + nudge line), a divider, then **Budget left** (₹ amount, progress bar, "Spent X of Y"). Resizable, updates whenever data changes (debounced), taps open the app.
+### 14.2 Android home-screen widgets
+Eight widgets (Me → Widgets shows exact previews and pins them): **Overview 3×2** (left to spend, progress, today, streak), **Streak 4×2** (this week's real check-in days + a Check in button that checks you in with one tap), **Month spend 2×2**, **Budget ring 2×2**, **Aeris Town 2×2**, **Quick capture 4×1** (type / voice / form), **Today 1×1**, **Streak mini 2×1**.
+- Always the **calendar month** and **today** — never the Insights range selector.
+- **Live without the app open:** a bank SMS handled in the background updates them immediately; the native side (`WidgetData.kt`) rolls "today", the month and the streak over by itself at midnight / on the 1st (a midnight alarm + time-zone/clock-change receiver).
+- Follow the phone's light/dark mode; honour the privacy eye (amounts masked) and the display currency.
 
 ### 14.3 Notifications
 - Budget risk alert (max 1/day) · daily check-in reminder · weekly summary · bill-due nudges.

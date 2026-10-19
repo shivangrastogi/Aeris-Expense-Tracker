@@ -3,8 +3,11 @@ import 'dart:isolate';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 
 import '../models/budget.dart';
+import '../models/category.dart';
+import '../models/custom_category.dart';
 import '../models/goal.dart';
 import '../models/loan.dart';
+import '../models/split.dart';
 import '../models/subscription.dart';
 import '../models/transaction.dart';
 import 'crypto_service.dart';
@@ -160,6 +163,13 @@ class FirestoreService {
       out.add(await _decodeTxn(d.id, d.data()));
     }
     return out;
+  }
+
+  /// One transaction as currently stored, or null if it's gone.
+  Future<Transaction?> fetchTransaction(String uid, String id) async {
+    final d = await _txCol(uid).doc(id).get();
+    final data = d.data();
+    return data == null ? null : _decodeTxn(d.id, data);
   }
 
   Future<void> addTransaction(String uid, Transaction t) async {
@@ -523,6 +533,133 @@ class FirestoreService {
 
   Future<void> deleteSubscription(String uid, String id) =>
       _out.delete(_subsCol(uid).doc(id));
+
+  // ─ Custom categories (encrypted) ──────────────────────────
+
+  CollectionReference<Map<String, dynamic>> _catCol(String uid) =>
+      _db.collection('users').doc(uid).collection('categories');
+
+  Stream<List<ExpenseCategory>> watchCustomCategories(String uid) =>
+      _catCol(uid).snapshots().asyncMap((s) async {
+        final out = <ExpenseCategory>[];
+        final dek = KeyVault.instance.dek;
+        for (final d in s.docs) {
+          final enc = d.data()['enc'];
+          if (enc is String && dek != null) {
+            out.add(CustomCategories.fromMap(
+                d.id, await CryptoService.instance.decryptJson(enc, dek)));
+          }
+        }
+        out.sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+        return out;
+      });
+
+  Future<void> setCustomCategory(String uid, ExpenseCategory c) async {
+    final dek = _requireDek();
+    await _out.set(_catCol(uid).doc(c.id), {
+      'enc': await CryptoService.instance
+          .encryptJson(CustomCategories.toMap(c), dek),
+      'v': 1,
+    });
+  }
+
+  Future<void> deleteCustomCategory(String uid, String id) =>
+      _out.delete(_catCol(uid).doc(id));
+
+  // ─ Account names (nicknames for "A/C ••4521", encrypted) ──
+
+  DocumentReference<Map<String, dynamic>> _namesDoc(String uid) =>
+      _db.collection('users').doc(uid).collection('meta').doc('account_names');
+
+  Stream<Map<String, String>> watchAccountNames(String uid) =>
+      _namesDoc(uid).snapshots().asyncMap((s) async {
+        final enc = s.data()?['enc'];
+        final dek = KeyVault.instance.dek;
+        if (enc is! String || dek == null) return <String, String>{};
+        final m = await CryptoService.instance.decryptJson(enc, dek);
+        return {
+          for (final e in ((m['names'] as Map?) ?? const {}).entries)
+            '${e.key}': '${e.value}'
+        };
+      });
+
+  /// Set (or, with an empty [name], clear) the nickname for [account].
+  Future<void> setAccountName(String uid, String account, String name,
+      Map<String, String> current) async {
+    final dek = _requireDek();
+    final names = {...current};
+    name.trim().isEmpty ? names.remove(account) : names[account] = name.trim();
+    await _out.set(_namesDoc(uid), {
+      'enc': await CryptoService.instance.encryptJson({'names': names}, dek),
+      'v': 1,
+    });
+  }
+
+  // ─ Account deletion ───────────────────────────────────────
+
+  /// Every sub-collection the app writes under users/{uid}.
+  static const _userCollections = [
+    'transactions', 'budgets', 'goals', 'loans', 'subscriptions',
+    'split_groups', 'categories', 'processed_sms', 'blocked_senders',
+    'receipts', 'usage', 'meta', 'security',
+  ];
+
+  /// Delete everything stored for [uid] — straight to the server (not the
+  /// offline outbox), in batches, then the profile doc itself.
+  Future<void> deleteAllUserData(String uid) async {
+    final user = _db.collection('users').doc(uid);
+    for (final name in _userCollections) {
+      while (true) {
+        final page = await user.collection(name).limit(400).get();
+        if (page.docs.isEmpty) break;
+        final batch = _db.batch();
+        for (final d in page.docs) {
+          batch.delete(d.reference);
+        }
+        await batch.commit();
+        if (page.docs.length < 400) break;
+      }
+    }
+    await user.delete();
+  }
+
+  // ─ Split groups (people you share bills with; encrypted) ───
+
+  CollectionReference<Map<String, dynamic>> _splitCol(String uid) =>
+      _db.collection('users').doc(uid).collection('split_groups');
+
+  Future<List<SplitGroup>> _decodeGroups(
+      QuerySnapshot<Map<String, dynamic>> s) async {
+    final out = <SplitGroup>[];
+    final dek = KeyVault.instance.dek;
+    for (final d in s.docs) {
+      final enc = d.data()['enc'];
+      if (enc is String && dek != null) {
+        out.add(SplitGroup.fromMap(
+            d.id, await CryptoService.instance.decryptJson(enc, dek)));
+      }
+    }
+    out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return out;
+  }
+
+  Stream<List<SplitGroup>> watchSplitGroups(String uid) =>
+      _splitCol(uid).snapshots().asyncMap(_decodeGroups);
+
+  /// One-shot read (the SMS importer, incl. the background isolate).
+  Future<List<SplitGroup>> fetchSplitGroups(String uid) async =>
+      _decodeGroups(await _splitCol(uid).get());
+
+  Future<void> setSplitGroup(String uid, SplitGroup g) async {
+    final dek = _requireDek();
+    await _out.set(_splitCol(uid).doc(g.id), {
+      'enc': await CryptoService.instance.encryptJson(g.toMap(), dek),
+      'v': 1,
+    });
+  }
+
+  Future<void> deleteSplitGroup(String uid, String id) =>
+      _out.delete(_splitCol(uid).doc(id));
 }
 
 /// Top-level so it can run inside `Isolate.run`. Decrypts a batch of `enc`

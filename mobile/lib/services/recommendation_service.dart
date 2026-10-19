@@ -24,8 +24,8 @@ class RecommendationService {
     // ── 1. Budget burn-rate alerts ──────────────────────────
     final spentByCat = <String, double>{};
     for (final t in txns.where((t) =>
-        t.isDebit && _monthKeyOf(t.timestamp) == mKey)) {
-      spentByCat[t.categoryId] = (spentByCat[t.categoryId] ?? 0) + t.amount;
+        t.isSpend && _monthKeyOf(t.timestamp) == mKey)) {
+      spentByCat[t.categoryId] = (spentByCat[t.categoryId] ?? 0) + t.spendAmount;
     }
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
     final dayIdx = now.day.clamp(1, daysInMonth);

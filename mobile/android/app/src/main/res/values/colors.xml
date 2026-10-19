@@ -1,7 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#15C0B4</color>
-    <!-- AERIS "void" — the app's dark canvas. The launch window uses it so the
-         first native frame already matches the first Flutter frame. -->
-    <color name="aeris_void">#06080D</color>
+    <color name="ic_launcher_background">#181B21</color>
+    <!-- AERIS graphite — the app's dark canvas. The launch window uses it so
+         the first native frame already matches the first Flutter frame. -->
+    <color name="aeris_void">#0F1115</color>
+    <!-- Home-screen widgets (light system theme), "Graphite" palette.
+         values-night/colors.xml holds the dark set; RemoteViews resolve them
+         per launcher mode. Keep in step with widgets_screen.dart `_W`. -->
+    <color name="w_bg">#F5FFFFFF</color>
+    <color name="w_line">#1A151A22</color>
+    <color name="w_text">#151A22</color>
+    <color name="w_muted">#5E6978</color>
+    <color name="w_accent">#2B5F9E</color>
+    <color name="w_on_accent">#FFFFFF</color>
+    <color name="w_ok">#2E8656</color>
+    <color name="w_warn">#A9711C</color>
+    <color name="w_danger">#BF433A</color>
+    <color name="w_track">#E6E9ED</color>
 </resources>

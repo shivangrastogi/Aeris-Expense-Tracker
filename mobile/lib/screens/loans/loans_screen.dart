@@ -22,7 +22,10 @@ class LoansScreen extends ConsumerWidget {
   static const openAddSheet = 'add';
 
   final bool openAdd;
-  const LoansScreen({super.key, this.openAdd = false});
+
+  /// Shown as a tab inside People (no title bar of its own).
+  final bool embedded;
+  const LoansScreen({super.key, this.openAdd = false, this.embedded = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,7 +38,7 @@ class LoansScreen extends ConsumerWidget {
   Widget _screen(BuildContext context, WidgetRef ref,
       AsyncValue<List<Loan>> loansAsync, LoanTotals totals) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Lent & borrowed')),
+      appBar: embedded ? null : AppBar(title: const Text('Lent & borrowed')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showAddLoanSheet(context, ref),
         icon: const Icon(Icons.add),
@@ -206,7 +209,7 @@ class LoansScreen extends ConsumerWidget {
                     fontWeight: FontWeight.w700,
                     color: l.isSettled
                         ? AerisColors.moneyIn(context)
-                        : const Color(0xFFB45309)),
+                        : const Color(0xFF8E5E1A)),
               ),
             ),
           ],

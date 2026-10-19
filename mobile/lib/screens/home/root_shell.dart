@@ -13,11 +13,13 @@ import '../../models/budget.dart';
 import '../../models/category.dart';
 import '../../models/insight.dart';
 import '../../models/transaction.dart';
+import '../../services/notification_intake.dart';
 import '../../services/notification_service.dart';
 import '../../services/reminder_scheduler.dart';
 import '../../services/share_intake.dart';
 import '../../services/sms_service.dart';
 import '../../services/sms_import_service.dart';
+import '../../services/sms_parser.dart';
 import '../../services/widget_service.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -28,7 +30,11 @@ import '../../providers/insights_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../providers/village_provider.dart';
 import '../../providers/money_providers.dart';
+import '../../providers/prefs_data_provider.dart';
+import '../../providers/privacy_provider.dart';
+import '../../providers/currency_provider.dart';
 import '../../utils/motion.dart';
+import '../../widgets/aeris_toast.dart';
 import '../analytics/analytics_screen.dart';
 import '../loans/loans_screen.dart';
 import '../onboarding/onboarding_screen.dart';
@@ -144,6 +150,11 @@ class _RootShellState extends ConsumerState<RootShell>
       duration: const Duration(milliseconds: 400),
       reverseDuration: const Duration(milliseconds: 300),
     );
+    // The user's own categories join the built-in list everywhere.
+    ref.listenManual(customCategoriesProvider, (_, next) {
+      Categories.custom = next.valueOrNull ?? const [];
+      if (mounted) setState(() {});
+    }, fireImmediately: true);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _wireSms();
       _wireWidgetLaunch();
@@ -219,14 +230,45 @@ class _RootShellState extends ConsumerState<RootShell>
     switch (uri.host) {
       case 'quickadd':
         Navigator.of(context).pushNamed(AppRoutes.quickAdd);
-        break;
+      case 'add':
+        Navigator.of(context).pushNamed(AppRoutes.addTxn);
       case 'voice':
         Navigator.of(context).pushNamed(AppRoutes.voice);
-        break;
       case 'village':
         Navigator.of(context).pushNamed(AppRoutes.village);
-        break;
+      case 'budgets':
+        Navigator.of(context).pushNamed(AppRoutes.budgets);
+      case 'activity':
+        _goTab(1);
+      case 'checkin':
+        _goTab(0);
+        _checkInFromWidget();
     }
+  }
+
+  void _goTab(int i) {
+    if (i == _idx) return;
+    setState(() {
+      _visited.add(i);
+      _idx = i;
+    });
+  }
+
+  /// The streak widget's "Check in" — one tap from the home screen. On a
+  /// cold start the gamification state loads asynchronously, so wait for it.
+  Future<void> _checkInFromWidget() async {
+    for (var i = 0; i < 30 && !ref.read(gamificationProvider).loaded; i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    if (!mounted) return;
+    final awarded = ref.read(gamificationProvider.notifier).checkIn();
+    final streak = ref.read(gamificationProvider).checkinStreak;
+    ScaffoldMessenger.of(context).showToast(SnackBar(
+      content: Text(awarded > 0
+          ? 'Checked in · +$awarded Aura · $streak-day streak'
+          : 'Already checked in today · $streak-day streak'),
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   // ── The add button ──────────────────────────────────────────
@@ -274,13 +316,10 @@ class _RootShellState extends ConsumerState<RootShell>
     _widgetDebounce?.cancel();
     _widgetDebounce = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
-      final analytics = ref.read(analyticsProvider).valueOrNull;
+      final txns = ref.read(transactionsStreamProvider).valueOrNull;
+      if (txns == null) return; // not loaded yet — don't push zeros
       final budgets = ref.read(effectiveBudgetsProvider);
-      if (analytics == null) return;
       final gam = ref.read(gamificationProvider);
-      final streak = gam.liveStreak;
-      final week = gam.weekCheckins();
-      final todayIdx = gam.todayWeekIndex;
       final explicitTotal = budgets
           .where((b) => b.categoryId == Budget.totalId)
           .fold<double>(0, (s, b) => s + b.monthlyCap);
@@ -289,30 +328,22 @@ class _RootShellState extends ConsumerState<RootShell>
           : budgets
               .where((b) => b.categoryId != Budget.totalId)
               .fold<double>(0, (s, b) => s + b.monthlyCap);
-      // Today's spend for the 1×1 widget.
-      final txns = ref.read(transactionsStreamProvider).valueOrNull ?? const [];
-      final now = DateTime.now();
-      final todaySpend = txns
-          .where((t) =>
-              t.direction == TxnDirection.debit &&
-              t.timestamp.year == now.year &&
-              t.timestamp.month == now.month &&
-              t.timestamp.day == now.day)
-          .fold<double>(0, (s, t) => s + t.amount);
       final profile = ref.read(userProfileProvider).valueOrNull;
       final fullName = (profile?.displayName ?? '').trim();
       WidgetService.pushAll(
-        spent: analytics.monthExpense,
+        // Calendar month + today, NOT the Analytics range selector.
+        snap: WidgetSnapshot.compute(txns, DateTime.now()),
         budget: target,
-        label: analytics.label,
-        streak: streak,
-        todaySpend: todaySpend,
+        streak: gam.checkinStreak,
+        lastCheckinDay: gam.lastCheckinDay,
+        checkinDays: [
+          for (final k in gam.awardedKeys)
+            if (k.startsWith('checkin_')) k.substring(8)
+        ],
         aura: gam.available,
         townLevel: ref.read(villageProvider).townLevel,
         firstName:
             fullName.isEmpty ? null : fullName.split(RegExp(r'\s+')).first,
-        week: week,
-        todayIdx: todayIdx,
       );
     });
   }
@@ -328,10 +359,28 @@ class _RootShellState extends ConsumerState<RootShell>
     final uid = ref.read(currentUserIdProvider);
     if (uid == null) return;
     (await SharedPreferences.getInstance()).setString('current_uid', uid);
+    // UPI-app notifications don't need the SMS permission.
+    unawaited(NotificationIntake.instance.attach((p) => _persist(uid, p)));
     if (!await SmsService.instance.hasPermission()) return;
     await SmsService.instance
         .startLiveListening(onTxn: (p) => _persist(uid, p));
     Future.delayed(const Duration(seconds: 4), () async {
+      if (!mounted) return;
+      // Re-read past imports with the improved parser BEFORE backfilling, so
+      // a message that now parses differently isn't imported a second time.
+      try {
+        final r = await SmsImportService.instance.repairImported(uid);
+        final parts = [
+          if (r.fixed > 0) '${r.fixed} corrected',
+          if (r.merged > 0) '${r.merged} duplicate${r.merged == 1 ? '' : 's'} merged',
+          if (r.transfers > 0)
+            '${r.transfers} own-account transfer${r.transfers == 1 ? '' : 's'} found',
+        ];
+        if (parts.isNotEmpty && mounted) {
+          ScaffoldMessenger.of(context).showToast(SnackBar(
+              content: Text('Re-read your bank SMS: ${parts.join(' · ')}.')));
+        }
+      } catch (_) {} // best-effort; it retries on the next app open
       if (!mounted) return;
       final blocked = ref.read(blockedSendersProvider).valueOrNull ?? const {};
       await SmsImportService.instance.backfill(
@@ -348,7 +397,7 @@ class _RootShellState extends ConsumerState<RootShell>
     });
   }
 
-  Future<void> _persist(String uid, parsed) async {
+  Future<void> _persist(String uid, ParsedSms parsed) async {
     final blocked = ref.read(blockedSendersProvider).valueOrNull ?? const {};
     await SmsImportService.instance.persistOne(uid, parsed, blocked);
   }
@@ -398,8 +447,16 @@ class _RootShellState extends ConsumerState<RootShell>
     });
     ref.listen(goalsStreamProvider, (_, __) => _scheduleAuraSync());
     ref.listen(analyticsProvider, (_, __) => _scheduleWidgetPush());
-    ref.listen(gamificationProvider.select((g) => g.checkinStreak),
+    // Streak, check-ins and Aura all show on widgets.
+    ref.listen(
+        gamificationProvider.select(
+            (g) => (g.checkinStreak, g.lastCheckinDay, g.available)),
         (_, __) => _scheduleWidgetPush());
+    ref.listen(villageProvider.select((v) => v.townLevel),
+        (_, __) => _scheduleWidgetPush());
+    ref.listen(amountHiddenProvider, (_, __) => _scheduleWidgetPush());
+    ref.listen(currencyProvider, (_, __) => _scheduleWidgetPush());
+    ref.listen(userProfileProvider, (_, __) => _scheduleWidgetPush());
     ref.listen(blockedSendersProvider, (_, next) {
       next.whenData((set) async {
         (await SharedPreferences.getInstance())
@@ -541,32 +598,27 @@ class _FabMenu extends StatelessWidget {
               Container(
                 width: btnSize,
                 height: btnSize,
-                // Neon disc lit from the top-left + a glow in its own colour.
+                // A plain surface disc; the icon carries the action's tint.
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color.lerp(a.color, Colors.white, 0.25)!, a.color],
-                  ),
-                  boxShadow: [
+                  color: AerisColors.card(context),
+                  border: Border.all(color: AerisColors.line(context)),
+                  boxShadow: const [
                     BoxShadow(
-                        color: a.color.withValues(alpha: 0.55),
-                        blurRadius: 20,
-                        spreadRadius: 1,
-                        offset: const Offset(0, 4))
+                        color: Color(0x33000000),
+                        blurRadius: 14,
+                        offset: Offset(0, 4))
                   ],
                 ),
-                child: Icon(a.icon, color: const Color(0xFF06080D), size: 23),
+                child: Icon(a.icon, color: a.color, size: 23),
               ),
               const SizedBox(height: 7),
               Text(
-                a.label.toUpperCase(),
+                a.label,
                 maxLines: 1,
                 style: const TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
                   shadows: [Shadow(blurRadius: 4, color: Colors.black54)],
                 ),
@@ -695,15 +747,10 @@ class _NavBar extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AerisColors.card(context),
                   borderRadius: BorderRadius.circular(26),
-                  border: Border.all(
-                      color: dark
-                          ? AerisColors.arc.withValues(alpha: 0.14)
-                          : AerisColors.lineLight),
+                  border: Border.all(color: AerisColors.line(context)),
                   boxShadow: [
                     BoxShadow(
-                        color: dark
-                            ? AerisColors.arc.withValues(alpha: 0.06)
-                            : Colors.black.withValues(alpha: 0.08),
+                        color: Colors.black.withValues(alpha: dark ? 0.35 : 0.08),
                         blurRadius: 24,
                         offset: const Offset(0, 8)),
                   ],
@@ -806,7 +853,6 @@ class _AddButtonState extends State<_AddButton> {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final glow = dark ? AerisColors.arc : AerisColors.accent(context);
     return Semantics(
       button: true,
       label: 'Add transaction',
@@ -834,9 +880,9 @@ class _AddButtonState extends State<_AddButton> {
               border: Border.all(color: AerisColors.canvas(context), width: 4),
               boxShadow: [
                 BoxShadow(
-                  color: glow.withValues(alpha: dark ? 0.45 : 0.30),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
+                  color: Colors.black.withValues(alpha: dark ? 0.40 : 0.18),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
                 )
               ],
             ),
@@ -850,7 +896,7 @@ class _AddButtonState extends State<_AddButton> {
                 child: child,
               ),
               child: Icon(Icons.add_rounded,
-                  color: dark ? const Color(0xFF06080D) : Colors.white,
+                  color: dark ? const Color(0xFF0F1115) : Colors.white,
                   size: 30),
             ),
           ),

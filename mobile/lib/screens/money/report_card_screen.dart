@@ -183,7 +183,7 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = card;
     final gc = _gradeColor(c.grade);
-    const dim = Color(0xB3EAF2F7);
+    const dim = Color(0xB3E6E8EB);
     final rate = c.savingsRate;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
@@ -270,7 +270,7 @@ class _Bar extends StatelessWidget {
         SizedBox(
             width: 74,
             child: Text(label,
-                style: hudLabel(context, color: const Color(0xB3EAF2F7), size: 10))),
+                style: hudLabel(context, color: const Color(0xB3E6E8EB), size: 10))),
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(99),

@@ -144,7 +144,7 @@ class ChallengesScreen extends ConsumerWidget {
                 ),
               if (type == ChallengeType.noCategory)
                 DropdownButtonFormField<String>(
-                  value: categoryId,
+                  initialValue: categoryId,
                   isExpanded: true,
                   decoration:
                       const InputDecoration(labelText: 'Avoid category'),

@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../models/avatar_skin.dart';
 import '../../providers/gamification_provider.dart';
 import '../../providers/village_provider.dart';
+import '../../widgets/town_painter.dart';
 import '../../widgets/aeris_avatar.dart';
 import 'bosses_screen.dart';
 import 'challenges_screen.dart';
@@ -160,51 +161,24 @@ class _VillageHero extends ConsumerWidget {
         child: Column(
           children: [
             // landscape preview
-            SizedBox(
+            Container(
               height: 124,
+              color: TownPalette.skyBottom,
               child: Stack(
                 children: [
-                  // sky → grass gradient
-                  const Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0xFF86CFE8),
-                            Color(0xFFA7E0C8),
-                            Color(0xFF8FD06A),
-                            Color(0xFF7BC056),
-                          ],
-                          stops: [0.0, 0.5, 0.5, 1.0],
+                  // A live miniature of the user's real town.
+                  Positioned.fill(
+                    child: ClipRect(
+                      child: LayoutBuilder(
+                        builder: (_, c) => CustomPaint(
+                          painter: TownPainter(
+                            village: v,
+                            iso: Iso(Offset(c.maxWidth / 2, 14), 34),
+                            now: DateTime.now().millisecondsSinceEpoch,
+                          ),
+                          child: const SizedBox.expand(),
                         ),
                       ),
-                    ),
-                  ),
-                  // sun
-                  const Positioned(
-                    top: 10,
-                    right: 14,
-                    child: Text('☀️', style: TextStyle(fontSize: 22)),
-                  ),
-                  // buildings
-                  const Positioned(
-                    bottom: 12,
-                    left: 16,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('🏛️', style: TextStyle(fontSize: 30)),
-                        SizedBox(width: 6),
-                        Text('🏠', style: TextStyle(fontSize: 24)),
-                        SizedBox(width: 6),
-                        Text('🏦', style: TextStyle(fontSize: 26)),
-                        SizedBox(width: 6),
-                        Text('🌳', style: TextStyle(fontSize: 20)),
-                        SizedBox(width: 6),
-                        Text('⛲', style: TextStyle(fontSize: 22)),
-                      ],
                     ),
                   ),
                   // "Full screen" badge
@@ -242,13 +216,13 @@ class _VillageHero extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('Your Village',
+                      const Text('Aeris Town',
                           style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w800,
                               letterSpacing: -0.3)),
                       const SizedBox(height: 2),
-                      Text('Build & upgrade your base · TH ${v.townLevel}',
+                      Text('Level ${v.townLevel} · ${v.buildings.length} building${v.buildings.length == 1 ? '' : 's'}',
                           style: TextStyle(
                               color: Theme.of(context)
                                   .colorScheme
@@ -270,7 +244,7 @@ class _VillageHero extends ConsumerWidget {
                             color: AerisColors.onAccent(context),
                             fontWeight: FontWeight.w800,
                             fontSize: 13.5)),
-                    SizedBox(width: 4),
+                    const SizedBox(width: 4),
                     Icon(Icons.arrow_forward, size: 16, color: AerisColors.onAccent(context)),
                   ]),
                 ),
@@ -295,8 +269,8 @@ class _QuestsSection extends StatelessWidget {
       children: [
         Row(children: [
           Icon(Icons.flag_rounded, size: 18, color: AerisColors.accent(context)),
-          SizedBox(width: 7),
-          Text('Challenges',
+          const SizedBox(width: 7),
+          const Text('Challenges',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         ]),
         const SizedBox(height: 10),
@@ -305,8 +279,8 @@ class _QuestsSection extends StatelessWidget {
         Row(children: [
           Icon(Icons.sports_kabaddi_rounded,
               size: 18, color: AerisColors.danger(context)),
-          SizedBox(width: 7),
-          Text('Boss battles',
+          const SizedBox(width: 7),
+          const Text('Boss battles',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         ]),
         const SizedBox(height: 4),
@@ -351,9 +325,11 @@ class _Header extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
+          // The equipped skin tints a dark HUD panel (was a full-bright
+          // gradient that fought the app's dark theme).
           colors: [
-            skin.aura,
-            Color.lerp(skin.aura, skin.accent, 0.6)!,
+            Color.lerp(AerisColors.cardDark, skin.aura, 0.16)!,
+            AerisColors.bgDark,
           ],
         ),
       ),
@@ -518,13 +494,13 @@ class _AvatarSection extends ConsumerWidget {
                     fontWeight: FontWeight.w700,
                     color: scheme.onSurface.withValues(alpha: 0.6))),
             const Spacer(),
-            const Icon(Icons.bolt, size: 15, color: Color(0xFFD97706)),
+            const Icon(Icons.bolt, size: 15, color: Color(0xFFA9711C)),
             const SizedBox(width: 3),
             Text('${g.available} to spend',
                 style: const TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFFD97706))),
+                    color: Color(0xFFA9711C))),
           ],
         ),
         const SizedBox(height: 12),
@@ -698,16 +674,16 @@ class _AvatarCard extends StatelessWidget {
     // locked
     return _filledBtn(
       bg: canAfford
-          ? const Color(0xFFD97706).withValues(alpha: 0.14)
+          ? const Color(0xFFA9711C).withValues(alpha: 0.14)
           : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
       fg: canAfford
-          ? const Color(0xFFD97706)
+          ? const Color(0xFFA9711C)
           : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
       label: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(canAfford ? Icons.bolt : Icons.lock,
             size: 14,
             color: canAfford
-                ? const Color(0xFFD97706)
+                ? const Color(0xFFA9711C)
                 : Theme.of(context)
                     .colorScheme
                     .onSurface
@@ -718,7 +694,7 @@ class _AvatarCard extends StatelessWidget {
                 fontSize: 12.5,
                 fontWeight: FontWeight.w800,
                 color: canAfford
-                    ? const Color(0xFFD97706)
+                    ? const Color(0xFFA9711C)
                     : Theme.of(context)
                         .colorScheme
                         .onSurface
@@ -790,13 +766,13 @@ class _AvatarCard extends StatelessWidget {
                       color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
               const SizedBox(height: 14),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const Icon(Icons.bolt, size: 20, color: Color(0xFFD97706)),
+                const Icon(Icons.bolt, size: 20, color: Color(0xFFA9711C)),
                 const SizedBox(width: 4),
                 Text('${skin.cost} Aura',
                     style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFFD97706))),
+                        color: Color(0xFFA9711C))),
               ]),
               const SizedBox(height: 16),
               Row(children: [

@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/avatar_skin.dart';
 import '../models/budget.dart';
 import '../models/challenge.dart';
-import '../models/town.dart';
 import '../services/firestore_service.dart';
 import '../widgets/aeris_avatar.dart' show AvatarMood;
 import 'analytics_provider.dart';
@@ -30,8 +29,15 @@ class GamificationState {
   final int? accent; // dashboard accent colour value
   final int checkinStreak; // consecutive daily check-ins
   final String? lastCheckinDay; // day-key of the most recent check-in
-  final Map<int, TownTile> town; // Aeris Town garden: tile index -> plot
-  final String gardenTheme; // Aeris Town ground/sky palette id
+  /// Aura earned *inside* Aeris Town (building yields). Spendable, but it
+  /// never raises your level — levels only come from real money habits.
+  final int bonus;
+  /// Gems: the rare currency (rushing construction). Earned only from
+  /// milestones — streaks, months under budget, goals, challenges.
+  final int gems;
+  /// Day-key the user started (first run of this version). Events from
+  /// before it (backfilled SMS history) don't award anything retroactively.
+  final String? startedDay;
   final bool loaded;
 
   const GamificationState({
@@ -45,12 +51,13 @@ class GamificationState {
     this.accent,
     this.checkinStreak = 0,
     this.lastCheckinDay,
-    this.town = const {},
-    this.gardenTheme = 'meadow',
+    this.bonus = 0,
+    this.gems = 10,
+    this.startedDay,
     this.loaded = false,
   });
 
-  int get available => earned - spent;
+  int get available => earned + bonus - spent;
   int get level => levelForAura(earned);
 
   /// Canonical day-key (`YYYY-MM-DD`) used for all check-in bookkeeping.
@@ -104,8 +111,9 @@ class GamificationState {
     Object? accent = _noChange,
     int? checkinStreak,
     String? lastCheckinDay,
-    Map<int, TownTile>? town,
-    String? gardenTheme,
+    int? bonus,
+    int? gems,
+    String? startedDay,
     bool? loaded,
   }) =>
       GamificationState(
@@ -119,8 +127,9 @@ class GamificationState {
         accent: accent == _noChange ? this.accent : accent as int?,
         checkinStreak: checkinStreak ?? this.checkinStreak,
         lastCheckinDay: lastCheckinDay ?? this.lastCheckinDay,
-        town: town ?? this.town,
-        gardenTheme: gardenTheme ?? this.gardenTheme,
+        bonus: bonus ?? this.bonus,
+        gems: gems ?? this.gems,
+        startedDay: startedDay ?? this.startedDay,
         loaded: loaded ?? this.loaded,
       );
 }
@@ -144,7 +153,7 @@ final avatarStatusProvider = Provider<AvatarStatus>((ref) {
   final g = ref.watch(gamificationProvider);
   final skin = Avatars.byId(g.selected);
   final level = g.level;
-  final analytics = ref.watch(analyticsProvider).valueOrNull;
+  final analytics = ref.watch(monthAnalyticsProvider);
   final insights = ref.watch(insightsProvider).valueOrNull;
   AvatarMood mood;
   if (insights != null &&
@@ -188,17 +197,6 @@ class GamificationController extends StateNotifier<GamificationState> {
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
     final accent = p.getInt('gam_accent');
-    Map<int, TownTile> town = const {};
-    final townRaw = p.getString('gam_town');
-    if (townRaw != null) {
-      try {
-        final decoded = jsonDecode(townRaw) as Map<String, dynamic>;
-        town = decoded.map((k, v) => MapEntry(
-            int.parse(k), TownTile.fromJson(v as Map<String, dynamic>)));
-      } catch (_) {
-        // Corrupt/old data — start with an empty town rather than crashing.
-      }
-    }
     state = state.copyWith(
       earned: p.getInt('gam_earned') ?? 0,
       spent: p.getInt('gam_spent') ?? 0,
@@ -213,8 +211,9 @@ class GamificationController extends StateNotifier<GamificationState> {
       challenges: (p.getStringList('gam_challenges') ?? const [])
           .map((s) => Challenge.fromJson(jsonDecode(s) as Map<String, dynamic>))
           .toList(),
-      town: town,
-      gardenTheme: p.getString('gam_garden_theme') ?? 'meadow',
+      bonus: p.getInt('gam_bonus') ?? 0,
+      gems: p.getInt('gam_gems') ?? 10,
+      startedDay: p.getString('gam_started') ?? _dayKey(DateTime.now()),
       loaded: true,
     );
     sync();
@@ -258,6 +257,9 @@ class GamificationController extends StateNotifier<GamificationState> {
           ((cloud['awardedKeys'] as List?) ?? const []).cast<String>().toSet();
       final cloudStreak = asInt(cloud['checkinStreak']);
       final cloudDay = cloud['lastCheckinDay'] as String?;
+      final cloudBonus = asInt(cloud['bonus']);
+      final cloudGems = cloud.containsKey('gems') ? asInt(cloud['gems']) : null;
+      final cloudStarted = cloud['startedDay'] as String?;
 
       var streak = state.checkinStreak;
       var day = state.lastCheckinDay;
@@ -279,6 +281,15 @@ class GamificationController extends StateNotifier<GamificationState> {
         awardedKeys: {...state.awardedKeys, ...cloudAwarded},
         checkinStreak: streak,
         lastCheckinDay: day,
+        bonus: cloudBonus > state.bonus ? cloudBonus : state.bonus,
+        // Gems go down when spent, so the cloud value only wins on a fresh
+        // install (local still at the starting 10).
+        gems: cloudGems != null && state.gems == 10 ? cloudGems : state.gems,
+        startedDay: cloudStarted != null &&
+                (state.startedDay == null ||
+                    cloudStarted.compareTo(state.startedDay!) < 0)
+            ? cloudStarted
+            : state.startedDay,
       );
     }
     await _persist();
@@ -306,11 +317,13 @@ class GamificationController extends StateNotifier<GamificationState> {
     } else {
       await p.setInt('gam_accent', state.accent!);
     }
-    await p.setString('gam_town',
-        jsonEncode(state.town.map((k, v) => MapEntry('$k', v.toJson()))));
-    await p.setString('gam_garden_theme', state.gardenTheme);
+    await p.setInt('gam_bonus', state.bonus);
+    await p.setInt('gam_gems', state.gems);
+    if (state.startedDay != null) {
+      await p.setString('gam_started', state.startedDay!);
+    }
     // Mirror to Firestore (fire-and-forget) so streak/aura survive reinstalls.
-    // hiddenCards/accent/challenges/town/gardenTheme stay device-local on purpose.
+    // hiddenCards/accent/challenges stay device-local on purpose.
     final uid = _ref.read(currentUserIdProvider);
     if (uid != null) {
       FirestoreService.instance.saveGamification(uid, {
@@ -321,6 +334,9 @@ class GamificationController extends StateNotifier<GamificationState> {
         'awardedKeys': state.awardedKeys.toList(),
         'checkinStreak': state.checkinStreak,
         'lastCheckinDay': state.lastCheckinDay,
+        'bonus': state.bonus,
+        'gems': state.gems,
+        if (state.startedDay != null) 'startedDay': state.startedDay,
       }).catchError((_) {/* offline — next persist retries */});
     }
   }
@@ -336,14 +352,33 @@ class GamificationController extends StateNotifier<GamificationState> {
 
     final awarded = {...state.awardedKeys};
     var earned = state.earned;
+    var gems = state.gems;
     void grant(String key, int amt) {
       if (awarded.add(key)) earned += amt;
     }
 
+    void gem(String key, int amt) {
+      if (awarded.add('gem_$key')) gems += amt;
+    }
+
+    // Only events on/after the day the user started count — otherwise a
+    // fresh SMS backfill would pay out months of "no-spend days" and
+    // "months under budget" the user never actually played.
+    final started = state.startedDay ?? _dayKey(now);
+    final startMonth = started.substring(0, 7);
+
     grant('welcome', 50);
 
     for (final g in goals) {
-      if (g.isComplete) grant('goal_${g.id}', 200);
+      if (g.isComplete) {
+        grant('goal_${g.id}', 200);
+        gem('goal_${g.id}', 10);
+      }
+    }
+
+    // Streak milestones pay gems once each.
+    for (final (days, n) in const [(7, 5), (30, 15), (100, 40), (365, 120)]) {
+      if (state.liveStreak >= days) gem('streak_$days', n);
     }
 
     // Completed months that stayed within the total budget cap — the explicit
@@ -359,14 +394,18 @@ class GamificationController extends StateNotifier<GamificationState> {
     if (cap > 0) {
       final monthExp = <String, double>{};
       for (final t in txns) {
-        if (t.isDebit) {
+        if (t.isSpend) {
           monthExp[_monthKey(t.timestamp)] =
-              (monthExp[_monthKey(t.timestamp)] ?? 0) + t.amount;
+              (monthExp[_monthKey(t.timestamp)] ?? 0) + t.spendAmount;
         }
       }
       final curK = _monthKey(now);
       monthExp.forEach((k, exp) {
-        if (k != curK && exp <= cap) grant('mub_$k', 100);
+        // A full month after the start month, finished, within the cap.
+        if (k != curK && k.compareTo(startMonth) > 0 && exp <= cap) {
+          grant('mub_$k', 100);
+          gem('mub_$k', 10);
+        }
       });
     }
 
@@ -376,12 +415,14 @@ class GamificationController extends StateNotifier<GamificationState> {
       var first = now;
       for (final t in txns) {
         if (t.timestamp.isBefore(first)) first = t.timestamp;
-        if (t.isDebit) debitDays.add(_dayKey(t.timestamp));
+        if (t.isSpend) debitDays.add(_dayKey(t.timestamp));
       }
       final today = DateTime(now.year, now.month, now.day);
       final firstDay = DateTime(first.year, first.month, first.day);
       var scan = today.subtract(const Duration(days: 120));
       if (scan.isBefore(firstDay)) scan = firstDay;
+      final startDate = DateTime.tryParse(started);
+      if (startDate != null && scan.isBefore(startDate)) scan = startDate;
       for (var d = scan;
           d.isBefore(today);
           d = d.add(const Duration(days: 1))) {
@@ -393,11 +434,13 @@ class GamificationController extends StateNotifier<GamificationState> {
     for (final c in state.challenges) {
       if (c.evaluate(txns, now).state == ChallengeState.won) {
         grant('ch_${c.id}', c.reward);
+        gem('ch_${c.id}', 3);
       }
     }
 
-    if (earned != state.earned) {
-      state = state.copyWith(earned: earned, awardedKeys: awarded);
+    if (earned != state.earned || gems != state.gems || state.startedDay == null) {
+      state = state.copyWith(
+          earned: earned, gems: gems, awardedKeys: awarded, startedDay: started);
       _persist();
     }
   }
@@ -439,6 +482,7 @@ class GamificationController extends StateNotifier<GamificationState> {
       lastCheckinDay: today,
     );
     _persist();
+    sync(); // streak-milestone gems
     return total;
   }
 
@@ -506,47 +550,6 @@ class GamificationController extends StateNotifier<GamificationState> {
     _persist();
   }
 
-  // ── Aeris Town (garden) ─────────────────────────────────────
-  /// Place a new [elementId] plot on empty tile [idx], spending [cost] Aura.
-  /// Returns false if the tile is occupied or the cost can't be afforded.
-  bool placeTile(int idx, String elementId, int cost) {
-    if (state.town.containsKey(idx)) return false;
-    if (cost > state.available) return false;
-    state = state.copyWith(
-      town: {...state.town, idx: TownTile(type: elementId)},
-      spent: state.spent + cost,
-    );
-    _persist();
-    return true;
-  }
-
-  /// Grow the plot at [idx] to its next level, spending [cost] Aura. Returns
-  /// false if the tile is empty or the cost can't be afforded.
-  bool upgradeTile(int idx, int cost) {
-    final tile = state.town[idx];
-    if (tile == null) return false;
-    if (cost > state.available) return false;
-    state = state.copyWith(
-      town: {...state.town, idx: tile.copyWith(lvl: tile.lvl + 1)},
-      spent: state.spent + cost,
-    );
-    _persist();
-    return true;
-  }
-
-  /// Remove the plot at [idx]. No Aura is refunded.
-  void clearTile(int idx) {
-    if (!state.town.containsKey(idx)) return;
-    final town = {...state.town}..remove(idx);
-    state = state.copyWith(town: town);
-    _persist();
-  }
-
-  void setGardenTheme(String theme) {
-    state = state.copyWith(gardenTheme: theme);
-    _persist();
-  }
-
   // ── Generic Aura economy (used by the Village base-builder) ──
   /// Spends [cost] Aura if affordable. Returns false if not enough.
   bool spendAura(int cost) {
@@ -557,10 +560,19 @@ class GamificationController extends StateNotifier<GamificationState> {
     return true;
   }
 
-  /// Grants [amt] free Aura (e.g. collected from village buildings).
-  void addAura(int amt) {
+  /// Aura produced by town buildings. Goes to [GamificationState.bonus]:
+  /// spendable, but it never raises your level.
+  void addTownAura(int amt) {
     if (amt <= 0) return;
-    state = state.copyWith(earned: state.earned + amt);
+    state = state.copyWith(bonus: state.bonus + amt);
     _persist();
+  }
+
+  bool spendGems(int n) {
+    if (n <= 0) return true;
+    if (n > state.gems) return false;
+    state = state.copyWith(gems: state.gems - n);
+    _persist();
+    return true;
   }
 }

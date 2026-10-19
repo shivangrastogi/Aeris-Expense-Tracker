@@ -3,8 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
-import '../models/avatar_skin.dart';
-import '../widgets/aeris_avatar.dart';
+import '../widgets/brand_mark.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -15,7 +14,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  static const _word = 'A.E.R.I.S';
+  static const _word = 'AERIS';
   int _n = 0;
   bool _cursorVisible = true;
   late final Timer _typeTimer;
@@ -49,7 +48,6 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final defaultSkin = Avatars.byId('sprout');
 
     return Scaffold(
       body: Container(
@@ -83,14 +81,8 @@ class _SplashScreenState extends State<SplashScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // ── Aeris mascot ──────────────────────────────
-                  AerisAvatar(
-                    skin: defaultSkin,
-                    stage: 1,
-                    mood: AvatarMood.happy,
-                    size: 150,
-                    animate: true,
-                  ),
+                  // ── The AERIS mark (same as the launcher icon) ──
+                  const AerisBrandMark(size: 112),
 
                   const SizedBox(height: 30),
 
@@ -106,7 +98,7 @@ class _SplashScreenState extends State<SplashScreen>
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.04 * 34,
                           color:
-                              isDark ? Colors.white : const Color(0xFF0D1C1C),
+                              isDark ? Colors.white : const Color(0xFF151A22),
                         ),
                       ),
                       if (_n < _word.length || _cursorVisible)
@@ -137,7 +129,7 @@ class _SplashScreenState extends State<SplashScreen>
                       fontWeight: FontWeight.w600,
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.55)
-                          : const Color(0xFF0D1C1C).withValues(alpha: 0.55),
+                          : const Color(0xFF151A22).withValues(alpha: 0.55),
                     ),
                   ),
                 ],
@@ -176,7 +168,7 @@ class _SplashScreenState extends State<SplashScreen>
                       fontWeight: FontWeight.w600,
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.35)
-                          : const Color(0xFF0D1C1C).withValues(alpha: 0.40),
+                          : const Color(0xFF151A22).withValues(alpha: 0.40),
                     ),
                   ),
                 ],

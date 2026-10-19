@@ -1,107 +1,152 @@
 import 'package:home_widget/home_widget.dart';
 
+import '../models/transaction.dart';
 import '../utils/formatters.dart';
 
-/// Pushes all home-screen widget data to Android. Every value is computed
-/// on-device from already-decrypted data; only the formatted strings are
-/// handed to the widgets. Drives all AERIS widget providers.
+/// Raw numbers behind the home-screen widgets for one moment in time.
+///
+/// Widgets get RAW values plus the day/month they belong to — never
+/// pre-formatted strings — so the native side (WidgetData.kt) can roll them
+/// over at midnight / on the 1st by itself, and the background SMS isolate
+/// can add a payment without the app being open.
+class WidgetSnapshot {
+  final double monthSpent; // current calendar month, net of refunds
+  final double todaySpent; // today, net of refunds
+  final String monthKey; // yyyy-MM the totals belong to
+  final String dayKey; // yyyy-MM-dd
+
+  const WidgetSnapshot(this.monthSpent, this.todaySpent, this.monthKey, this.dayKey);
+
+  /// Always the CALENDAR month and today — independent of whatever date range
+  /// the Analytics screen happens to be showing.
+  factory WidgetSnapshot.compute(Iterable<Transaction> txns, DateTime now) {
+    double month = 0, today = 0;
+    for (final t in txns) {
+      if (t.isInternal) continue; // own-account transfer / share payback
+      final ts = t.timestamp;
+      if (ts.year != now.year || ts.month != now.month) continue;
+      final double v;
+      if (t.isRefund) {
+        v = -t.spendAmount;
+      } else if (t.isCredit) {
+        continue;
+      } else {
+        v = t.spendAmount;
+      }
+      month += v;
+      if (ts.day == now.day) today += v;
+    }
+    return WidgetSnapshot(
+        month < 0 ? 0 : month, today < 0 ? 0 : today, monthKeyOf(now), dayKeyOf(now));
+  }
+
+  static String monthKeyOf(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
+  static String dayKeyOf(DateTime d) => '${monthKeyOf(d)}-${d.day.toString().padLeft(2, '0')}';
+}
+
+/// Pushes widget data to Android and refreshes every AERIS widget. The
+/// native providers read it through WidgetData.kt (one model, one formatter,
+/// date rollover, day/night colours).
 class WidgetService {
   WidgetService._();
 
+  static const providers = [
+    'AerisWidgetProvider',
+    'AerisStreakWidgetProvider',
+    'AerisBudgetWidgetProvider',
+    'AerisSpentWidgetProvider',
+    'AerisTodayWidgetProvider',
+    'AerisStreakMiniWidgetProvider',
+    'AerisVillageWidgetProvider',
+  ];
+
   static String? _lastSig;
 
-  /// Comprehensive push for every widget (budget, streak, spend, today,
-  /// village). Call from the app once data is available.
+  /// Full push from the app (all data decrypted and in memory).
   static Future<void> pushAll({
-    required double spent,
+    required WidgetSnapshot snap,
     required double budget,
-    required String label,
     required int streak,
-    required double todaySpend,
+    required String? lastCheckinDay,
+    required Iterable<String> checkinDays, // recent yyyy-MM-dd keys
     required int aura,
     required int townLevel,
     String? firstName,
-    List<bool>? week,
-    int todayIdx = -1,
   }) async {
-    final left = budget - spent;
-    final pct = budget > 0 ? ((spent / budget) * 100).clamp(0, 100).round() : 0;
-    final greeting = (firstName != null && firstName.trim().isNotEmpty)
-        ? 'Hi, ${firstName.trim()}!'
-        : '';
-    // The real Sun→Sat week as a "1,0,1,…" string so the native widget can
-    // light up actual check-in days (today stays empty until checked in)
-    // instead of just filling the first N dots.
-    final weekStr =
-        (week ?? const <bool>[]).map((d) => d ? '1' : '0').join(',');
-
-    // Avoid redundant native updates.
-    final sig =
-        '$spent|$budget|$label|$streak|$todaySpend|$aura|$townLevel|$greeting|$weekStr|$todayIdx';
-    if (sig == _lastSig) return;
+    final c = kCurrency;
+    final days = checkinDays.toList()..sort();
+    final recent = days.length > 14 ? days.sublist(days.length - 14) : days;
+    final data = <String, Object>{
+      'w_v': 2,
+      'w_month': snap.monthKey,
+      'w_spent': snap.monthSpent.toStringAsFixed(2),
+      'w_day': snap.dayKey,
+      'w_today': snap.todaySpent.toStringAsFixed(2),
+      'w_budget': budget.toStringAsFixed(2),
+      'w_streak': streak,
+      'w_last_checkin': lastCheckinDay ?? '',
+      'w_checkins': recent.join(','),
+      'w_aura': aura,
+      'w_town': townLevel,
+      'w_name': (firstName ?? '').trim(),
+      'w_cur_symbol': c.symbol,
+      'w_cur_rate': c.rate.toString(),
+      'w_cur_indian': c.indian,
+      'w_hidden': kAmountsHidden,
+    };
+    final sig = data.values.join('|');
+    if (sig == _lastSig) return; // nothing changed — skip the native round trip
     _lastSig = sig;
-
-    String auraStr = aura.toString().replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},');
-
     try {
-      // Streak (combined + mini)
-      await HomeWidget.saveWidgetData<String>(
-          'streak_text', streak > 0 ? '$streak day streak' : '0 day streak');
-      await HomeWidget.saveWidgetData<String>(
-          'streak_sub',
-          streak > 0
-              ? 'Keep going, check in today!'
-              : 'Start your streak today');
-      await HomeWidget.saveWidgetData<String>(
-          'streak_num', '$streak day${streak == 1 ? '' : 's'}');
-      await HomeWidget.saveWidgetData<int>('streak_count', streak);
-      await HomeWidget.saveWidgetData<String>('streak_greeting', greeting);
-      // Per-day week state + today's column so dots track the real calendar.
-      await HomeWidget.saveWidgetData<String>('streak_week', weekStr);
-      await HomeWidget.saveWidgetData<int>('streak_today', todayIdx);
-
-      // Budget (combined + budget widget)
-      await HomeWidget.saveWidgetData<String>('title', 'Budget left · $label');
-      await HomeWidget.saveWidgetData<String>(
-          'amount', budget > 0 ? formatRupees(left) : '—');
-      await HomeWidget.saveWidgetData<int>('pct', pct);
-      await HomeWidget.saveWidgetData<String>(
-          'sub',
-          budget > 0
-              ? 'Spent ${formatRupees(spent)} of ${formatRupees(budget)}'
-              : 'Set a budget in AERIS');
-      // Budget ring widget (glass card + drawn circular ring).
-      await HomeWidget.saveWidgetData<String>('ring_left_text',
-          budget > 0 ? formatRupees(left.abs(), compact: true) : '—');
-      await HomeWidget.saveWidgetData<bool>('ring_is_over', left < 0);
-
-      // Month spend widget
-      await HomeWidget.saveWidgetData<String>(
-          'spent_text', formatRupees(spent, compact: true));
-      await HomeWidget.saveWidgetData<String>('spent_sub',
-          budget > 0 ? 'of ${formatRupees(budget, compact: true)} budget' : '');
-
-      // Today widget
-      await HomeWidget.saveWidgetData<String>(
-          'today_text', formatRupees(todaySpend, compact: true));
-
-      // Village widget
-      await HomeWidget.saveWidgetData<String>('village_lvl', 'Lv $townLevel');
-      await HomeWidget.saveWidgetData<String>('village_aura', auraStr);
-
-      // Refresh every provider.
-      for (final name in const [
-        'AerisWidgetProvider',
-        'AerisStreakWidgetProvider',
-        'AerisBudgetWidgetProvider',
-        'AerisSpentWidgetProvider',
-        'AerisTodayWidgetProvider',
-        'AerisStreakMiniWidgetProvider',
-        'AerisVillageWidgetProvider',
-      ]) {
-        await HomeWidget.updateWidget(androidName: name);
+      for (final e in data.entries) {
+        await _save(e.key, e.value);
       }
-    } catch (_) {/* widget not added / platform unsupported */}
+      await _save('w_updated', DateTime.now().millisecondsSinceEpoch.toString());
+      await refresh();
+    } catch (_) {/* no widget placed / platform without widgets */}
   }
+
+  /// From the background SMS isolate: add one saved transaction to the
+  /// stored totals (rolling them over first if the day/month changed), so
+  /// widgets move the moment a bank SMS lands — app open or not.
+  static Future<void> recordInBackground(Transaction t) async {
+    if (!t.isSpend && !t.isRefund) return; // only spending moves the spend widgets
+    try {
+      final now = DateTime.now();
+      final ts = t.timestamp;
+      if (ts.year != now.year || ts.month != now.month) return; // old SMS
+      final month = WidgetSnapshot.monthKeyOf(now);
+      final day = WidgetSnapshot.dayKeyOf(now);
+      final delta = t.isRefund ? -t.spendAmount : t.spendAmount;
+
+      var spent = double.tryParse(await HomeWidget.getWidgetData<String>('w_spent') ?? '') ?? 0;
+      var today = double.tryParse(await HomeWidget.getWidgetData<String>('w_today') ?? '') ?? 0;
+      if (await HomeWidget.getWidgetData<String>('w_month') != month) spent = 0;
+      if (await HomeWidget.getWidgetData<String>('w_day') != day) today = 0;
+
+      spent = (spent + delta).clamp(0, double.infinity).toDouble();
+      if (WidgetSnapshot.dayKeyOf(ts) == day) {
+        today = (today + delta).clamp(0, double.infinity).toDouble();
+      }
+      await _save('w_month', month);
+      await _save('w_spent', spent.toStringAsFixed(2));
+      await _save('w_day', day);
+      await _save('w_today', today.toStringAsFixed(2));
+      await _save('w_updated', now.millisecondsSinceEpoch.toString());
+      _lastSig = null; // next foreground push must rewrite the exact totals
+      await refresh();
+    } catch (_) {}
+  }
+
+  static Future<void> refresh() async {
+    for (final name in providers) {
+      await HomeWidget.updateWidget(androidName: name);
+    }
+  }
+
+  static Future<void> _save(String key, Object v) => switch (v) {
+        final int i => HomeWidget.saveWidgetData<int>(key, i),
+        final bool b => HomeWidget.saveWidgetData<bool>(key, b),
+        _ => HomeWidget.saveWidgetData<String>(key, v.toString()),
+      };
 }

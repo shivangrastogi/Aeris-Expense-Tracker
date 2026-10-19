@@ -28,6 +28,17 @@ class CategoryRules {
     return (await _load())[_norm(merchant)];
   }
 
+  /// Every learned rule (merchant → category id), for Settings to show.
+  Future<Map<String, String>> all() async => Map.of(await _load());
+
+  /// Forget the rule for one merchant.
+  Future<void> forget(String merchant) async {
+    final rules = await _load();
+    rules.remove(_norm(merchant));
+    await (await SharedPreferences.getInstance())
+        .setString(_key, jsonEncode(rules));
+  }
+
   /// Forget everything learned (on sign-out — rules belong to one account).
   Future<void> clear() async {
     _cache = null;

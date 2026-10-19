@@ -18,6 +18,7 @@ import '../../providers/money_providers.dart';
 import '../../services/category_rules.dart';
 import '../../services/entry_checks.dart';
 import '../../services/receipt_scanner.dart';
+import '../../services/sms_templates.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/discard_guard.dart';
@@ -849,10 +850,21 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
       reference: e?.reference,
       upiVpa: e?.upiVpa,
       hasReceipt: _receipt != null,
+      balance: e?.balance,
+      linkId: e?.linkId,
+      selfTransfer: e?.selfTransfer ?? false,
+      // A split's shares are amounts, so they stay valid unless the user
+      // changes the bill amount below them (then your share just shrinks).
+      split: e?.split,
+      settles: e?.settles,
+      settlesMember: e?.settlesMember,
     );
     try {
       // Returns once queued locally — works offline via the sync outbox.
       await fs.addTransaction(uid, t);
+      // A fixed amount / type / category on an SMS import teaches the parser
+      // this bank's message format.
+      if (e != null) await SmsTemplates.instance.learn(e, t);
       if (_receipt != null && !identical(_receipt, _originalReceipt)) {
         await fs.setReceipt(uid, t.id, _receipt!);
       } else if (_receipt == null && (e?.hasReceipt ?? false)) {

@@ -6,7 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/budgets_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../services/assistant_service.dart';
-import '../../widgets/mascot/aeris_mascot.dart';
+import '../../widgets/brand_mark.dart';
 
 class _Msg {
   final String text;
@@ -183,8 +183,11 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AerisMascot(mood: MascotMood.neutral, size: 40),
-        const SizedBox(width: 6),
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: AerisBrandMark(size: 32),
+        ),
+        const SizedBox(width: 8),
         Flexible(
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 4),

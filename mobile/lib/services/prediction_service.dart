@@ -72,11 +72,11 @@ class PredictionService {
   /// Per-category forecast for next month using EMA over recent months.
   List<Prediction> predictPerCategoryNextMonth(List<Transaction> txns) {
     final byCatMonth = <String, Map<String, double>>{};
-    for (final t in txns.where((t) => t.isDebit)) {
+    for (final t in txns.where((t) => t.isSpend)) {
       final m = _monthKey(t.timestamp);
       byCatMonth.putIfAbsent(t.categoryId, () => {});
       byCatMonth[t.categoryId]![m] =
-          (byCatMonth[t.categoryId]![m] ?? 0) + t.amount;
+          (byCatMonth[t.categoryId]![m] ?? 0) + t.spendAmount;
     }
 
     final out = <Prediction>[];
@@ -112,9 +112,9 @@ class PredictionService {
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
     final dayIdx = now.day;
     final spent = <String, double>{};
-    for (final t in txns.where((t) => t.isDebit)) {
+    for (final t in txns.where((t) => t.isSpend)) {
       if (t.timestamp.year == now.year && t.timestamp.month == now.month) {
-        spent[t.categoryId] = (spent[t.categoryId] ?? 0) + t.amount;
+        spent[t.categoryId] = (spent[t.categoryId] ?? 0) + t.spendAmount;
       }
     }
     final out = <BudgetProjection>[];
@@ -157,11 +157,12 @@ class PredictionService {
     final dayIdx = now.day;
     double inc = 0, exp = 0;
     for (final t in txns) {
+      if (t.isInternal) continue; // own-account transfer / share payback
       if (t.timestamp.year == now.year && t.timestamp.month == now.month) {
-        if (t.isCredit) {
-          inc += t.amount;
+        if (t.isIncoming) {
+          inc += t.spendAmount;
         } else {
-          exp += t.amount;
+          exp += t.spendAmount;
         }
       }
     }
@@ -212,13 +213,13 @@ class PredictionService {
   /// Within-category z-score; anything with |z| > 2.5 is flagged.
   List<Anomaly> detectAnomalies(List<Transaction> txns) {
     final byCat = <String, List<Transaction>>{};
-    for (final t in txns.where((t) => t.isDebit)) {
+    for (final t in txns.where((t) => t.isSpend)) {
       byCat.putIfAbsent(t.categoryId, () => []).add(t);
     }
     final out = <Anomaly>[];
     byCat.forEach((catId, list) {
       if (list.length < 6) return;     // not enough data
-      final amounts = list.map((t) => t.amount).toList();
+      final amounts = list.map((t) => t.spendAmount).toList();
       final mean = amounts.reduce((a, b) => a + b) / amounts.length;
       final variance = amounts
               .map((a) => math.pow(a - mean, 2).toDouble())
@@ -227,13 +228,13 @@ class PredictionService {
       final std = math.sqrt(variance);
       if (std < 1) return;
       for (final t in list) {
-        final z = (t.amount - mean) / std;
+        final z = (t.spendAmount - mean) / std;
         if (z > 2.5) {
           out.add(Anomaly(
             reason: 'Unusually large ${Categories.byId(catId).label.toLowerCase()} '
-                'spend — about ${(t.amount / mean).toStringAsFixed(1)}× your usual.',
+                'spend — about ${(t.spendAmount / mean).toStringAsFixed(1)}× your usual.',
             when: t.timestamp,
-            amount: t.amount,
+            amount: t.spendAmount,
             merchant: t.merchant,
             categoryId: catId,
           ));
@@ -250,7 +251,7 @@ class PredictionService {
   /// month for 3+ months (rent, subscriptions, EMIs).
   List<RecurringPayment> detectRecurring(List<Transaction> txns) {
     final byMerchant = <String, List<Transaction>>{};
-    for (final t in txns.where((t) => t.isDebit && t.merchant != null)) {
+    for (final t in txns.where((t) => t.isSpend && t.merchant != null)) {
       final key = t.merchant!.toLowerCase().trim();
       byMerchant.putIfAbsent(key, () => []).add(t);
     }
@@ -271,7 +272,7 @@ class PredictionService {
               .reduce((a, b) => a + b) /
           days.length);
       if (dStd > 4) return;       // too scattered to be a fixed payment
-      final amount = list.map((t) => t.amount).reduce((a, b) => a + b) / list.length;
+      final amount = list.map((t) => t.spendAmount).reduce((a, b) => a + b) / list.length;
       out.add(RecurringPayment(
         merchant: list.first.merchant!,
         categoryId: list.first.categoryId,
@@ -288,9 +289,9 @@ class PredictionService {
 
   static Map<String, double> _monthlyExpenseTotals(List<Transaction> txns) {
     final m = <String, double>{};
-    for (final t in txns.where((t) => t.isDebit)) {
+    for (final t in txns.where((t) => t.isSpend)) {
       final k = _monthKey(t.timestamp);
-      m[k] = (m[k] ?? 0) + t.amount;
+      m[k] = (m[k] ?? 0) + t.spendAmount;
     }
     return m;
   }

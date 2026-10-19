@@ -7,9 +7,11 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
+import 'card_dues.dart';
 import 'key_vault.dart';
 import 'sms_import_service.dart';
 import 'sms_parser.dart';
+import 'widget_service.dart';
 
 /// Runs in a SEPARATE background isolate when an SMS arrives while the app is
 /// closed/backgrounded (registered with another_telephony). It re-initialises
@@ -44,13 +46,21 @@ Future<void> smsBackgroundHandler(SmsMessage message) async {
           ? DateTime.fromMillisecondsSinceEpoch(message.date!)
           : DateTime.now(),
     );
-    if (parsed == null) return;
+    if (parsed == null) {
+      // Not a transaction — but a card statement becomes a bill reminder.
+      await CardDues.instance
+          .recordFrom(message.address ?? '', message.body ?? '', message.date);
+      return;
+    }
 
     // Respect blocked senders even in the background (the app mirrors the set
     // into prefs so this isolate doesn't need a Firestore read).
     final blocked =
         (prefs.getStringList('blocked_senders') ?? const []).toSet();
-    await SmsImportService.instance.persistOne(uid, parsed, blocked);
+    final saved =
+        await SmsImportService.instance.persistOne(uid, parsed, blocked);
+    // Move the home-screen widgets now, not the next time the app opens.
+    if (saved) await WidgetService.recordInBackground(parsed.txn);
   } catch (e, st) {
     // Background best-effort — the foreground backfill is the fallback — but
     // report it, so OEM background kills / key-restore failures are visible.

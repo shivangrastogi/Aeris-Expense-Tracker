@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// A text-input [AlertDialog] that OWNS its [TextEditingController].
 ///
@@ -22,6 +23,8 @@ Future<String?> promptText(
   bool obscure = false,
   bool trim = true,
   TextCapitalization capitalization = TextCapitalization.none,
+  TextInputType? keyboardType,
+  List<TextInputFormatter>? inputFormatters,
 }) {
   return showDialog<String>(
     context: context,
@@ -34,6 +37,8 @@ Future<String?> promptText(
       obscure: obscure,
       trim: trim,
       capitalization: capitalization,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
     ),
   );
 }
@@ -47,6 +52,8 @@ class _TextInputDialog extends StatefulWidget {
   final bool obscure;
   final bool trim;
   final TextCapitalization capitalization;
+  final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
 
   const _TextInputDialog({
     required this.title,
@@ -57,6 +64,8 @@ class _TextInputDialog extends StatefulWidget {
     required this.obscure,
     required this.trim,
     required this.capitalization,
+    required this.keyboardType,
+    required this.inputFormatters,
   });
 
   @override
@@ -86,6 +95,8 @@ class _TextInputDialogState extends State<_TextInputDialog> {
         autofocus: true,
         obscureText: widget.obscure,
         textCapitalization: widget.capitalization,
+        keyboardType: widget.keyboardType,
+        inputFormatters: widget.inputFormatters,
         decoration: InputDecoration(
           hintText: widget.hint,
           helperText: widget.helper,

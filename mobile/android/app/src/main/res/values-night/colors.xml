@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Home-screen widgets, dark system theme: the app's "Graphite" palette.
+         Keep in step with widgets_screen.dart `_W`. -->
+    <color name="w_bg">#F0181B21</color>
+    <color name="w_line">#272B33</color>
+    <color name="w_text">#E6E8EB</color>
+    <color name="w_muted">#9199A5</color>
+    <color name="w_accent">#7AA6DA</color>
+    <color name="w_on_accent">#0E141C</color>
+    <color name="w_ok">#63B98F</color>
+    <color name="w_warn">#D2A35A</color>
+    <color name="w_danger">#D9786F</color>
+    <color name="w_track">#272B33</color>
+</resources>

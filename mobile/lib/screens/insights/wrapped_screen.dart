@@ -40,7 +40,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
 
     final cards = <Widget>[
       _card(
-        const [Color(0xFF0EA5A4), Color(0xFF0F766E)],
+        const [Color(0xFF2F8F80), Color(0xFF2A6F66)],
         [
           const Text('🗓️', style: TextStyle(fontSize: 52)),
           const SizedBox(height: 18),
@@ -64,7 +64,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
       ));
     } else {
       cards.add(_card(
-        const [Color(0xFFEF4444), Color(0xFF991B1B)],
+        const [Color(0xFFBF433A), Color(0xFF8A3530)],
         [
           _sub('This month you spent'),
           const SizedBox(height: 10),
@@ -95,7 +95,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
 
       if (stats.topMerchant != null) {
         cards.add(_card(
-          const [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+          const [Color(0xFF8A7ED3), Color(0xFF6C7FC4)],
           [
             const Text('🏆', style: TextStyle(fontSize: 52)),
             const SizedBox(height: 16),
@@ -110,7 +110,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
 
       if (stats.biggestDay != null) {
         cards.add(_card(
-          const [Color(0xFFF59E0B), Color(0xFFB45309)],
+          const [Color(0xFFC9952E), Color(0xFF8E5E1A)],
           [
             const Text('💥', style: TextStyle(fontSize: 52)),
             const SizedBox(height: 16),
@@ -124,7 +124,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
       }
 
       cards.add(_card(
-        const [Color(0xFF22C55E), Color(0xFF15803D)],
+        const [Color(0xFF4C9A6C), Color(0xFF2E6E4C)],
         [
           Text('${stats.noSpendDays}', style: const TextStyle(
               color: Colors.white, fontSize: 80, fontWeight: FontWeight.w900)),
@@ -141,8 +141,8 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
         final down = stats.momPct! < 0;
         cards.add(_card(
           down
-              ? const [Color(0xFF22C55E), Color(0xFF15803D)]
-              : const [Color(0xFFEF4444), Color(0xFF991B1B)],
+              ? const [Color(0xFF4C9A6C), Color(0xFF2E6E4C)]
+              : const [Color(0xFFBF433A), Color(0xFF8A3530)],
           [
             Icon(down ? Icons.trending_down : Icons.trending_up,
                 color: Colors.white, size: 52),
@@ -159,7 +159,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
       // Final: net + share
       final saved = stats.income - stats.spent;
       cards.add(_card(
-        const [Color(0xFF0EA5A4), Color(0xFF0F766E)],
+        const [Color(0xFF2F8F80), Color(0xFF2A6F66)],
         [
           _sub(saved >= 0 ? 'You saved' : 'You overspent'),
           const SizedBox(height: 10),
@@ -168,7 +168,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
           FilledButton.icon(
             style: FilledButton.styleFrom(
                 backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF0F766E)),
+                foregroundColor: const Color(0xFF2A6F66)),
             onPressed: () => _share(stats, monthName),
             icon: const Icon(Icons.share),
             label: const Text('Share my month'),
@@ -281,26 +281,27 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
     final lastM = DateTime(now.year, now.month - 1, 1);
 
     for (final t in txns) {
+      if (t.isInternal) continue; // own-account transfer / share payback
       final ts = t.timestamp;
-      if (ts.year == lastM.year && ts.month == lastM.month && t.isDebit) {
-        lastMonthSpent += t.amount;
+      if (ts.year == lastM.year && ts.month == lastM.month && t.isSpend) {
+        lastMonthSpent += t.spendAmount;
       }
       if (ts.year != now.year || ts.month != now.month) continue;
       if (t.isRefund) {
-        spent -= t.amount; // money back, not income
+        spent -= t.spendAmount; // money back, not income
         continue;
       }
-      if (t.isCredit) {
-        income += t.amount;
+      if (t.isIncoming) {
+        income += t.spendAmount;
         continue;
       }
-      spent += t.amount;
-      byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.amount;
+      spent += t.spendAmount;
+      byCat[t.categoryId] = (byCat[t.categoryId] ?? 0) + t.spendAmount;
       final mName = t.merchant?.trim();
       if (mName != null && mName.isNotEmpty) {
-        byMerchant[mName] = (byMerchant[mName] ?? 0) + t.amount;
+        byMerchant[mName] = (byMerchant[mName] ?? 0) + t.spendAmount;
       }
-      byDay[ts.day] = (byDay[ts.day] ?? 0) + t.amount;
+      byDay[ts.day] = (byDay[ts.day] ?? 0) + t.spendAmount;
       spendDays.add(ts.day);
     }
     if (spent < 0) spent = 0;

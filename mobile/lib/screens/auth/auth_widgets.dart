@@ -71,15 +71,32 @@ class AuthTabs extends StatelessWidget {
   }
 }
 
+/// What's wrong with a NEW password, or null if it's fine. (Login accepts
+/// older 6-character passwords; new ones must be stronger, because the
+/// password also protects the encrypted data.)
+String? passwordProblem(String? v) {
+  final s = v ?? '';
+  if (s.length < 8) return 'Use at least 8 characters';
+  if (!RegExp(r'[A-Za-z]').hasMatch(s) || !RegExp(r'\d').hasMatch(s)) {
+    return 'Mix letters and numbers';
+  }
+  return null;
+}
+
 // ── Icon + input field ───────────────────────────────────────────────────────
-class AuthField extends StatelessWidget {
+class AuthField extends StatefulWidget {
   final TextEditingController controller;
   final IconData icon;
   final String hint;
+
+  /// A password: hidden, with a show/hide eye.
   final bool obscure;
   final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
   final String? Function(String?)? validator;
+
+  /// Shown under the field (e.g. password rules).
+  final String? helper;
 
   const AuthField({
     super.key,
@@ -90,21 +107,43 @@ class AuthField extends StatelessWidget {
     this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
     this.validator,
+    this.helper,
   });
+
+  @override
+  State<AuthField> createState() => _AuthFieldState();
+}
+
+class _AuthFieldState extends State<AuthField> {
+  bool _hidden = true;
 
   @override
   Widget build(BuildContext context) {
     final c = Theme.of(context).colorScheme;
     return TextFormField(
-      controller: controller,
-      obscureText: obscure,
-      keyboardType: keyboardType,
-      textCapitalization: textCapitalization,
-      validator: validator,
+      controller: widget.controller,
+      obscureText: widget.obscure && _hidden,
+      keyboardType: widget.keyboardType,
+      textCapitalization: widget.textCapitalization,
+      validator: widget.validator,
       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: Icon(icon, size: 20, color: c.onSurfaceVariant),
+        hintText: widget.hint,
+        helperText: widget.helper,
+        helperMaxLines: 2,
+        prefixIcon: Icon(widget.icon, size: 20, color: c.onSurfaceVariant),
+        suffixIcon: widget.obscure
+            ? IconButton(
+                tooltip: _hidden ? 'Show password' : 'Hide password',
+                icon: Icon(
+                    _hidden
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 20,
+                    color: c.onSurfaceVariant),
+                onPressed: () => setState(() => _hidden = !_hidden),
+              )
+            : null,
         filled: true,
         fillColor: c.surfaceContainerHighest.withValues(alpha: 0.45),
         contentPadding:

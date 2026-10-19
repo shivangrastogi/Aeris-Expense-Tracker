@@ -15,8 +15,10 @@ import 'dart:math' as math;
 import 'package:aeris_expense/core/routes.dart';
 import 'package:aeris_expense/core/theme.dart';
 import 'package:aeris_expense/models/budget.dart';
+import 'package:aeris_expense/models/category.dart';
 import 'package:aeris_expense/models/goal.dart';
 import 'package:aeris_expense/models/loan.dart';
+import 'package:aeris_expense/models/split.dart';
 import 'package:aeris_expense/models/subscription.dart';
 import 'package:aeris_expense/models/transaction.dart';
 import 'package:aeris_expense/models/user_profile.dart';
@@ -25,6 +27,8 @@ import 'package:aeris_expense/providers/auth_provider.dart';
 import 'package:aeris_expense/providers/budgets_provider.dart';
 import 'package:aeris_expense/providers/goals_provider.dart';
 import 'package:aeris_expense/providers/loans_provider.dart';
+import 'package:aeris_expense/providers/prefs_data_provider.dart';
+import 'package:aeris_expense/providers/split_provider.dart';
 import 'package:aeris_expense/providers/subscriptions_provider.dart';
 import 'package:aeris_expense/providers/transactions_provider.dart';
 import 'package:aeris_expense/screens/home/root_shell.dart';import 'package:aeris_expense/widgets/aeris_toast.dart';
@@ -93,9 +97,19 @@ List<Transaction> _fakeTxns(DateTime now) {
     final scale = back == 0 ? 0.92 : (back == 1 ? 1.08 : 1.0);
     out.add(_t(85000, at(back, 1, 10, 5), 'salary', 'Salary · Acme Corp',
         credit: true, account: '4521'));
-    out.add(_t(18000, at(back, math.min(3, lastDay), 9, 30), 'rent',
+    final rent = _t(18000, at(back, math.min(3, lastDay), 9, 30), 'rent',
         'Rent · Mr. Sharma',
-        vpa: 'sharma@okicici'));
+        vpa: 'sharma@okicici');
+    // Rent is split three ways with the flatmates; Rahul has paid back.
+    final shared = rent.copyWith(
+        split: SplitInfo(groupId: 'flat', shares: [
+      const SplitShare(name: 'Rahul', amount: 6000, received: 6000),
+      SplitShare(name: 'Amit', amount: 6000, received: back == 0 ? 0 : 6000),
+    ]));
+    out.add(shared);
+    out.add(_t(6000, at(back, math.min(4, lastDay), 20, 15), 'rent', 'Rahul',
+            credit: true, vpa: 'rahul.k@okaxis')
+        .copyWith(settles: shared.id, settlesMember: 'Rahul'));
     if (lastDay >= 5) {
       out.add(_t(649, at(back, 5, 7, 0), 'entertainment', 'Netflix',
           account: '4521'));
@@ -229,6 +243,17 @@ Future<void> _app(WidgetTester tester,
                 day: 1),
           ])),
       blockedSendersProvider.overrideWith((ref) => Stream.value(<String>{})),
+      customCategoriesProvider
+          .overrideWith((ref) => Stream.value(const <ExpenseCategory>[])),
+      accountNamesProvider.overrideWith(
+          (ref) => Stream.value(const {'4521': 'HDFC salary'})),
+      splitGroupsProvider.overrideWith((ref) => Stream.value(const [
+            SplitGroup(
+                id: 'flat',
+                name: 'Flat',
+                members: [SplitMember(name: 'Rahul'), SplitMember(name: 'Amit')],
+                autoPayees: ['sharma@okicici']),
+          ])),
       openingBalancesProvider
           .overrideWith((ref) => Stream.value(<String, double>{})),
     ],
@@ -374,6 +399,11 @@ void main() {
     'budgets': AppRoutes.budgets,
     'goals': AppRoutes.goals,
     'accounts': AppRoutes.accounts,
+    'shared': AppRoutes.shared,
+    'people': AppRoutes.people,
+    'account': AppRoutes.account,
+    'categories': AppRoutes.categories,
+    'about': AppRoutes.about,
     'loans': AppRoutes.loans,
     'subscriptions': AppRoutes.subscriptions,
     'settings': AppRoutes.settings,
@@ -384,6 +414,8 @@ void main() {
     'quick_add': AppRoutes.quickAdd,
     'wrapped': AppRoutes.wrapped,
     'aeris_world': AppRoutes.aerisWorld,
+    'village': AppRoutes.village,
+    'widgets': AppRoutes.widgets,
     'import': AppRoutes.importStatement,
     'assistant': AppRoutes.assistant,
     'edit_profile': AppRoutes.editProfile,

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/routes.dart';
 import '../../core/theme.dart';
 import '../../models/category.dart';
+import '../../providers/accounts_provider.dart';
 import '../../providers/gamification_provider.dart';
 import '../../providers/insights_provider.dart';
+import '../../providers/money_providers.dart';
 import '../../providers/transactions_provider.dart';
+import '../../utils/formatters.dart';
 
 /// A notification derived from real app state (no fake data): pending SMS to
 /// review, budgets at risk, streak reminders.
@@ -42,8 +46,30 @@ class NotificationsScreen extends ConsumerStatefulWidget {
 }
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
+  /// Read alerts, remembered across visits. Keyed by id + title, so an alert
+  /// whose content changes (a new amount, a new count) is unread again.
   final Set<String> _read = {};
-  String _tab = 'all'; // all | unread | bill
+  static const _readKey = 'notif_read';
+  String _tab = 'all'; // all | unread | budget | bill | people
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) {
+        setState(() => _read.addAll(p.getStringList(_readKey) ?? const []));
+      }
+    });
+  }
+
+  static String _key(_Notif n) => '${n.id}|${n.title}';
+
+  Future<void> _markRead(Iterable<_Notif> ns) async {
+    setState(() => _read.addAll(ns.map(_key)));
+    final list = _read.toList();
+    await (await SharedPreferences.getInstance()).setStringList(
+        _readKey, list.length > 150 ? list.sublist(list.length - 150) : list);
+  }
 
   List<_Notif> _derive() {
     final out = <_Notif>[];
@@ -88,6 +114,75 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       ));
     }
 
+    // 2b · Credit-card bills due within 5 days.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    for (final d in ref.watch(cardDuesProvider).valueOrNull ?? const []) {
+      final days = DateTime(d.dueDate.year, d.dueDate.month, d.dueDate.day)
+          .difference(today)
+          .inDays;
+      if (days > 5) continue;
+      out.add(_Notif(
+        id: 'card_${d.key}',
+        icon: Icons.credit_card_outlined,
+        color: days <= 1 ? AerisColors.danger(context) : AerisColors.warning,
+        title: days < 0
+            ? '${d.label} bill is overdue'
+            : days == 0
+                ? '${d.label} bill is due today'
+                : '${d.label} bill due in $days day${days == 1 ? '' : 's'}',
+        body: '${formatRupees(d.total, decimals: true)} due'
+            '${d.minimum == null ? '' : ' · minimum ${formatRupees(d.minimum!)}'}.',
+        action: 'See bills',
+        route: AppRoutes.bills,
+        type: 'bill',
+      ));
+    }
+
+    // 2c · Accounts below the low-balance alert.
+    final limit = ref.watch(lowBalanceLimitProvider);
+    if (limit > 0) {
+      for (final a in ref.watch(accountsProvider)) {
+        final bal = a.bankBalance;
+        if (bal == null || bal >= limit) continue;
+        out.add(_Notif(
+          id: 'lowbal_${a.key}',
+          icon: Icons.account_balance_wallet_outlined,
+          color: AerisColors.danger(context),
+          title: 'Low balance on ${a.label}',
+          body: '${formatRupees(bal, decimals: true)} left, as of '
+              '${asOfLabel(a.bankBalanceAt!)}.',
+          action: 'See accounts',
+          route: AppRoutes.accounts,
+          type: 'budget',
+        ));
+      }
+    }
+
+    // 2d · Friends who haven't paid their share for 5+ days.
+    final waiting = <String, double>{};
+    for (final t in txns) {
+      final split = t.split;
+      if (split == null || now.difference(t.timestamp).inDays < 5) continue;
+      for (final s in split.shares) {
+        if (!s.settled) waiting[s.name] = (waiting[s.name] ?? 0) + s.outstanding;
+      }
+    }
+    if (waiting.isNotEmpty) {
+      final total = waiting.values.fold<double>(0, (s, v) => s + v);
+      out.add(_Notif(
+        id: 'owed',
+        icon: Icons.call_split_rounded,
+        color: AerisColors.accent(context),
+        title: '${formatRupees(total)} owed to you',
+        body: '${waiting.entries.take(3).map((e) => '${e.key} '
+            '${formatRupees(e.value)}').join(', ')} — send a friendly reminder.',
+        action: 'Open People',
+        route: AppRoutes.people,
+        type: 'people',
+      ));
+    }
+
     // 3 · Streak reminder / celebration. Use the live streak so a lapsed
     // streak doesn't keep nagging with a stale day count.
     final streak = ref.watch(gamificationProvider.select((g) => g.liveStreak));
@@ -96,7 +191,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       out.add(_Notif(
         id: 'streak',
         icon: Icons.local_fire_department,
-        color: const Color(0xFFEA580C),
+        color: AerisColors.amber,
         title: checkedIn
             ? '$streak-day streak going strong'
             : 'Keep your $streak-day streak',
@@ -113,7 +208,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 
   void _open(_Notif n) {
-    setState(() => _read.add(n.id));
+    _markRead([n]);
     if (n.route != null) Navigator.pushNamed(context, n.route!);
   }
 
@@ -122,10 +217,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     final scheme = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final all = _derive();
-    final unread = all.where((n) => !_read.contains(n.id)).length;
+    final unread = all.where((n) => !_read.contains(_key(n))).length;
     final view = all.where((n) {
       if (_tab == 'all') return true;
-      if (_tab == 'unread') return !_read.contains(n.id);
+      if (_tab == 'unread') return !_read.contains(_key(n));
       return n.type == _tab;
     }).toList();
 
@@ -172,7 +267,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   if (unread > 0)
                     TextButton(
                       onPressed: () =>
-                          setState(() => _read.addAll(all.map((n) => n.id))),
+                          _markRead(all),
                       child: Text('Mark all read',
                           style: TextStyle(
                               color: AerisColors.ink(context),
@@ -191,7 +286,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 children: [
                   _tabChip('all', 'All'),
                   _tabChip('unread', 'Unread'),
-                  _tabChip('budget', 'Budgets'),
+                  _tabChip('budget', 'Money'),
+                  _tabChip('bill', 'Bills'),
+                  _tabChip('people', 'People'),
                 ],
               ),
             ),
@@ -205,7 +302,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                       itemCount: view.length,
                       itemBuilder: (_, i) {
                         final n = view[i];
-                        final isUnread = !_read.contains(n.id);
+                        final isUnread = !_read.contains(_key(n));
                         return _tile(context, n, isUnread, dark)
                             .animate(delay: (i * 40).ms)
                             .fadeIn(duration: 250.ms)

@@ -56,7 +56,7 @@ class Challenge {
   /// Verify against the user's transactions.
   ChallengeStatus evaluate(List<Transaction> txns, DateTime now) {
     final inWindow = txns.where((t) =>
-        t.isDebit &&
+        t.isSpend &&
         !t.timestamp.isBefore(start) &&
         !t.timestamp.isAfter(end));
 
@@ -72,7 +72,7 @@ class Challenge {
         final perDay = <String, double>{};
         for (final t in inWindow) {
           final k = '${t.timestamp.year}-${t.timestamp.month}-${t.timestamp.day}';
-          perDay[k] = (perDay[k] ?? 0) + t.amount;
+          perDay[k] = (perDay[k] ?? 0) + t.spendAmount;
         }
         broken = perDay.values.any((v) => v > param);
         break;
