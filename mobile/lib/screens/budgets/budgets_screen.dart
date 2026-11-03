@@ -20,6 +20,7 @@ import '../../utils/formatters.dart';
 import '../../widgets/skeleton.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 class BudgetsScreen extends ConsumerWidget {
   const BudgetsScreen({super.key});
@@ -27,6 +28,7 @@ class BudgetsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(amountHiddenProvider);
+    final tk = context.tk;
     final budgets = ref.watch(budgetsStreamProvider);
     // Calendar month — caps are monthly, whatever range Insights shows.
     final snap = ref.watch(monthAnalyticsProvider);
@@ -37,19 +39,17 @@ class BudgetsScreen extends ConsumerWidget {
     };
     final rolled = ref.watch(rolledOverProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Budgets'),
-        actions: [
-          IconButton(
-            tooltip: 'Suggest budgets from my spending',
-            icon: const Icon(Icons.auto_awesome),
-            onPressed: () => _autoSuggest(context, ref),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Budgets')),
       body: budgets.when(
         loading: () => const BudgetListSkeleton(),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => Padding(
+          padding: const EdgeInsets.all(20),
+          child: Banner2(
+              tone: Tone.bad,
+              icon: PhFill.cloudX,
+              title: "Couldn't load budgets",
+              body: '$e'),
+        ),
         data: (list) {
           final byCat = snap?.byCategory ?? const {};
           final monthSpent = snap?.monthExpense ?? 0;
@@ -60,59 +60,35 @@ class BudgetsScreen extends ConsumerWidget {
                   c.id != 'salary' && c.id != 'transfer' && c.id != 'refund')
               .toList();
           return ListView(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 80),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
             children: [
               _totalCard(context, ref, total, monthSpent,
                   effectiveCap: effective[Budget.totalId],
                   rolledIn: rolled[Budget.totalId] ?? 0),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
               const _RolloverCard(),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(4, 14, 4, 2),
-                child: Text('Per-category caps',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TonalButton('Suggest caps from my spending',
+                    icon: Ph.sparkle,
+                    height: 40,
+                    onPressed: () => _autoSuggest(context, ref)),
               ),
-              ...allCats.map((c) {
-                final b = list.where((x) => x.categoryId == c.id).firstOrNull;
-                final spent = byCat[c.id] ?? 0;
-                final cap = b == null ? 0.0 : (effective[c.id] ?? b.monthlyCap);
-                final extra = rolled[c.id] ?? 0;
-                final pct = (cap > 0 ? spent / cap : 0.0).clamp(0.0, 1.5);
-                final overflow = pct > 1.0;
-                return Card(
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: c.color.withValues(alpha: 0.18),
-                      child: Icon(c.icon, color: c.color),
-                    ),
-                    title: Text(c.label),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(cap > 0
-                            ? '${formatRupees(spent)} of ${formatRupees(cap)}'
-                                '${extra > 0 ? ' · +${formatRupees(extra, compact: true)} rolled over' : ''}'
-                            : 'No cap set — currently ${formatRupees(spent)}'),
-                        const SizedBox(height: 6),
-                        if (cap > 0)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: LinearProgressIndicator(
-                              value: pct > 1.0 ? 1.0 : pct,
-                              minHeight: 6,
-                              color: overflow ? AerisColors.danger(context) : c.color,
-                              backgroundColor: c.color.withValues(alpha: 0.15),
-                            ),
-                          ),
-                      ],
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.pushNamed(
-                        context, AppRoutes.budgetEdit,
-                        arguments: c.id),
-                  ),
-                );
-              }),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+                child: Overline('Per-category caps'),
+              ),
+              ListGroup(children: [
+                for (final c in allCats)
+                  _capRow(context, tk, c,
+                      budget:
+                          list.where((x) => x.categoryId == c.id).firstOrNull,
+                      spent: byCat[c.id] ?? 0,
+                      effectiveCap: effective[c.id],
+                      extra: rolled[c.id] ?? 0),
+              ]),
             ],
           );
         },
@@ -120,93 +96,222 @@ class BudgetsScreen extends ConsumerWidget {
     );
   }
 
+  /// One per-category cap: tile, name, spent / cap, the rising line and a
+  /// status line (over budget → red with a word and an icon).
+  Widget _capRow(BuildContext context, AerisTokens tk, ExpenseCategory c,
+      {required Budget? budget,
+      required double spent,
+      required double? effectiveCap,
+      required double extra}) {
+    final cap = budget == null ? 0.0 : (effectiveCap ?? budget.monthlyCap);
+    final pct = cap > 0 ? spent / cap : 0.0;
+    final over = cap > 0 && spent > cap;
+    final near = !over && pct >= 0.85;
+    final tone = over
+        ? tk.bad
+        : near
+            ? tk.warn
+            : tk.t2;
+    return InkWell(
+      onTap: () =>
+          Navigator.pushNamed(context, AppRoutes.budgetEdit, arguments: c.id),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 68),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(children: [
+          CatTile.of(c),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(
+                    child: Text(c.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Ts.rowTitle.copyWith(color: tk.t1)),
+                  ),
+                  Text(
+                      cap > 0
+                          ? '${formatRupees(spent, compact: true)} / ${formatRupees(cap, compact: true)}'
+                          : formatRupees(spent, compact: true),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          color: over ? tk.bad : tk.t1)),
+                ]),
+                const SizedBox(height: 6),
+                if (cap > 0) ...[
+                  RisingProgress(
+                      value: pct,
+                      color: over
+                          ? tk.bad
+                          : near
+                              ? tk.warn
+                              : c.color,
+                      stroke: 4,
+                      dot: 3.5),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    if (over) ...[
+                      Icon(PhFill.warningCircle, size: 13, color: tk.bad),
+                      const SizedBox(width: 4),
+                    ],
+                    Expanded(
+                      child: Text(
+                          over
+                              ? 'Over by ${formatRupees(spent - cap, compact: true)}'
+                              : '${(pct * 100).round()}% · '
+                                  '${formatRupees(cap - spent, compact: true)} left'
+                                  '${extra > 0 ? ' · +${formatRupees(extra, compact: true)} rolled over' : ''}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: over || near
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                              color: tone)),
+                    ),
+                  ]),
+                ] else
+                  Text('No cap set',
+                      style: TextStyle(fontSize: 12, color: tk.t2)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(Ph.caretRight, size: 16, color: tk.t3),
+        ]),
+      ),
+    );
+  }
+
   // ── Total monthly budget (one overall cap, not per-category) ──
+  // The screen's one hero-gradient card.
   Widget _totalCard(
       BuildContext context, WidgetRef ref, Budget? total, double spent,
       {double? effectiveCap, double rolledIn = 0}) {
+    final tk = context.tk;
     final storedCap = total?.monthlyCap ?? 0;
     final cap = total == null ? 0.0 : (effectiveCap ?? storedCap);
-    final pct = cap > 0 ? (spent / cap).clamp(0.0, 1.0) : 0.0;
     final over = cap > 0 && spent > cap;
     final left = cap - spent;
-    return Card(
-      color: AerisColors.accent(context).withValues(alpha: 0.08),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(Icons.account_balance_wallet, color: AerisColors.accent(context)),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text('Total monthly budget',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-              ),
-              if (cap > 0)
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Remove',
-                  icon: const Icon(Icons.close, size: 18),
-                  onPressed: () {
-                    final uid = ref.read(currentUserIdProvider);
-                    if (uid != null) {
-                      ref
-                          .read(firestoreServiceProvider)
-                          .deleteBudget(uid, Budget.totalId);
-                    }
-                  },
-                ),
-              TextButton(
-                // Edit the stored cap, never the rolled-over figure.
-                onPressed: () => _editTotal(context, ref, storedCap),
-                child: Text(cap > 0 ? 'Edit' : 'Set'),
-              ),
-            ]),
-            if (cap > 0) ...[
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: pct,
-                  minHeight: 10,
-                  color: over ? AerisColors.danger(context) : AerisColors.accent(context),
-                  backgroundColor: AerisColors.accent(context).withValues(alpha: 0.15),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                over
-                    ? '${formatRupees(spent)} of ${formatRupees(cap)} · over by ${formatRupees(spent - cap)}'
-                    : '${formatRupees(spent)} of ${formatRupees(cap)} · ${formatRupees(left < 0 ? 0 : left)} left',
-                style: TextStyle(
-                    fontSize: 13,
-                    color: over ? AerisColors.danger(context) : null,
-                    fontWeight: FontWeight.w600),
-              ),
-              if (rolledIn > 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    'Includes ${formatRupees(rolledIn)} rolled over from last month',
+    final now = DateTime.now();
+    final daysLeft = DateTime(now.year, now.month + 1, 0).day - now.day + 1;
+    final onHero = tk.onHero;
+    final heroText = TextStyle(
+        fontSize: 13, fontWeight: FontWeight.w600, color: onHero);
+
+    Widget pillBtn(IconData icon, String label, VoidCallback onTap) =>
+        Material(
+          color: onHero.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 12, color: onHero),
+                const SizedBox(width: 4),
+                Text(label,
                     style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AerisColors.moneyIn(context)),
-                  ),
-                ),
-            ] else
-              const Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: Text(
-                  'Set one overall cap for the whole month — independent of '
-                  'categories. Your dashboard ring tracks against it.',
-                  style: TextStyle(fontSize: 12),
-                ),
-              ),
-          ],
+                        fontWeight: FontWeight.w700,
+                        color: onHero)),
+              ]),
+            ),
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: const Alignment(-0.85, -1),
+          end: const Alignment(0.85, 1),
+          colors: [tk.heroA, tk.heroB],
         ),
+        boxShadow: tk.shadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Overline('Total monthly budget', color: onHero)),
+            if (cap > 0) ...[
+              pillBtn(PhBold.x, 'Remove', () {
+                final uid = ref.read(currentUserIdProvider);
+                if (uid != null) {
+                  ref
+                      .read(firestoreServiceProvider)
+                      .deleteBudget(uid, Budget.totalId);
+                }
+              }),
+              const SizedBox(width: 6),
+            ],
+            // Edit the stored cap, never the rolled-over figure.
+            pillBtn(cap > 0 ? PhBold.pencilSimple : PhBold.plus,
+                cap > 0 ? 'Edit' : 'Set',
+                () => _editTotal(context, ref, storedCap)),
+          ]),
+          const SizedBox(height: 10),
+          if (cap > 0) ...[
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.end,
+              spacing: 8,
+              children: [
+                MoneyText(spent, style: Ts.display, color: onHero),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('of ${formatRupees(cap)}',
+                      style: heroText.copyWith(fontSize: 15)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            RisingProgress(
+              value: cap == 0 ? 0 : spent / cap,
+              color: onHero,
+              track: onHero.withValues(alpha: 0.22),
+              stroke: 4,
+              rise: 14,
+              dot: 5.5,
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              if (over) ...[
+                Icon(PhFill.warningCircle, size: 15, color: onHero),
+                const SizedBox(width: 4),
+              ],
+              Expanded(
+                child: Text(
+                    over
+                        ? 'Over by ${formatRupees(spent - cap)}'
+                        : '${formatRupees(left)} left',
+                    style: heroText),
+              ),
+              Text('$daysLeft day${daysLeft == 1 ? '' : 's'} to go',
+                  style: heroText),
+            ]),
+            if (rolledIn > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                    'Includes ${formatRupees(rolledIn)} rolled over from last month',
+                    style: heroText.copyWith(fontSize: 12)),
+              ),
+          ] else
+            Text(
+              'Set one overall cap for the whole month — independent of '
+              'categories. Your Home card tracks against it.',
+              style: heroText.copyWith(
+                  fontSize: 15, height: 22 / 15, fontWeight: FontWeight.w500),
+            ),
+        ],
       ),
     );
   }
@@ -324,13 +429,7 @@ class BudgetsScreen extends ConsumerWidget {
                         onChanged: (v) => setLocal(() => v == true
                             ? selected.add(s.cat)
                             : selected.remove(s.cat)),
-                        secondary: CircleAvatar(
-                          backgroundColor: Categories.byId(s.cat)
-                              .color
-                              .withValues(alpha: 0.18),
-                          child: Icon(Categories.byId(s.cat).icon,
-                              color: Categories.byId(s.cat).color, size: 20),
-                        ),
+                        secondary: CatTile.of(Categories.byId(s.cat)),
                         title: Text(Categories.byId(s.cat).label),
                         subtitle: Text('Cap ${formatRupees(s.cap)} / month'),
                       ),
@@ -462,38 +561,60 @@ class _RolloverCardState extends ConsumerState<_RolloverCard> {
   Widget build(BuildContext context) {
     ref.watch(transactionsStreamProvider);
     ref.watch(budgetsStreamProvider);
+    final tk = context.tk;
     final on = ref.watch(rolloverProvider);
     final left = _leftover();
     final swept = _sweptMonth == _monthKey;
-    return AerisCard(
-      padding: const EdgeInsets.fromLTRB(16, 6, 8, 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
+    return ListGroup(children: [
+      SettingsRow(
+        icon: Ph.arrowBendDownRight,
+        title: 'Roll unused budget into next month',
+        sub: left > 0
+            ? 'Last month you had ${formatRupees(left)} left over'
+            : 'Unspent budget carries over (up to one month\'s cap)',
+        trailing: Switch(
           value: on,
           onChanged: (v) => ref.read(rolloverProvider.notifier).set(v),
-          title: const Text('Roll unused budget into next month',
-              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
-          subtitle: Text(left > 0
-              ? 'Last month you had ${formatRupees(left)} left over'
-              : 'Unspent budget carries over (up to one month\'s cap)'),
         ),
-        if (!on && left > 0 && !swept)
-          TextButton.icon(
-            onPressed: () => _sweep(left),
-            icon: const Icon(Icons.savings_outlined, size: 18),
-            label: Text('Or move ${formatRupees(left)} into a goal'),
+        onTap: () => ref.read(rolloverProvider.notifier).set(!on),
+      ),
+      if (!on && left > 0 && !swept)
+        InkWell(
+          onTap: () => _sweep(left),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 52),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [
+              SizedBox(
+                  width: 36, child: Icon(Ph.target, size: 20, color: tk.acc)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text('Or move ${formatRupees(left)} into a goal',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: tk.acc)),
+              ),
+              Icon(Ph.arrowRight, size: 16, color: tk.acc),
+            ]),
           ),
-        if (swept)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text('Last month\'s leftover is already in a goal ✓',
-                style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: AerisColors.moneyIn(context))),
-          ),
-      ]),
-    );
+        ),
+      if (swept)
+        Container(
+          constraints: const BoxConstraints(minHeight: 52),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            SizedBox(
+                width: 36,
+                child: Icon(PhFill.checkCircle, size: 20, color: tk.ok)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text('Last month\'s leftover is already in a goal',
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600, color: tk.t2)),
+            ),
+          ]),
+        ),
+    ]);
   }
 }

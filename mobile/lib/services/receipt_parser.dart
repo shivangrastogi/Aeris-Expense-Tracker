@@ -13,7 +13,18 @@ class ReceiptInfo {
   /// Set only when the image was a payment screenshot that says which way
   /// the money went; a shop bill has no direction.
   final TxnDirection? direction;
-  const ReceiptInfo({this.total, this.merchant, this.date, this.direction});
+
+  /// From a payment screenshot only: the other side's UPI ID, the UTR and
+  /// your account's last digits.
+  final String? upiVpa, reference, account;
+  const ReceiptInfo(
+      {this.total,
+      this.merchant,
+      this.date,
+      this.direction,
+      this.upiVpa,
+      this.reference,
+      this.account});
 
   bool get isEmpty => total == null && merchant == null && date == null;
 }

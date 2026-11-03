@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../core/tokens.dart';
 import '../utils/motion.dart';
 
 /// A single shimmering placeholder block.
@@ -24,17 +25,17 @@ class SkeletonBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tk = context.tk;
     return Container(
       width: width,
       height: height,
       margin: margin,
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        color: tk.skel,
         borderRadius: BorderRadius.circular(radius),
       ),
     ).shimmerLoop(context,
-        duration: 1100.ms, color: scheme.surface.withValues(alpha: 0.55));
+        duration: 1100.ms, color: tk.skel2);
   }
 }
 
@@ -87,7 +88,7 @@ class SkeletonListTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            const Icon(Icons.chevron_right, color: Colors.transparent),
+            const SizedBox(width: 24),
           ],
         ),
       ),

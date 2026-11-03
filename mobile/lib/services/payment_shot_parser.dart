@@ -111,6 +111,9 @@ class PaymentShotParser {
 
   static final _vpaRe = RegExp(
       r'([a-z0-9][a-z0-9._\-]{1,48})\s?@\s?([a-z][a-z0-9]{1,20})(?![a-z0-9]*\.[a-z])');
+  // A whole line that is just a UPI ID once its spaces are gone.
+  static final _vpaLineRe =
+      RegExp(r'^[a-z0-9][a-z0-9._-]{1,48}@[a-z][a-z0-9]{1,20}$');
   static final _refRe = RegExp(
       r'(?:utr|rrn|upi\s*(?:ref(?:erence)?|transaction|txn)\s*(?:no\.?|number|id)?|'
       r'(?:bank\s*)?ref(?:erence)?\s*(?:no\.?|number|id))\s*[:#\-]?\s*(\d{9,18})');
@@ -272,9 +275,19 @@ class PaymentShotParser {
   static String? _vpa(List<String> low, {required int from}) {
     String? first;
     for (var i = 0; i < low.length; i++) {
-      final m = _vpaRe.firstMatch(low[i]);
-      if (m == null) continue;
-      final v = '${m.group(1)}@${m.group(2)}';
+      // The recogniser can split an ID in two ("paytm.s18w6 rp@pty"): a line
+      // that is nothing but the ID is read whole.
+      final whole = low[i]
+          .replaceFirst(RegExp(r'^(?:upi id|upi|vpa)\s*[:\-]?\s*'), '')
+          .replaceAll(RegExp(r'\s+'), '');
+      final String v;
+      if (_vpaLineRe.hasMatch(whole)) {
+        v = whole;
+      } else {
+        final m = _vpaRe.firstMatch(low[i]);
+        if (m == null) continue;
+        v = '${m.group(1)}@${m.group(2)}';
+      }
       if (i >= from) return v; // the one beside the other party's name
       first ??= v;
     }
@@ -289,12 +302,13 @@ class PaymentShotParser {
     ({String name, int line})? after(int i, int end) {
       final rest = end >= lines[i].length ? '' : lines[i].substring(end);
       final cells = [
-        ...rest.split('\t'),
-        for (var j = i + 1; j < rows.length && j <= i + 3; j++) ...rows[j],
+        for (final c in rest.split('\t')) (cell: c, row: i),
+        for (var j = i + 1; j < rows.length && j <= i + 3; j++)
+          for (final c in rows[j]) (cell: c, row: j),
       ];
-      for (final cell in cells) {
-        final n = _cleanName(cell);
-        if (n != null) return (name: n, line: i);
+      for (final c in cells) {
+        final n = _cleanName(c.cell);
+        if (n != null) return (name: _wrapped(n, rows, c.row), line: i);
       }
       return null;
     }
@@ -322,6 +336,29 @@ class PaymentShotParser {
       if (hit != null) return hit;
     }
     return null;
+  }
+
+  /// [name] (found on row [r]) with the rest of it, when a long name wraps
+  /// onto the next row ("Yougendra Mohan Dev" / "Banshi"): a lone word or
+  /// two of letters there, beside nothing but the avatar's initials.
+  static String _wrapped(String name, List<List<String>> rows, int r) {
+    if (r + 1 >= rows.length) return name;
+    final cells = [
+      for (final c in rows[r + 1])
+        if (!RegExp(r'^[A-Z]{1,2}$').hasMatch(c) && !_moneyRe.hasMatch(c)) c,
+    ];
+    if (cells.length != 1 ||
+        !RegExp(r"^[A-Za-z][A-Za-z.']*(?: [A-Za-z][A-Za-z.']*)?$")
+            .hasMatch(cells.single)) {
+      return name;
+    }
+    final more = _cleanName(cells.single);
+    if (more == null ||
+        more.toLowerCase().contains('bank') ||
+        '$name $more'.split(' ').length > 5) {
+      return name;
+    }
+    return '$name $more';
   }
 
   /// The name usually sits on, or just above, the line with the UPI ID.

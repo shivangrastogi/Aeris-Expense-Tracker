@@ -8,7 +8,8 @@ import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetProvider
 
-/// 4x2 check-in streak with this week's real days; the button opens a check-in.
+/// 4x2 check-in streak with the last 7 days (today on the right); the button
+/// opens a check-in.
 class AerisStreakWidgetProvider : HomeWidgetProvider() {
     override fun onUpdate(
         context: Context,
@@ -17,7 +18,7 @@ class AerisStreakWidgetProvider : HomeWidgetProvider() {
         widgetData: SharedPreferences
     ) {
         val m = WidgetData.read(widgetData)
-        WidgetData.scheduleMidnight(context)
+        WidgetData.keepFresh(context)
         appWidgetIds.forEach { id ->
             val views = RemoteViews(context.packageName, R.layout.aeris_streak_widget).apply {
                 setTextViewText(R.id.widget_streak_count, "${m.streak} day" + if (m.streak == 1) "" else "s")
@@ -39,6 +40,7 @@ class AerisStreakWidgetProvider : HomeWidgetProvider() {
                     }
                     setInt(dots[i], "setBackgroundResource", bg)
                     setTextViewText(dots[i], if (on) "✓" else "")
+                    setTextViewText(days[i], m.dayLetters[i])
                     setTextColor(days[i], context.getColor(
                         if (i == m.todayIdx) R.color.w_text else R.color.w_muted))
                 }

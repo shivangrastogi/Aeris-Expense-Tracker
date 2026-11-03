@@ -12,6 +12,7 @@ import '../../providers/goals_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/ds.dart';
 import '../../widgets/field_editor.dart';
 import '../../widgets/skeleton.dart';
 
@@ -41,46 +42,67 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
   Widget build(BuildContext context) {
     final goalsAsync = ref.watch(goalsStreamProvider);
     final streak = ref.watch(streakProvider).asData?.value;
+    final tk = context.tk;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Goals & streaks')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _editGoal(),
-        icon: const Icon(Icons.add),
-        label: const Text('New goal'),
+      appBar: AppBar(
+        title: const Text('Goals'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: TonalButton('New goal',
+                icon: PhBold.plus, height: 40, onPressed: () => _editGoal()),
+          ),
+        ],
       ),
       body: Stack(
         alignment: Alignment.topCenter,
         children: [
           goalsAsync.when(
             loading: () => const GoalsSkeleton(),
-            error: (e, _) => Center(child: Text('$e')),
+            error: (e, _) => Padding(
+              padding: const EdgeInsets.all(20),
+              child: Banner2(
+                  tone: Tone.bad,
+                  icon: PhFill.cloudX,
+                  title: "Couldn't load goals",
+                  body: '$e'),
+            ),
             data: (goals) {
               final totalSaved = goals.fold<double>(0, (s, g) => s + g.saved);
               return ListView(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 100),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
                 children: [
-                  _streakCard(streak?.current ?? 0, streak?.best ?? 0),
+                  if (goals.isEmpty)
+                    EmptyState(
+                      icon: Ph.flagPennant,
+                      title: 'No savings goals yet',
+                      body: 'Save toward something — a trip, a gadget or an '
+                          'emergency fund. Add money as you go and watch it '
+                          'fill up.',
+                      cta: 'New goal',
+                      onCta: () => _editGoal(),
+                    )
+                  else
+                    for (final g in goals)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _goalCard(g),
+                      ),
                   const SizedBox(height: 12),
+                  _streakCard(streak?.current ?? 0, streak?.best ?? 0),
+                  const SizedBox(height: 16),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+                    child: Overline('Badges'),
+                  ),
                   _badges(goals, totalSaved, streak?.current ?? 0),
                   const SizedBox(height: 16),
-                  _explainer(),
-                  const SizedBox(height: 14),
-                  Text('Your savings goals',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          )),
                   Text(
-                    'Save toward something — add money as you go and watch it fill up.',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    'Goals are money you save toward something. Want to limit '
+                    'spending instead? Use Budgets.',
+                    style: TextStyle(fontSize: 12, height: 16 / 12, color: tk.t2),
                   ),
-                  const SizedBox(height: 8),
-                  if (goals.isEmpty)
-                    _empty()
-                  else
-                    ...goals.map(_goalCard),
                 ],
               );
             },
@@ -101,46 +123,24 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
 
   // ── Streak ────────────────────────────────────────────────
   Widget _streakCard(int current, int best) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            reduceMotion(context)
-                ? const Text('🔥', style: TextStyle(fontSize: 34))
-                : const Text('🔥', style: TextStyle(fontSize: 34))
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .scaleXY(end: 1.15, duration: 800.ms),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('$current-day streak',
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w800)),
-                  Text('Best: $best days · open daily to keep it alive',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color:
-                              Theme.of(context).colorScheme.onSurfaceVariant)),
-                ],
-              ),
-            ),
-          ],
-        ),
+    final tk = context.tk;
+    return ListGroup(children: [
+      DsRow(
+        leading: BadgeTile(icon: PhFill.flame, tint: tk.warn),
+        title: '$current-day streak',
+        sub: 'Best: $best days · open daily to keep it alive',
       ),
-    );
+    ]);
   }
 
   // ── Badges ────────────────────────────────────────────────
   Widget _badges(List<Goal> goals, double totalSaved, int streak) {
-    final badges = <(String, String, bool)>[
-      ('🥅', 'First goal', goals.isNotEmpty),
-      ('🏆', 'Goal smashed', goals.any((g) => g.isComplete)),
-      ('🔥', '7-day streak', streak >= 7),
-      ('💰', 'Saved ₹10k', totalSaved >= 10000),
-      ('⭐', 'Saved ₹1L', totalSaved >= 100000),
+    final badges = <(IconData, String, bool)>[
+      (Ph.flagPennant, 'First goal', goals.isNotEmpty),
+      (Ph.trophy, 'Goal smashed', goals.any((g) => g.isComplete)),
+      (Ph.flame, '7-day streak', streak >= 7),
+      (Ph.coins, 'Saved ₹10k', totalSaved >= 10000),
+      (Ph.medal, 'Saved ₹1L', totalSaved >= 100000),
     ];
     return Wrap(
       spacing: 8,
@@ -148,171 +148,96 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
       children: [
         for (final b in badges)
           Opacity(
-            opacity: b.$3 ? 1 : 0.35,
-            child: Chip(
-              avatar: Text(b.$1),
-              label: Text(b.$2, style: const TextStyle(fontSize: 12)),
-              backgroundColor: b.$3
-                  ? AerisColors.accent(context).withValues(alpha: 0.15)
-                  : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-            ),
+            opacity: b.$3 ? 1 : 0.45,
+            child: DsChip(b.$2,
+                icon: b.$1, selected: b.$3, showCheck: false),
           ),
       ],
     );
   }
 
-  // ── Explainer ─────────────────────────────────────────────
-  Widget _explainer() {
-    return Card(
-      color: AerisColors.accent(context).withValues(alpha: 0.08),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('💡', style: TextStyle(fontSize: 20)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'What are goals?',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'A goal is money you want to SAVE toward something — a trip, '
-                    'a phone, an emergency fund. Set the amount, then add money '
-                    'as you save until it\'s full.',
-                    style: TextStyle(
-                        fontSize: 12,
-                        height: 1.35,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Want to LIMIT spending instead? Use Budgets (Budgets tab).',
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontStyle: FontStyle.italic,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Goal card ─────────────────────────────────────────────
+  // ── Goal card: progress ring around the goal's mark ───────
   Widget _goalCard(Goal g) {
+    final tk = context.tk;
     final pct = g.progress;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    String? pace;
+    if (!g.isComplete && g.deadline != null) {
+      final days = g.deadline!.difference(DateTime.now()).inDays;
+      if (days > 0) {
+        final perMonth = g.remaining / (days / 30.0).clamp(1, 1200);
+        pace = '${formatRupees(perMonth, compact: true)}/month to make '
+            '${shortDate(g.deadline!)}';
+      }
+    }
+    return AerisCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          CatRing(
+            value: pct,
+            color: g.isComplete ? tk.ok : tk.acc,
+            size: 64,
+            center: Text(g.emoji, style: const TextStyle(fontSize: 24)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(g.emoji, style: const TextStyle(fontSize: 22)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(g.title,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700)),
+                Text(g.title, style: Ts.title.copyWith(color: tk.t1)),
+                const SizedBox(height: 2),
+                Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: formatRupees(g.saved)),
+                    TextSpan(
+                        text: ' of ${formatRupees(g.target)}',
+                        style: TextStyle(
+                            color: tk.t2, fontWeight: FontWeight.w500)),
+                  ]),
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      color: tk.t1),
                 ),
+                const SizedBox(height: 4),
                 if (g.isComplete)
-                  Icon(Icons.verified, color: AerisColors.moneyIn(context)),
-                PopupMenuButton<String>(
-                  onSelected: (v) {
-                    if (v == 'edit') _editGoal(existing: g);
-                    if (v == 'delete') _delete(g);
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  ],
-                ),
+                  const StatusPill('Completed',
+                      icon: PhFill.checkCircle, tone: Tone.ok)
+                else
+                  Text(
+                      pace ??
+                          '${(pct * 100).toStringAsFixed(0)}% · '
+                              '${formatRupees(g.remaining, compact: true)} to go',
+                      style: TextStyle(fontSize: 12, color: tk.t2)),
               ],
             ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0, end: pct),
-                duration: const Duration(milliseconds: 700),
-                curve: Curves.easeOutCubic,
-                builder: (_, v, __) => LinearProgressIndicator(
-                  value: v,
-                  minHeight: 12,
-                  color: g.isComplete ? AerisColors.moneyIn(context) : AerisColors.accent(context),
-                  backgroundColor: AerisColors.accent(context).withValues(alpha: 0.12),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text('${formatRupees(g.saved)} of ${formatRupees(g.target)}',
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600)),
-                const Spacer(),
-                Text('${(pct * 100).toStringAsFixed(0)}%',
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: g.isComplete
-                            ? AerisColors.moneyIn(context)
-                            : AerisColors.ink(context))),
-              ],
-            ),
-            if (!g.isComplete) ...[
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.tonalIcon(
-                  onPressed: () => _contribute(g),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add money'),
-                ),
-              ),
-            ] else
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text('Completed — well done! 🎉',
-                    style: TextStyle(
-                        color: AerisColors.moneyIn(context),
-                        fontWeight: FontWeight.w600)),
-              ),
-          ],
-        ),
-      ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.06, end: 0);
-  }
-
-  Widget _empty() => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 30),
-        child: Center(
-          child: Column(
-            children: [
-              Text('🎯', style: TextStyle(fontSize: 40)),
-              SizedBox(height: 10),
-              Text(
-                'No savings goals yet.\n'
-                'Tap “New goal” to save toward something —\n'
-                'a trip, a gadget, or an emergency fund.',
-                textAlign: TextAlign.center,
-              ),
+          ),
+          PopupMenuButton<String>(
+            icon: Icon(Ph.dotsThreeVertical, size: 20, color: tk.t2),
+            onSelected: (v) {
+              if (v == 'edit') _editGoal(existing: g);
+              if (v == 'delete') _delete(g);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'edit', child: Text('Edit')),
+              PopupMenuItem(value: 'delete', child: Text('Delete')),
             ],
           ),
-        ),
-      );
+        ]),
+        if (!g.isComplete) ...[
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TonalButton('Add money',
+                icon: PhBold.plus, height: 40, onPressed: () => _contribute(g)),
+          ),
+        ],
+      ]),
+    ).animate().fadeIn(duration: Mo.standard).slideY(begin: 0.03, end: 0);
+  }
 
-  // ── Dialogs ───────────────────────────────────────────────
+  // ── New / edit goal sheet ─────────────────────────────────
   Future<void> _editGoal({Goal? existing}) async {
     final title = TextEditingController(text: existing?.title ?? '');
     // Typed in the display currency, stored in INR like every other amount.
@@ -323,61 +248,85 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
     var emoji = existing?.emoji ?? '🎯';
     const emojis = ['🎯', '✈️', '🏠', '🚗', '📱', '💍', '🎓', '🏖️', '💻', '🎁'];
 
-    final ok = await showDialog<bool>(
-      context: context,
+    final ok = await showDsSheet<bool>(
+      context,
+      title: existing == null ? 'New goal' : 'Edit goal',
+      scrollControlled: true,
       builder: (d) => StatefulBuilder(
-        builder: (d, setLocal) => AlertDialog(
-          title: Text(existing == null ? 'New savings goal' : 'Edit goal'),
-          content: SingleChildScrollView(
+        builder: (d, setLocal) {
+          final tk = d.tk;
+          Widget label(String s) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(s,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: tk.t2)),
+              );
+          return SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                label('Name'),
                 TextField(
                     controller: title,
+                    autofocus: existing == null,
+                    textCapitalization: TextCapitalization.sentences,
                     decoration: const InputDecoration(
-                      labelText: 'What are you saving for?',
                       hintText: 'e.g. Goa trip, New phone',
                     )),
-                const SizedBox(height: 10),
+                const SizedBox(height: 16),
+                label('Target'),
                 TextField(
                   controller: target,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: const [AmountInputFormatter()],
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w700),
                   decoration: InputDecoration(
-                    labelText: 'Amount to save',
                     prefixText: '${kCurrency.symbol.trim()} ',
-                    hintText: 'e.g. 50000',
+                    hintText: '40,000',
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
+                label('Icon'),
                 Wrap(
                   spacing: 6,
+                  runSpacing: 6,
                   children: [
                     for (final e in emojis)
-                      GestureDetector(
+                      InkWell(
+                        borderRadius: BorderRadius.circular(Rad.tile),
                         onTap: () => setLocal(() => emoji = e),
-                        child: CircleAvatar(
-                          backgroundColor: emoji == e
-                              ? AerisColors.accent(context).withValues(alpha: 0.25)
-                              : Colors.transparent,
-                          child: Text(e, style: const TextStyle(fontSize: 18)),
+                        child: AnimatedContainer(
+                          duration: Mo.standard,
+                          width: 44,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: emoji == e ? tk.accSoft2 : tk.sunken,
+                            borderRadius: BorderRadius.circular(Rad.tile),
+                            border: emoji == e
+                                ? Border.all(color: tk.acc, width: 1.5)
+                                : null,
+                          ),
+                          child:
+                              Text(e, style: const TextStyle(fontSize: 20)),
                         ),
                       ),
                   ],
                 ),
+                const SizedBox(height: 20),
+                FilledButton(
+                    onPressed: () => Navigator.pop(d, true),
+                    child: Text(
+                        existing == null ? 'Create goal' : 'Save goal')),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(d, false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(d, true),
-                child: const Text('Save')),
-          ],
-        ),
+          );
+        },
       ),
     );
     if (ok != true) return;

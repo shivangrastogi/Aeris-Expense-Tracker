@@ -17,7 +17,7 @@ class AerisStreakMiniWidgetProvider : HomeWidgetProvider() {
         widgetData: SharedPreferences
     ) {
         val m = WidgetData.read(widgetData)
-        WidgetData.scheduleMidnight(context)
+        WidgetData.keepFresh(context)
         appWidgetIds.forEach { id ->
             val views = RemoteViews(context.packageName, R.layout.aeris_streakmini_widget).apply {
                 setTextViewText(R.id.widget_streakmini_num, "${m.streak} day" + if (m.streak == 1) "" else "s")

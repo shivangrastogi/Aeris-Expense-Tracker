@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme.dart';
 import '../../providers/gamification_provider.dart';
+import '../../widgets/ds.dart';
 
 /// Card ids that the Home screen honours for show/hide (see the
 /// `kHomeCard*` constants in home_screen.dart).
@@ -20,61 +22,82 @@ const _accents = <int>[
   0xFF8E6C9E, 0xFF64748B, 0xFFB8704A,
 ];
 
+const _cardIcons = <String, IconData>{
+  'momentum': Ph.trendUp,
+  'balances': Ph.bank,
+  'categories': Ph.chartPieSlice,
+  'forecast': Ph.chartLineUp,
+  'checkin': Ph.flame,
+};
+
 class CustomizeDashboardScreen extends ConsumerWidget {
   const CustomizeDashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tk = context.tk;
     final g = ref.watch(gamificationProvider);
     final ctrl = ref.read(gamificationProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Customize dashboard')),
+      appBar: AppBar(title: const Text('Customize Home')),
       body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(16, 14, 16, 4),
-            child: Text('Show on Home',
-                style: TextStyle(fontWeight: FontWeight.w800)),
+            padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: Overline('Show on Home'),
           ),
-          for (final (id, label) in dashboardCards)
-            SwitchListTile(
-              title: Text(label),
-              value: !g.hiddenCards.contains(id),
-              onChanged: (v) => ctrl.setCardHidden(id, !v),
-            ),
-          const Divider(),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Text('Accent colour',
-                style: TextStyle(fontWeight: FontWeight.w800)),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _Swatch(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  selected: g.accent == null,
-                  label: 'Default',
-                  onTap: () => ctrl.setAccent(null),
+          ListGroup(inset: 64, children: [
+            for (final (id, label) in dashboardCards)
+              SettingsRow(
+                icon: _cardIcons[id] ?? Ph.squaresFour,
+                iconColor: g.hiddenCards.contains(id) ? null : tk.acc,
+                title: label,
+                trailing: Switch(
+                  value: !g.hiddenCards.contains(id),
+                  onChanged: (v) => ctrl.setCardHidden(id, !v),
                 ),
-                for (final a in _accents)
-                  _Swatch(
-                    color: Color(a),
-                    selected: g.accent == a,
-                    onTap: () => ctrl.setAccent(a),
-                  ),
+                onTap: () =>
+                    ctrl.setCardHidden(id, !g.hiddenCards.contains(id)),
+              ),
+          ]),
+          const SizedBox(height: 18),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: Overline('Accent colour'),
+          ),
+          AerisCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    _Swatch(
+                      color: AerisColors.arc,
+                      selected: g.accent == null,
+                      label: 'Default',
+                      onTap: () => ctrl.setAccent(null),
+                    ),
+                    for (final a in _accents)
+                      _Swatch(
+                        color: Color(a),
+                        selected: g.accent == a,
+                        onTap: () => ctrl.setAccent(a),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                    'Accent recolours buttons, highlights and progress '
+                    'across the app instantly.',
+                    style: Ts.label
+                        .copyWith(fontWeight: FontWeight.w400, color: tk.t2)),
               ],
             ),
-          ),
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('Accent recolours buttons, highlights and progress '
-                'across the app instantly.',
-                style: TextStyle(fontSize: 12)),
           ),
         ],
       ),
@@ -88,38 +111,37 @@ class _Swatch extends StatelessWidget {
   final String? label;
   final VoidCallback onTap;
   const _Swatch(
-      {required this.color, required this.selected, this.label, required this.onTap});
+      {required this.color,
+      required this.selected,
+      this.label,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: label == null ? color : Colors.transparent,
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: selected ? color : Colors.grey.withValues(alpha: 0.4),
-                  width: selected ? 3 : 1.5),
-            ),
-            child: label != null
-                ? Icon(Icons.format_color_reset,
-                    color: Theme.of(context).colorScheme.onSurface)
-                : selected
-                    ? const Icon(Icons.check, color: Colors.white)
-                    : null,
+    final tk = context.tk;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label ?? 'Accent colour',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: selected
+                ? [
+                    BoxShadow(color: color, spreadRadius: 4),
+                    BoxShadow(color: tk.surface, spreadRadius: 2),
+                  ]
+                : null,
           ),
-          if (label != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(label!, style: const TextStyle(fontSize: 10)),
-            ),
-        ],
+          child: selected
+              ? const Icon(PhBold.check, size: 16, color: Colors.white)
+              : null,
+        ),
       ),
     );
   }

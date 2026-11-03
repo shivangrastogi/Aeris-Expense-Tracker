@@ -10,6 +10,7 @@ import '../../widgets/recovery_key_dialog.dart';
 import '../../widgets/text_input_dialog.dart';
 import '../auth/auth_widgets.dart';
 import 'profile_screen.dart';
+import '../../widgets/ds.dart';
 
 /// Account & security: who's signed in, password, recovery key, sign out,
 /// and deleting the account with all its data.
@@ -86,90 +87,106 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final profile = ref.watch(userProfileProvider).valueOrNull;
     String? email;
     try {
       email = ref.read(authServiceProvider).currentUser?.email;
     } catch (_) {/* auth not ready (e.g. tests) — show the generic line */}
-    final muted = AerisColors.muted(context);
-    final danger = AerisColors.danger(context);
+    final name = (profile?.displayName ?? '').trim();
 
-    Widget tile(IconData icon, String title, String sub, VoidCallback? onTap,
-            {Color? color}) =>
-        ListTile(
-          leading: Icon(icon, color: color),
-          title: Text(title, style: TextStyle(color: color)),
-          subtitle: Text(sub),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: _busy ? null : onTap,
+    Widget group(String head, List<Widget> rows) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+              child: Overline(head),
+            ),
+            ListGroup(inset: 64, children: rows),
+          ],
         );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Account & security')),
+      appBar: AppBar(title: const Text('Account and security')),
       body: AbsorbPointer(
         absorbing: _busy,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
           children: [
-            if (_busy) const LinearProgressIndicator(),
+            if (_busy)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Center(child: RisingLoader()),
+              ),
             AerisCard(
+              padding: const EdgeInsets.all(16),
               onTap: () => Navigator.pushNamed(context, AppRoutes.editProfile),
               child: Row(children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: AerisColors.accentSoft(context),
-                  child: Icon(Icons.person_outline,
-                      color: AerisColors.accent(context)),
-                ),
+                InitialAvatar(name.isEmpty ? (email ?? '?') : name,
+                    size: 48, color: const Color(0xFF8A7ED3)),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(profile?.displayName ?? 'Your account',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 16)),
+                        Text(name.isEmpty ? 'Your account' : name,
+                            style: Ts.title.copyWith(color: tk.t1)),
                         Text(email ?? 'Signed in',
-                            style: TextStyle(color: muted)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Ts.bodyS.copyWith(color: tk.t2)),
                       ]),
                 ),
-                const Icon(Icons.chevron_right_rounded),
+                Icon(Ph.caretRight, size: 16, color: tk.t3),
               ]),
             ),
-            const SizedBox(height: 20),
-            const SectionLabel('Security'),
-            AerisCard(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(children: [
-                tile(Icons.password_rounded, 'Change password',
-                    'Also re-locks your encrypted data with it', _changePassword),
-                tile(Icons.key_rounded, 'Make a new recovery key',
-                    'Lost the old one? Replace it', _newRecoveryKey),
-              ]),
-            ),
+            const SizedBox(height: 18),
+            group('Security', [
+              SettingsRow(
+                  icon: Ph.password,
+                  title: 'Change password',
+                  sub: 'Also re-locks your encrypted data with it',
+                  onTap: _busy ? null : _changePassword),
+              SettingsRow(
+                  icon: Ph.key,
+                  title: 'Make a new recovery key',
+                  sub: 'Lost the old one? Replace it',
+                  onTap: _busy ? null : _newRecoveryKey),
+            ]),
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
-              child: Text(
-                  'Two locks protect you. Your password (or recovery key) '
-                  'unlocks your encrypted data on a new phone. App lock '
-                  '(Settings) is your fingerprint / PIN each time you open '
-                  'the app on this phone.',
-                  style: TextStyle(fontSize: 12.5, color: muted)),
-            ),
-            const SizedBox(height: 20),
-            const SectionLabel('Session'),
-            AerisCard(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(children: [
-                tile(Icons.logout_rounded, 'Sign out',
-                    'Your data stays safe in your account',
-                    () => signOutWithCheck(context, ref)),
-                tile(Icons.delete_forever_outlined, 'Delete account',
-                    'Permanently erase your account and all its data',
-                    _deleteAccount,
-                    color: danger),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 8),
+                  child: Icon(Ph.info, size: 15, color: tk.t2),
+                ),
+                Expanded(
+                  child: Text(
+                      'Two locks protect you. Your password (or recovery key) '
+                      'unlocks your encrypted data on a new phone. App lock '
+                      '(Settings) is your fingerprint or PIN each time you '
+                      'open the app on this phone.',
+                      style: Ts.label.copyWith(
+                          fontWeight: FontWeight.w400,
+                          height: 18 / 12,
+                          color: tk.t2)),
+                ),
               ]),
             ),
+            const SizedBox(height: 18),
+            group('Session', [
+              SettingsRow(
+                  icon: Ph.signOut,
+                  title: 'Sign out',
+                  onTap: _busy ? null : () => confirmSignOut(context, ref)),
+              SettingsRow(
+                  icon: Ph.trash,
+                  title: 'Delete account',
+                  sub: 'Erases everything, everywhere',
+                  iconColor: tk.bad,
+                  titleColor: tk.bad,
+                  onTap: _busy ? null : _deleteAccount),
+            ]),
           ],
         ),
       ),
@@ -207,7 +224,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               AuthField(
                   controller: _current,
-                  icon: Icons.lock_outline,
+                  icon: Ph.lockSimple,
                   hint: 'Current password',
                   obscure: true,
                   validator: (v) =>
@@ -215,14 +232,14 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
               const SizedBox(height: 10),
               AuthField(
                   controller: _next,
-                  icon: Icons.lock_reset_rounded,
+                  icon: Ph.lockKey,
                   hint: 'New password',
                   obscure: true,
                   validator: passwordProblem),
               const SizedBox(height: 10),
               AuthField(
                   controller: _again,
-                  icon: Icons.lock_reset_rounded,
+                  icon: Ph.lockKey,
                   hint: 'New password again',
                   obscure: true,
                   validator: (v) =>
@@ -273,7 +290,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
   Widget build(BuildContext context) {
     final danger = AerisColors.danger(context);
     return AlertDialog(
-      icon: Icon(Icons.warning_amber_rounded, color: danger),
+      icon: Icon(Ph.warning, color: danger),
       title: const Text('Delete your account?'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -286,7 +303,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
           const SizedBox(height: 14),
           AuthField(
               controller: _pw,
-              icon: Icons.lock_outline,
+              icon: Ph.lockSimple,
               hint: 'Your password',
               obscure: true),
           CheckboxListTile(
@@ -304,7 +321,7 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
             child: const Text('Keep my account')),
         FilledButton(
           style: FilledButton.styleFrom(
-              backgroundColor: danger, foregroundColor: Colors.white),
+              backgroundColor: danger, foregroundColor: context.tk.isDark ? const Color(0xFF1A0F0E) : Colors.white),
           onPressed: _understood && _pw.text.isNotEmpty
               ? () => Navigator.pop(context, _pw.text)
               : null,

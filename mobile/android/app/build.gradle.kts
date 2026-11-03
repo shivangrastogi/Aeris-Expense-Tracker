@@ -44,7 +44,7 @@ android {
     defaultConfig {
         applicationId = "com.aeris.expense"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
         multiDexEnabled = true
@@ -81,8 +81,19 @@ flutter {
     source = "../.."
 }
 
+// Text recognition: swap the plugin's bundled ML Kit model (~11 MB per CPU
+// type) for the Google Play services one (same API, model downloaded once).
+configurations.all {
+    exclude(group = "com.google.mlkit", module = "text-recognition")
+}
+
 dependencies {
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    // Hindi (Devanagari) notes and bills — also from Play services.
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition-devanagari:16.0.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Home-screen widgets refresh in the background (WidgetRefreshWorker).
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
 }

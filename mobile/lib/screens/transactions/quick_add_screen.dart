@@ -13,6 +13,8 @@ import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/discard_guard.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../core/theme.dart';
+import '../../widgets/ds.dart';
 
 /// Type (or dictate via the keyboard mic) one sentence — "spent 200 on chai
 /// yesterday", "got 5000 salary" — and AERIS extracts the amount,
@@ -112,7 +114,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
       final go = await showDialog<bool>(
         context: context,
         builder: (d) => AlertDialog(
-          icon: const Icon(Icons.copy_all_outlined),
+          icon: const Icon(Ph.copy),
           title: const Text('Possible duplicate'),
           content: Text('You already have '
               '${formatRupees(dup.amount, decimals: true, raw: true)}'
@@ -181,7 +183,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Say or type what happened',
                   hintText: 'e.g. spent 200 on chai yesterday',
-                  prefixIcon: Icon(Icons.bolt),
+                  prefixIcon: Icon(Ph.lightning),
                 ),
               ),
               const SizedBox(height: 8),
@@ -196,7 +198,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                   ),
                   FilledButton.tonalIcon(
                     onPressed: _understand,
-                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    icon: const Icon(Ph.sparkle, size: 18),
                     label: const Text('Understand'),
                   ),
                 ],
@@ -209,7 +211,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Column(
                     children: [
-                      Icon(Icons.graphic_eq,
+                      Icon(Ph.waveform,
                           size: 40, color: scheme.onSurfaceVariant),
                       const SizedBox(height: 10),
                       Text(
@@ -232,11 +234,11 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                     ButtonSegment(
                         value: TxnDirection.debit,
                         label: Text('Expense'),
-                        icon: Icon(Icons.south)),
+                        icon: Icon(Ph.arrowDown)),
                     ButtonSegment(
                         value: TxnDirection.credit,
                         label: Text('Income'),
-                        icon: Icon(Icons.north)),
+                        icon: Icon(Ph.arrowUp)),
                   ],
                   selected: {_dir},
                   onSelectionChanged: (s) => setState(() => _dir = s.first),
@@ -249,7 +251,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                   inputFormatters: const [AmountInputFormatter()],
                   decoration: InputDecoration(
                       labelText: 'Amount (${kCurrency.symbol.trim()})',
-                      prefixIcon: const Icon(Icons.payments_outlined)),
+                      prefixIcon: const Icon(Ph.money)),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -259,7 +261,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                       labelText: _dir == TxnDirection.credit
                           ? 'Source / payer'
                           : 'Merchant / payee',
-                      prefixIcon: const Icon(Icons.store)),
+                      prefixIcon: const Icon(Ph.storefront)),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
@@ -281,9 +283,9 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                 const SizedBox(height: 12),
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  leading: const Icon(Icons.calendar_today),
-                  title: const Text('When',
-                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  leading: const Icon(Ph.calendarBlank),
+                  title: Text('When',
+                      style: TextStyle(fontSize: 12, color: context.tk.t2)),
                   subtitle: Text('${_when.day}/${_when.month}/${_when.year}',
                       style: const TextStyle(
                           fontSize: 15, fontWeight: FontWeight.w600)),
@@ -302,7 +304,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
-                  icon: const Icon(Icons.save),
+                  icon: const Icon(Ph.floppyDisk),
                   label: const Text('Save transaction'),
                   onPressed: _busy ? null : _save,
                 ),

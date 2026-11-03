@@ -1,55 +1,52 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'aeris_toast.dart';
+import 'ds.dart';
 
 /// Largest receipt we'll store. Encrypted + base64 it grows ~1.35×, which
 /// keeps it comfortably under Firestore's 1 MiB document limit.
 const int kMaxReceiptBytes = 600 * 1024;
 
-/// Asks camera vs gallery, then returns a downscaled JPEG (or null if
-/// cancelled). Shows a message and returns null if it's still too large.
-Future<Uint8List?> pickReceipt(BuildContext context) async {
-  final source = await showModalBottomSheet<ImageSource>(
-    context: context,
-    showDragHandle: true,
-    builder: (s) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.photo_camera_outlined),
-            title: const Text('Take a photo'),
-            onTap: () => Navigator.pop(s, ImageSource.camera),
-          ),
-          ListTile(
-            leading: const Icon(Icons.photo_library_outlined),
-            title: const Text('Choose from gallery'),
-            onTap: () => Navigator.pop(s, ImageSource.gallery),
-          ),
-        ],
-      ),
-    ),
-  );
+/// [path] as a receipt to store: a JPEG whose shorter side is at most
+/// 1080 px (so a phone screenshot keeps its full width), stepped down until
+/// it fits [kMaxReceiptBytes]. Null if it won't fit or can't be read.
+Future<Uint8List?> shrinkReceipt(String path) async {
+  for (final (side, quality) in const [(1080, 80), (1080, 65), (800, 60)]) {
+    try {
+      final out = await FlutterImageCompress.compressWithFile(path,
+          minWidth: side, minHeight: side, quality: quality);
+      if (out != null && out.length <= kMaxReceiptBytes) return out;
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
+/// A picked receipt: [bytes] to store, and the full-size original at [path]
+/// to read the text from (small print needs every pixel).
+typedef PickedReceipt = ({Uint8List bytes, String path});
+
+/// Asks camera vs gallery, then returns the photo (or null if cancelled).
+/// Shows a message and returns null if it can't be made small enough.
+Future<PickedReceipt?> pickReceipt(BuildContext context) async {
+  final source = await _askSource(context);
   if (source == null) return null;
   try {
-    final x = await ImagePicker().pickImage(
-      source: source,
-      maxWidth: 1280,
-      maxHeight: 1280,
-      imageQuality: 60,
-    );
+    final x = await ImagePicker().pickImage(source: source);
     if (x == null) return null;
-    final bytes = await x.readAsBytes();
-    if (bytes.length > kMaxReceiptBytes) {
+    final bytes = await shrinkReceipt(x.path);
+    if (bytes == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showToast(const SnackBar(
             content: Text('That image is too large — try a closer photo.')));
       }
       return null;
     }
-    return bytes;
+    return (bytes: bytes, path: x.path);
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context)
@@ -58,6 +55,45 @@ Future<Uint8List?> pickReceipt(BuildContext context) async {
     return null;
   }
 }
+
+/// Asks camera vs gallery, then returns the full-size photo's path to scan
+/// (or null if cancelled). The image itself is never stored.
+Future<String?> pickScanImage(BuildContext context) async {
+  final source = await _askSource(context);
+  if (source == null) return null;
+  try {
+    return (await ImagePicker().pickImage(source: source))?.path;
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showToast(SnackBar(content: Text('Could not open image: $e')));
+    }
+    return null;
+  }
+}
+
+Future<ImageSource?> _askSource(BuildContext context) =>
+    showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (s) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Ph.camera),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(s, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Ph.images),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(s, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
 
 /// Full-screen, pinch-to-zoom receipt viewer.
 void showReceiptViewer(BuildContext context, Uint8List bytes) {
@@ -108,9 +144,9 @@ class ReceiptField extends StatelessWidget {
         style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
         onPressed: () async {
           final picked = await pickReceipt(context);
-          if (picked != null) onPicked(picked);
+          if (picked != null) onPicked(picked.bytes);
         },
-        icon: const Icon(Icons.receipt_long_outlined),
+        icon: const Icon(Ph.receipt),
         label: const Text('Attach receipt (optional)'),
       );
     }
@@ -144,7 +180,7 @@ class ReceiptField extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Remove receipt',
-            icon: const Icon(Icons.delete_outline),
+            icon: const Icon(Ph.trash),
             onPressed: onRemove,
           ),
         ],

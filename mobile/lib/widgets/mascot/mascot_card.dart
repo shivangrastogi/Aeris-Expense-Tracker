@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/insights_provider.dart';
 import '../../providers/mascot_provider.dart';
 import 'aeris_mascot.dart';
+import '../ds.dart';
 
 /// Aeris + a speech bubble. Tap anywhere on the card (or the mascot) and Aeris
 /// reacts and tells you the next insight — making it feel alive.
@@ -82,7 +83,7 @@ class _MascotCardState extends ConsumerState<MascotCard> {
                                   fontWeight: FontWeight.w700,
                                   color: scheme.primary)),
                           const Spacer(),
-                          Icon(Icons.touch_app_outlined,
+                          Icon(Ph.handTap,
                               size: 13, color: scheme.onSurfaceVariant),
                         ],
                       ),

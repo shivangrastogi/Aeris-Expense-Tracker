@@ -12,6 +12,7 @@ import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 // Quick-pick catalog of common Indian subscriptions.
 const _subCatalog = <(String, String, double)>[
@@ -59,8 +60,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
     final subs = ref.watch(subscriptionsStreamProvider).valueOrNull ?? const [];
     final totals = ref.watch(subscriptionTotalsProvider);
     final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = dark ? AerisColors.cardDark : Colors.white;
+    final cardBg = context.tk.surface;
     final pad = widget.embed ? 20.0 : 16.0;
 
     return Column(
@@ -72,7 +72,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
             child: Row(children: [
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_rounded),
+                icon: const Icon(Ph.arrowLeft),
               ),
               const SizedBox(width: 4),
               const Text('Subscriptions',
@@ -88,7 +88,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
               if (subs.isNotEmpty)
                 _pill(
                   label: _selectMode ? '${_picked.length} selected' : 'Select',
-                  icon: _selectMode ? Icons.close : Icons.checklist_rounded,
+                  icon: _selectMode ? Ph.x : Ph.listChecks,
                   active: _selectMode,
                   onTap: () => setState(() {
                     _selectMode = !_selectMode;
@@ -98,7 +98,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
               const SizedBox(width: 8),
               _pill(
                 label: 'Add',
-                icon: Icons.add_rounded,
+                icon: Ph.plus,
                 filled: true,
                 onTap: () => showAddSubSheet(context, ref),
               ),
@@ -109,47 +109,27 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
           child: ListView(
             padding: EdgeInsets.fromLTRB(pad, 4, pad, widget.embed ? 130 : 30),
             children: [
-              // Violet recurring header
-              Container(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-                decoration: BoxDecoration(
-                  gradient: AerisColors.violetGradient,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                        color: const Color(0xFF8A7ED3).withValues(alpha: 0.32),
-                        blurRadius: 22,
-                        offset: const Offset(0, 8)),
-                  ],
-                ),
+              // Recurring total — a plain card (the hero gradient is Home-only).
+              AerisCard(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Recurring per month',
-                        style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    Text(formatRupees(totals.monthly),
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 30,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5)),
-                    const SizedBox(height: 4),
+                    Text('Recurring per month',
+                        style: Ts.bodyS.copyWith(color: context.tk.t2)),
+                    MoneyText(totals.monthly,
+                        smallSymbol: false, style: Ts.amountL),
+                    const SizedBox(height: 2),
                     Text(
                       '${formatRupees(totals.yearly)} a year across '
                       '${totals.count} service${totals.count == 1 ? '' : 's'}',
-                      style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600),
+                      style: Ts.label.copyWith(
+                          fontWeight: FontWeight.w400, color: context.tk.t2),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               if (subs.isEmpty)
                 _empty(context)
               else
@@ -173,7 +153,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
             child: Row(children: [
               _bulkBtn(
                 label: 'Remove (${_picked.length})',
-                icon: Icons.delete_outline_rounded,
+                icon: Ph.trash,
                 color: AerisColors.danger(context),
                 onTap: () async {
                   final uid = ref.read(currentUserIdProvider);
@@ -193,7 +173,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
               Expanded(
                 child: _bulkBtn(
                   label: 'Log payments (${_picked.length})',
-                  icon: Icons.add_card_rounded,
+                  icon: Ph.creditCard,
                   color: AerisColors.accent(context),
                   filled: true,
                   onTap: () async {
@@ -240,12 +220,11 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: cardBg,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(Rad.card),
             border: Border.all(
-                color: on
-                    ? AerisColors.accent(context)
-                    : scheme.onSurface.withValues(alpha: 0.08),
+                color: on ? context.tk.acc : context.tk.hair,
                 width: on ? 1.5 : 1),
+            boxShadow: context.tk.shadow,
           ),
           child: Row(children: [
             if (_selectMode) ...[
@@ -262,21 +241,13 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                           width: 2),
                 ),
                 child: on
-                    ? Icon(Icons.check, size: 16, color: AerisColors.onAccent(context))
+                    ? Icon(Ph.check, size: 16, color: AerisColors.onAccent(context))
                     : null,
               ),
               const SizedBox(width: 12),
             ],
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: cat.color.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: Icon(cat.icon, size: 22, color: cat.color),
-            ),
-            const SizedBox(width: 13),
+            CatTile.of(cat),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,8 +255,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
                   Text(s.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 14.5, fontWeight: FontWeight.w800)),
+                      style: Ts.rowTitle.copyWith(color: context.tk.t1)),
                   const SizedBox(height: 2),
                   Text(_renew(s.day),
                       style: TextStyle(
@@ -298,9 +268,9 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(formatRupees(s.amount),
+                MoneyText(s.amount,
                     style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w800)),
+                        fontSize: 15, fontWeight: FontWeight.w700)),
                 Text('monthly',
                     style: TextStyle(
                         fontSize: 11,
@@ -311,7 +281,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
             if (!_selectMode)
               IconButton(
                 onPressed: () => showSubActionsSheet(context, ref, s),
-                icon: Icon(Icons.more_vert,
+                icon: Icon(Ph.dotsThreeVertical,
                     size: 20, color: scheme.onSurfaceVariant),
               ),
           ]),
@@ -320,40 +290,13 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
     );
   }
 
-  Widget _empty(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 40),
-      child: Column(children: [
-        Container(
-          width: 68,
-          height: 68,
-          decoration: BoxDecoration(
-              color: scheme.onSurface.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(22)),
-          child: Icon(Icons.autorenew_rounded,
-              size: 34, color: scheme.onSurfaceVariant),
-        ),
-        const SizedBox(height: 14),
-        const Text('No subscriptions yet',
-            style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 5),
-        Text('Track Netflix, Spotify, rent and more.',
-            style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: () => showAddSubSheet(context, ref),
-          style: FilledButton.styleFrom(
-            backgroundColor: AerisColors.accent(context),
-            foregroundColor: AerisColors.onAccent(context),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
-          ),
-          child: const Text('Add subscription'),
-        ),
-      ]),
-    );
-  }
+  Widget _empty(BuildContext context) => EmptyState(
+        icon: Ph.arrowsClockwise,
+        title: 'No subscriptions yet',
+        body: 'Track Netflix, Spotify, rent and more.',
+        cta: 'Add subscription',
+        onCta: () => showAddSubSheet(context, ref),
+      );
 
   Widget _pill(
       {required String label,
@@ -377,7 +320,7 @@ class _SubscriptionsBodyState extends ConsumerState<SubscriptionsBody> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
         decoration:
-            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(99)),
+            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Rad.chip)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 16, color: fg),
           const SizedBox(width: 5),
@@ -550,17 +493,17 @@ class _AddSubSheetState extends ConsumerState<_AddSubSheet> {
             ),
           ),
           const SizedBox(height: 14),
-          _field(_name, Icons.subscriptions_outlined, 'Service name'),
+          _field(_name, Ph.repeat, 'Service name'),
           const SizedBox(height: 10),
           Row(children: [
             Expanded(
-              child: _field(_amount, Icons.payments_outlined, 'Amount',
+              child: _field(_amount, Ph.money, 'Amount',
                   number: true),
             ),
             const SizedBox(width: 10),
             SizedBox(
               width: 110,
-              child: _field(_day, Icons.event_outlined, 'Day', number: true),
+              child: _field(_day, Ph.calendarBlank, 'Day', number: true),
             ),
           ]),
           const SizedBox(height: 16),
@@ -708,14 +651,14 @@ void showSubActionsSheet(BuildContext context, WidgetRef ref, Subscription s) {
             subtitle: Text('${formatRupees(s.amount)} · day ${s.day}'),
           ),
           const Divider(height: 1),
-          row(Icons.add_card_rounded, "Log this month's payment", () async {
+          row(Ph.creditCard, "Log this month's payment", () async {
             Navigator.pop(ctx);
             final already = subscriptionPaidThisMonth(ref, s);
             if (already != null) {
               final again = await showDialog<bool>(
                 context: context,
                 builder: (d) => AlertDialog(
-                  icon: const Icon(Icons.copy_all_outlined),
+                  icon: const Icon(Ph.copy),
                   title: const Text('Already paid this month?'),
                   content: Text('There is already a '
                       '${formatRupees(s.amount, raw: true)} payment to '
@@ -740,11 +683,11 @@ void showSubActionsSheet(BuildContext context, WidgetRef ref, Subscription s) {
                   const SnackBar(content: Text('Payment logged')));
             }
           }),
-          row(Icons.edit_outlined, 'Edit subscription', () {
+          row(Ph.pencilSimple, 'Edit subscription', () {
             Navigator.pop(ctx);
             showAddSubSheet(context, ref, edit: s);
           }),
-          row(Icons.delete_outline_rounded, 'Remove subscription', () async {
+          row(Ph.trash, 'Remove subscription', () async {
             Navigator.pop(ctx);
             final uid = ref.read(currentUserIdProvider);
             if (uid != null) {

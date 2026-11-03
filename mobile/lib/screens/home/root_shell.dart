@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -35,28 +36,34 @@ import '../../providers/privacy_provider.dart';
 import '../../providers/currency_provider.dart';
 import '../../utils/motion.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 import '../analytics/analytics_screen.dart';
-import '../loans/loans_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../profile/profile_screen.dart';
 import '../transactions/transactions_screen.dart';
 import 'home_screen.dart';
 
-// ── Nav geometry ──────────────────────────────────────────────
-const _kNavH = 88.0; // total height of nav area (pill + margin)
-const _kFabSize = 58.0;
-const _kNavBarH = 64.0; // nav pill height
 
-// ── Radial menu (hold +) ──────────────────────────────────────
-const _kA0 = 162.0 * math.pi / 180; // start angle in radians
-const _kA1 = 18.0 * math.pi / 180; // end angle in radians
-const _kR = 134.0; // orbit radius, px (five actions)
-const _kRWide = 160.0; // with a sixth, where the screen is wide enough
+// ── Nav geometry (AERIS Design System · Navigation) ───────────
+// A floating glass pill, 64 dp tall and 16 dp off the bottom, with a centre
+// gap for the 56 dp hero-gradient "+".
+const _kNavBarH = 64.0; // the pill
+const _kNavGap = 16.0; // pill → screen bottom (above the system inset)
+const _kNavH = _kNavBarH + _kNavGap + 8; // space the tab pages leave
+const _kNavMaxW = 340.0;
+const _kFabSize = 56.0;
+
+// ── Radial quick-add: five actions fan out on an arc around "+" ─
+// 30° apart on a 150 dp radius, centred 16 dp above the "+" so the lowest
+// labels clear the nav pill and no label touches a neighbouring disc.
+const _kFanR = 150.0;
+const _kFanLift = 16.0;
+const _kFanAngles = [150.0, 120.0, 90.0, 60.0, 30.0];
 
 class _FabAction {
   final IconData icon;
   final String label;
-  final Color color;
+  final Color? color; // null = the theme's "money in" green
   final VoidCallback Function(BuildContext, WidgetRef) action;
   const _FabAction({
     required this.icon,
@@ -68,42 +75,36 @@ class _FabAction {
 
 final _fabActions = [
   _FabAction(
-    icon: Icons.mic_rounded,
+    icon: Ph.microphone,
     label: 'Voice',
-    color: AerisColors.violet,
+    color: const Color(0xFF8A7ED3),
     action: (ctx, _) => () => Navigator.pushNamed(ctx, AppRoutes.voice),
   ),
   _FabAction(
-    icon: Icons.bolt_rounded,
+    icon: Ph.lightning,
     label: 'Quick',
-    color: AerisColors.arc,
+    color: const Color(0xFFB0902F),
     action: (ctx, _) => () => Navigator.pushNamed(ctx, AppRoutes.quickAdd),
   ),
   _FabAction(
-    icon: Icons.image_search_rounded,
+    icon: Ph.scan,
     label: 'Scan',
-    color: AerisColors.info,
+    color: const Color(0xFF2FA287),
     action: (ctx, _) => () => Navigator.pushNamed(ctx, AppRoutes.screenshot),
   ),
   _FabAction(
-    icon: Icons.south_west_rounded,
+    icon: Ph.arrowUpRight,
     label: 'Spent',
-    color: AerisColors.coral,
+    color: const Color(0xFFC97A52),
     action: (ctx, _) => () => Navigator.pushNamed(ctx, AppRoutes.addTxn,
         arguments: TxnDirection.debit),
   ),
   _FabAction(
-    icon: Icons.north_east_rounded,
+    icon: Ph.arrowDownLeft,
     label: 'Received',
-    color: AerisColors.mint,
+    color: null,
     action: (ctx, _) => () => Navigator.pushNamed(ctx, AppRoutes.addTxn,
         arguments: TxnDirection.credit),
-  ),
-  _FabAction(
-    icon: Icons.handshake_outlined,
-    label: 'Lent',
-    color: AerisColors.amber,
-    action: (ctx, ref) => () => showAddLoanSheet(ctx, ref),
   ),
 ];
 
@@ -116,10 +117,10 @@ class _TabItem {
 }
 
 const _tabs = [
-  _TabItem(Icons.home_outlined, Icons.home_rounded, 'Home'),
-  _TabItem(Icons.receipt_long_outlined, Icons.receipt_long_rounded, 'Activity'),
-  _TabItem(Icons.insights_outlined, Icons.insights_rounded, 'Insights'),
-  _TabItem(Icons.person_outline_rounded, Icons.person_rounded, 'Me'),
+  _TabItem(Ph.house, PhFill.house, 'Home'),
+  _TabItem(Ph.listBullets, PhFill.listBullets, 'Activity'),
+  _TabItem(Ph.chartPieSlice, PhFill.chartPieSlice, 'Insights'),
+  _TabItem(Ph.userCircle, PhFill.userCircle, 'Me'),
 ];
 
 // ── Root Shell ────────────────────────────────────────────────
@@ -147,8 +148,8 @@ class _RootShellState extends ConsumerState<RootShell>
     super.initState();
     _fabCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
-      reverseDuration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 450),
+      reverseDuration: const Duration(milliseconds: 400),
     );
     // The user's own categories join the built-in list everywhere.
     ref.listenManual(customCategoriesProvider, (_, next) {
@@ -305,6 +306,45 @@ class _RootShellState extends ConsumerState<RootShell>
     reduceMotion(context) ? _fabCtrl.value = 0 : _fabCtrl.reverse();
   }
 
+  /// System back: close the add menu first, then step back to Home, and only
+  /// leave the app from Home.
+  Widget _backGuard(Widget child) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          if (_fabOpen) {
+            _closeFab();
+          } else if (_idx != 0) {
+            setState(() => _idx = 0);
+          } else {
+            SystemNavigator.pop();
+          }
+        },
+        child: child,
+      );
+
+  /// On the rail (tablets) holding Add lists the same quick-add actions the
+  /// phone's radial fan shows.
+  void _showAddSheet(BuildContext context) {
+    HapticFeedback.mediumImpact();
+    showDsSheet<void>(
+      context,
+      title: 'Add',
+      builder: (ctx) => ListGroup(inset: 68, children: [
+        for (final a in _fabActions)
+          DsRow(
+            minHeight: 56,
+            leading: CatTile(color: a.color ?? ctx.tk.ok, icon: a.icon),
+            title: a.label,
+            onTap: () {
+              Navigator.pop(ctx);
+              a.action(context, ref)();
+            },
+          ),
+      ]),
+    );
+  }
+
   void _scheduleAuraSync() {
     _auraDebounce?.cancel();
     _auraDebounce = Timer(const Duration(milliseconds: 500), () {
@@ -423,6 +463,8 @@ class _RootShellState extends ConsumerState<RootShell>
       risky.length == 1
           ? '$names is on track to exceed its budget this month.'
           : '$names${risky.length > 2 ? ' & more' : ''} are on track to exceed budget this month.',
+      route: AppRoutes.budgets,
+      actions: const [('See budgets', AppRoutes.budgets)],
     );
     await prefs.setString('last_budget_alert', today);
   }
@@ -464,33 +506,72 @@ class _RootShellState extends ConsumerState<RootShell>
       });
     });
 
-    return Scaffold(
+    // TickerMode pauses every AnimationController in a tab's subtree while
+    // it's off-screen. IndexedStack keeps all four tabs mounted (for instant
+    // switching), so without this the list shimmers etc. would keep
+    // repainting at 60fps on hidden tabs.
+    final pages = IndexedStack(
+      index: _idx,
+      children: List.generate(4, (i) {
+        // Unvisited tabs are cheap placeholders until first opened.
+        if (!_visited.contains(i)) return const SizedBox.shrink();
+        final Widget page = switch (i) {
+          0 => const HomeScreen(),
+          1 => const TransactionsScreen(),
+          2 => const AnalyticsScreen(),
+          _ => const MeTab(),
+        };
+        return TickerMode(enabled: _idx == i, child: page);
+      }),
+    );
+    void onTabTap(int i) {
+      _closeFab();
+      if (i == _idx) return;
+      HapticFeedback.selectionClick();
+      // Home keeps its state across tab switches (entrance animations play
+      // once per session) — re-mounting it on every tap rebuilt and
+      // re-animated the whole dashboard.
+      setState(() {
+        _visited.add(i);
+        _idx = i;
+      });
+    }
+
+    // Tablets and unfolded foldables (600 dp+): the floating pill becomes a
+    // left navigation rail with Add at the top.
+    if (MediaQuery.sizeOf(context).width >= 600) {
+      return _backGuard(Scaffold(
+        body: Row(children: [
+          _NavRail(
+            idx: _idx,
+            onTabTap: onTabTap,
+            onAdd: _add,
+            onAddHold: () => _showAddSheet(context),
+          ),
+          Expanded(child: pages),
+        ]),
+      ));
+    }
+
+    return _backGuard(Scaffold(
       body: Stack(
         children: [
           // ── Tab pages ───────────────────────────────────────
           Padding(
             padding: const EdgeInsets.only(bottom: _kNavH),
-            // TickerMode pauses every AnimationController in a tab's subtree
-            // while it's off-screen. IndexedStack keeps all four tabs mounted
-            // (for instant switching), so without this the list shimmers etc.
-            // would keep repainting at 60fps on hidden tabs.
-            child: IndexedStack(
-              index: _idx,
-              children: List.generate(4, (i) {
-                // Unvisited tabs are cheap placeholders until first opened.
-                if (!_visited.contains(i)) return const SizedBox.shrink();
-                final Widget page = switch (i) {
-                  0 => const HomeScreen(),
-                  1 => const TransactionsScreen(),
-                  2 => const AnalyticsScreen(),
-                  _ => const ProfileScreen(),
-                };
-                return TickerMode(enabled: _idx == i, child: page);
-              }),
-            ),
+            child: pages,
+          ),
+
+          // ── Nav pill ────────────────────────────────────────
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _NavBar(idx: _idx, onTabTap: onTabTap),
           ),
 
           // ── Radial menu (scrim + action buttons), shown on hold ─
+          // Above the pill so the scrim dims it too.
           _FabMenu(
             controller: _fabCtrl,
             actions: _fabActions,
@@ -501,47 +582,32 @@ class _RootShellState extends ConsumerState<RootShell>
             },
           ),
 
-          // ── Nav bar + add button ────────────────────────────
+          // ── Add button, above the scrim ─────────────────────
           Positioned(
-            bottom: 0,
+            bottom: MediaQuery.paddingOf(context).bottom +
+                _kNavGap +
+                (_kNavBarH - _kFabSize) / 2,
             left: 0,
             right: 0,
-            child: _NavBar(
-              idx: _idx,
-              fabCtrl: _fabCtrl,
-              onTabTap: (i) {
-                _closeFab();
-                if (i == _idx) return;
-                HapticFeedback.selectionClick();
-                // Home keeps its state across tab switches (entrance
-                // animations play once per session) — re-mounting it on every
-                // tap rebuilt and re-animated the whole dashboard.
-                setState(() {
-                  _visited.add(i);
-                  _idx = i;
-                });
-              },
-              onAdd: _add,
-              onAddHold: _openFab,
+            child: Center(
+              child: _AddButton(
+                  controller: _fabCtrl, onTap: _add, onHold: _openFab),
             ),
           ),
         ],
       ),
-    );
+    ));
   }
 }
 
-/// Vertical distance from the screen bottom to the add button's centre.
+/// Distance from the screen bottom to the "+" button's centre.
 double _fabCenterFromBottom(BuildContext context) =>
-    MediaQuery.paddingOf(context).bottom +
-    10 +
-    _kNavBarH -
-    _kFabSize * 0.62 +
-    _kFabSize / 2;
+    MediaQuery.paddingOf(context).bottom + _kNavGap + _kNavBarH / 2;
 
-// ── Radial menu: scrim + all action buttons in ONE AnimatedBuilder ───────────
-// One builder per frame (instead of one per button + a blur builder), and a
-// flat fading scrim (no BackdropFilter) — the reliable, jank-free path.
+// ── Radial menu: scrim + the six actions in ONE AnimatedBuilder ──────────────
+// Actions fan out on an arc around "+" with a 30 ms stagger (closing reverses it);
+// the scrim fades over 250 ms. Driven by the controller alone — no setState —
+// so opening it never rebuilds the tab pages.
 class _FabMenu extends StatelessWidget {
   final AnimationController controller;
   final List<_FabAction> actions;
@@ -555,83 +621,70 @@ class _FabMenu extends StatelessWidget {
     required this.onAction,
   });
 
-  // Curve over a sub-interval [start,end] of the controller value.
-  static double _seg(double v, double start, double end, Curve curve) {
+  static double _seg(double v, double start, double end) {
     if (end <= start) return v >= end ? 1.0 : 0.0;
-    return curve.transform(((v - start) / (end - start)).clamp(0.0, 1.0));
+    return Mo.curve.transform(((v - start) / (end - start)).clamp(0.0, 1.0));
   }
 
   @override
   Widget build(BuildContext context) {
-    const btnSize = 52.0;
-    const slot = btnSize + 24; // room for the label under each disc
-    const totalSec = 0.48;
+    final tk = context.tk;
+    const disc = 52.0;
+    const slot = 96.0;
+    // Disc centre → item bottom: half the disc, the gap, the 22 dp label pill.
+    const below = disc / 2 + 6 + 22;
     final centerBottom = _fabCenterFromBottom(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final cx = width / 2;
     final n = actions.length;
-    final cx = MediaQuery.sizeOf(context).width / 2;
-    // A sixth action needs a wider orbit to keep the discs apart — as wide
-    // as the screen allows without pushing the outer two off its edge.
-    final r = n <= 5
-        ? _kR
-        : ((cx - btnSize / 2 - 8) / math.cos(_kA1)).clamp(_kR, _kRWide);
+    // Narrow phones: tighten the arc so the side labels stay on screen.
+    final r = math.min(_kFanR, (cx - slot / 2 - 4) / math.cos(math.pi / 6));
 
-    // Precompute, once, the per-button geometry and the *static* button
-    // content. The AnimatedBuilder below then only wraps these with
-    // Positioned/Opacity/scale every frame — it never rebuilds the glows,
-    // icons or text — so open/close stays smooth.
-    final geom = <(double orbX, double orbY, double delay)>[];
-    final content = <Widget>[];
-    for (var i = 0; i < n; i++) {
-      final t = n == 1 ? 0.5 : i / (n - 1);
-      final ang = _kA0 + (_kA1 - _kA0) * t;
-      geom.add(
-          (math.cos(ang) * r, math.sin(ang) * r, (t - 0.5).abs() * 0.12));
-      final a = actions[i];
-      content.add(Semantics(
-        button: true,
-        label: a.label,
-        child: GestureDetector(
-          onTap: () => onAction(i),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+    final content = <Widget>[
+      for (var i = 0; i < n; i++)
+        Semantics(
+          button: true,
+          label: actions[i].label,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onAction(i),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
               Container(
-                width: btnSize,
-                height: btnSize,
-                // A plain surface disc; the icon carries the action's tint.
+                width: disc,
+                height: disc,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AerisColors.card(context),
-                  border: Border.all(color: AerisColors.line(context)),
-                  boxShadow: const [
-                    BoxShadow(
-                        color: Color(0x33000000),
-                        blurRadius: 14,
-                        offset: Offset(0, 4))
-                  ],
+                  color: tk.raised,
+                  border: tk.isDark ? Border.all(color: tk.hair) : null,
+                  boxShadow: tk.shadowRaised,
                 ),
-                child: Icon(a.icon, color: a.color, size: 23),
+                child: Icon(actions[i].icon,
+                    color: actions[i].color ?? tk.ok, size: 24),
               ),
-              const SizedBox(height: 7),
-              Text(
-                a.label,
-                maxLines: 1,
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                  shadows: [Shadow(blurRadius: 4, color: Colors.black54)],
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: tk.raised,
+                  borderRadius: BorderRadius.circular(11),
+                  border: tk.isDark ? Border.all(color: tk.hair) : null,
+                  boxShadow: tk.shadowRaised,
                 ),
+                child: Text(actions[i].label,
+                    maxLines: 1,
+                    style: TextStyle(
+                        fontSize: 12,
+                        height: 16 / 12,
+                        fontWeight: FontWeight.w600,
+                        color: tk.t1)),
               ),
-            ],
+            ]),
           ),
         ),
-      ));
-    }
+    ];
 
-    // Positioned.fill MUST be the outermost widget: _FabMenu is a direct child
-    // of the shell's Stack, and Positioned only works when its render child's
-    // parent is that Stack.
+    // Total timeline: 300 ms per item + 30 ms × 5 stagger = 450 ms.
+    const total = 450.0;
     return Positioned.fill(
       child: RepaintBoundary(
         child: AnimatedBuilder(
@@ -639,64 +692,52 @@ class _FabMenu extends StatelessWidget {
           builder: (context, _) {
             final v = controller.value;
             if (v == 0) return const SizedBox.shrink();
-            const scrim = Color(0xFF03050A);
             final closing = controller.status == AnimationStatus.reverse;
-
             final children = <Widget>[
-              // Scrim — lighter at the top, near-opaque where the buttons sit.
               Positioned.fill(
                 child: IgnorePointer(
                   ignoring: closing,
                   child: GestureDetector(
                     onTap: onClose,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          stops: const [0.0, 0.45, 1.0],
-                          colors: [
-                            scrim.withValues(alpha: 0.55 * v),
-                            scrim.withValues(alpha: 0.80 * v),
-                            scrim.withValues(alpha: 0.94 * v),
-                          ],
-                        ),
+                    // A soft blur under the scrim so page text can't read
+                    // through the labels. It only exists while the menu is up.
+                    child: ClipRect(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(
+                            sigmaX: 6 * _seg(v, 0, 250 / total),
+                            sigmaY: 6 * _seg(v, 0, 250 / total)),
+                        child: ColoredBox(
+                            color: tk.scrim.withValues(
+                                alpha:
+                                    tk.scrim.a * _seg(v, 0, 250 / total))),
                       ),
                     ),
                   ),
                 ),
               ),
             ];
-
             for (var i = 0; i < n; i++) {
-              final (orbX, orbY, delay) = geom[i];
-              // Middle pops first, outers last.
-              final p = _seg(
-                  v,
-                  delay / totalSec,
-                  ((delay + 0.42) / totalSec).clamp(0.0, 1.0),
-                  Curves.easeOutBack);
-              final op = _seg(v, delay / totalSec,
-                  ((delay + 0.28) / totalSec).clamp(0.0, 1.0), Curves.easeOut);
-              final sc = 0.2 + 0.8 * p;
-
+              final a = _kFanAngles[i] * math.pi / 180;
+              final dx = math.cos(a) * r, dy = math.sin(a) * r + _kFanLift;
+              final start = i * 30 / total;
+              final p = _seg(v, start, start + 300 / total);
               children.add(Positioned(
-                left: cx + orbX * p - slot / 2,
-                bottom: centerBottom + orbY * p - btnSize / 2,
+                left: cx + dx * p - slot / 2,
+                bottom: centerBottom + dy * p - below,
                 child: IgnorePointer(
-                  ignoring: op < 0.1 || closing,
+                  ignoring: p < 0.6 || closing,
                   child: Opacity(
-                    opacity: op.clamp(0.0, 1.0),
+                    opacity: p,
                     child: Transform.scale(
-                      scale: sc,
-                      alignment: Alignment.topCenter,
+                      scale: 0.4 + 0.6 * p,
+                      // Grow from the disc centre (26 of the 80 dp item).
+                      alignment: const Alignment(0, -0.35),
                       child: SizedBox(width: slot, child: content[i]),
                     ),
                   ),
                 ),
               ));
             }
-
             return Stack(clipBehavior: Clip.none, children: children);
           },
         ),
@@ -705,123 +746,86 @@ class _FabMenu extends StatelessWidget {
   }
 }
 
-// ── Nav bar ───────────────────────────────────────────────────
+// ── Nav bar: the floating pill ────────────────────────────────
 class _NavBar extends StatelessWidget {
   final int idx;
-  final AnimationController fabCtrl;
   final ValueChanged<int> onTabTap;
-  final VoidCallback onAdd;
-  final VoidCallback onAddHold;
 
-  const _NavBar({
-    required this.idx,
-    required this.fabCtrl,
-    required this.onTabTap,
-    required this.onAdd,
-    required this.onAddHold,
-  });
+  const _NavBar({required this.idx, required this.onTabTap});
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final accent = AerisColors.accent(context);
-    final inactive = AerisColors.muted(context);
+    final width =
+        math.min(_kNavMaxW, MediaQuery.sizeOf(context).width - 2 * 16);
 
     return SizedBox(
-      height: _kNavBarH + bottomInset + 22,
+      height: _kNavBarH + _kNavGap + bottomInset,
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.bottomCenter,
         children: [
-          // ── The pill ───────────────────────────────────────
           Positioned(
-            left: 16,
-            right: 16,
-            bottom: bottomInset + 10,
-            // No BackdropFilter: a live blur under the bar re-rendered on every
-            // scrolled frame — the main source of app-wide scroll jitter.
+            bottom: bottomInset + _kNavGap,
             child: RepaintBoundary(
+              // Glass without a live blur: a backdrop blur under the bar
+              // re-rendered every scrolled frame (app-wide scroll jitter), so
+              // the pill uses the glass tone at near-opacity instead.
               child: Container(
+                width: width,
                 height: _kNavBarH,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
                 decoration: BoxDecoration(
-                  color: AerisColors.card(context),
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(color: AerisColors.line(context)),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withValues(alpha: dark ? 0.35 : 0.08),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8)),
-                  ],
+                  color: tk.glass.withValues(alpha: 0.96),
+                  borderRadius: BorderRadius.circular(_kNavBarH / 2),
+                  border: Border.all(
+                      color: tk.isDark ? tk.hair : tk.glassEdge),
+                  boxShadow: tk.navShadow,
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Row(
-                    children: [
-                      _item(context, 0, accent, inactive),
-                      _item(context, 1, accent, inactive),
-                      const SizedBox(width: _kFabSize + 14), // add-button gap
-                      _item(context, 2, accent, inactive),
-                      _item(context, 3, accent, inactive),
-                    ],
-                  ),
-                ),
+                child: Row(children: [
+                  _item(context, 0),
+                  _item(context, 1),
+                  const SizedBox(width: 76), // the "+" gap
+                  _item(context, 2),
+                  _item(context, 3),
+                ]),
               ),
             ),
-          ),
-
-          // ── Add button — sits on the pill's top edge ────────
-          Positioned(
-            bottom: bottomInset + 10 + _kNavBarH - _kFabSize * 0.62,
-            child: _AddButton(
-                controller: fabCtrl, onTap: onAdd, onHold: onAddHold),
           ),
         ],
       ),
     );
   }
 
-  Widget _item(BuildContext context, int tabIdx, Color active, Color inactive) {
+  Widget _item(BuildContext context, int tabIdx) {
+    final tk = context.tk;
     final tab = _tabs[tabIdx];
     final selected = idx == tabIdx;
+    final color = selected ? tk.acc : tk.t2;
     return Expanded(
       child: Semantics(
         button: true,
         selected: selected,
         label: tab.label,
+        excludeSemantics: true,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => onTabTap(tabIdx),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? AerisColors.accentSoft(context)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Icon(
-                  selected ? tab.selectedIcon : tab.icon,
-                  size: 22,
-                  color: selected ? active : inactive,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                tab.label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? active : inactive,
-                ),
-              ),
+              Icon(selected ? tab.selectedIcon : tab.icon,
+                  size: 22, color: color),
+              const SizedBox(height: 1),
+              Text(tab.label,
+                  maxLines: 1,
+                  style: TextStyle(
+                      fontSize: 11,
+                      height: 14 / 11,
+                      fontWeight:
+                          selected ? FontWeight.w700 : FontWeight.w600,
+                      color: color)),
             ],
           ),
         ),
@@ -830,8 +834,8 @@ class _NavBar extends StatelessWidget {
   }
 }
 
-/// The glowing arc "+": tap to add an expense, hold to fan out the radial
-/// menu. Presses down slightly, and turns into × while the menu is open.
+/// The 56 dp hero-gradient "+": tap to add an expense, hold to fan out the
+/// quick-add actions. Pressed = 0.98 scale; open = neutral, rotated to ×.
 class _AddButton extends StatefulWidget {
   final AnimationController controller;
   final VoidCallback onTap;
@@ -852,7 +856,7 @@ class _AddButtonState extends State<_AddButton> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final tk = context.tk;
     return Semantics(
       button: true,
       label: 'Add transaction',
@@ -867,40 +871,128 @@ class _AddButtonState extends State<_AddButton> {
           widget.onHold();
         },
         child: AnimatedScale(
-          scale: _down ? 0.92 : 1,
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
-          child: Container(
-            width: _kFabSize,
-            height: _kFabSize,
-            decoration: BoxDecoration(
-              gradient:
-                  dark ? AerisColors.arcGradient : AerisColors.heroGradient,
-              shape: BoxShape.circle,
-              border: Border.all(color: AerisColors.canvas(context), width: 4),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: dark ? 0.40 : 0.18),
-                  blurRadius: 14,
-                  offset: const Offset(0, 5),
-                )
-              ],
-            ),
-            child: AnimatedBuilder(
-              animation: widget.controller,
-              builder: (_, child) => Transform.rotate(
-                // 135°: + becomes × over the first ~70% of the open animation.
-                angle: Curves.easeOut.transform(
-                        (widget.controller.value / 0.7).clamp(0.0, 1.0)) *
-                    (3 * math.pi / 4),
-                child: child,
-              ),
-              child: Icon(Icons.add_rounded,
-                  color: dark ? const Color(0xFF0F1115) : Colors.white,
-                  size: 30),
-            ),
+          scale: _down ? 0.98 : 1,
+          duration: Mo.press,
+          curve: Mo.curve,
+          child: AnimatedBuilder(
+            animation: widget.controller,
+            builder: (_, __) {
+              final v = Mo.curve
+                  .transform((widget.controller.value / 0.55).clamp(0.0, 1.0));
+              final open = v > 0.5;
+              return Container(
+                width: _kFabSize,
+                height: _kFabSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: open ? null : tk.hero,
+                  color: open ? tk.raised : null,
+                  border: open ? Border.all(color: tk.hair2) : null,
+                  boxShadow: open ? null : tk.navShadow,
+                ),
+                child: Transform.rotate(
+                  angle: v * math.pi / 4,
+                  child: Icon(PhBold.plus,
+                      size: 24, color: open ? tk.t1 : tk.onHero),
+                ),
+              );
+            },
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Navigation rail (600 dp+) ─────────────────────────────────
+// The tablet form of the nav: Add (hero gradient) at the top, then the four
+// tabs; the active one gets the filled icon and accent label.
+class _NavRail extends StatelessWidget {
+  final int idx;
+  final ValueChanged<int> onTabTap;
+  final VoidCallback onAdd;
+  final VoidCallback onAddHold;
+  const _NavRail({
+    required this.idx,
+    required this.onTabTap,
+    required this.onAdd,
+    required this.onAddHold,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      width: 88,
+      decoration: BoxDecoration(
+        color: tk.surface,
+        border: Border(right: BorderSide(color: tk.hair)),
+      ),
+      child: SafeArea(
+        right: false,
+        child: Column(children: [
+          const SizedBox(height: 16),
+          Semantics(
+            button: true,
+            label: 'Add transaction',
+            hint: 'Long press for more ways to add.',
+            child: GestureDetector(
+              onTap: onAdd,
+              onLongPress: onAddHold,
+              child: Container(
+                width: _kFabSize,
+                height: _kFabSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: tk.hero,
+                  boxShadow: tk.navShadow,
+                ),
+                child: Icon(PhBold.plus, size: 24, color: tk.onHero),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          for (var i = 0; i < _tabs.length; i++)
+            Semantics(
+              button: true,
+              selected: idx == i,
+              label: _tabs[i].label,
+              excludeSemantics: true,
+              child: InkWell(
+                onTap: () => onTabTap(i),
+                child: SizedBox(
+                  width: 88,
+                  height: 68,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AnimatedContainer(
+                        duration: Mo.standard,
+                        curve: Mo.curve,
+                        width: 56,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: idx == i ? tk.accSoft : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                            idx == i ? _tabs[i].selectedIcon : _tabs[i].icon,
+                            size: 22,
+                            color: idx == i ? tk.acc : tk.t2),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(_tabs[i].label,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight:
+                                  idx == i ? FontWeight.w700 : FontWeight.w600,
+                              color: idx == i ? tk.acc : tk.t2)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ]),
       ),
     );
   }

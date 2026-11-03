@@ -16,6 +16,7 @@ import '../../services/nlu_parser.dart';
 import '../../services/voice_service.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 enum _Phase { starting, listening, processing, review, denied, unavailable }
 
@@ -142,9 +143,8 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: dark ? const Color(0xFF0B1416) : const Color(0xFF06292B),
+      backgroundColor: AerisTokens.graphite.bg, // immersive: graphite in both themes
       body: SafeArea(
         child: Stack(
           children: [
@@ -152,7 +152,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
               top: 8,
               right: 8,
               child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white70),
+                icon: const Icon(Ph.x, color: Colors.white70),
                 onPressed: () => Navigator.pop(context),
               ),
             ),
@@ -188,19 +188,19 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
               width: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: AerisColors.heroGradient,
+                gradient: AerisTokens.graphite.hero,
                 boxShadow: [
                   BoxShadow(
                     color: AerisColors.accent(context)
-                        .withValues(alpha: 0.5 + level * 0.4),
-                    blurRadius: 50 + level * 60,
-                    spreadRadius: 4 + level * 10,
+                        .withValues(alpha: 0.16 + level * 0.3),
+                    blurRadius: 24 + level * 40,
+                    spreadRadius: level * 8,
                   ),
                 ],
               ),
               child: Icon(
-                _phase == _Phase.processing ? Icons.hourglass_top : Icons.mic,
-                color: Colors.white,
+                _phase == _Phase.processing ? Ph.hourglass : Ph.microphone,
+                color: AerisTokens.graphite.onHero,
                 size: 46,
               ),
             ),
@@ -233,7 +233,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
               if (_phase == _Phase.denied)
                 FilledButton.icon(
                   onPressed: _begin,
-                  icon: const Icon(Icons.refresh),
+                  icon: const Icon(Ph.arrowClockwise),
                   label: const Text('Try again'),
                 ),
               const SizedBox(height: 8),
@@ -258,7 +258,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
         TextButton.icon(
           onPressed: () =>
               Navigator.pushReplacementNamed(context, AppRoutes.quickAdd),
-          icon: const Icon(Icons.keyboard_alt_outlined,
+          icon: const Icon(Ph.keyboard,
               size: 18, color: Colors.white70),
           label: const Text('Type it instead',
               style: TextStyle(
@@ -274,7 +274,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.hearing_disabled, color: Colors.white54, size: 48),
+          const Icon(Ph.earSlash, color: Colors.white54, size: 48),
           const SizedBox(height: 14),
           if (_partial.isNotEmpty)
             Text('"$_partial"',
@@ -286,7 +286,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
           const SizedBox(height: 20),
           FilledButton.icon(
               onPressed: _begin,
-              icon: const Icon(Icons.mic),
+              icon: const Icon(Ph.microphone),
               label: const Text('Try again')),
         ],
       );
@@ -311,7 +311,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _begin,
-                icon: const Icon(Icons.mic, color: Colors.white),
+                icon: const Icon(Ph.microphone, color: Colors.white),
                 label:
                     const Text('Redo', style: TextStyle(color: Colors.white)),
                 style: OutlinedButton.styleFrom(
@@ -324,7 +324,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
               flex: 2,
               child: FilledButton.icon(
                 onPressed: _saveAll,
-                icon: const Icon(Icons.check),
+                icon: const Icon(Ph.check),
                 label: Text('Save ${_results.length}'),
                 style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14)),
@@ -377,7 +377,7 @@ class _VoiceCaptureScreenState extends ConsumerState<VoiceCaptureScreen> {
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close, color: Colors.white38, size: 18),
+            icon: const Icon(Ph.x, color: Colors.white38, size: 18),
             onPressed: () => setState(() {
               final next = [..._results]..removeAt(i);
               _results = next;

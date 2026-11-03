@@ -105,6 +105,8 @@ class ReminderScheduler {
     ('notif_bills', 'Bills & card dues', 'The day before each is due'),
     ('notif_shares', 'Money owed to you', 'When friends haven\'t paid their share'),
     ('notif_report', 'Monthly report card', 'On the 1st of the month'),
+    ('notif_review', 'Payments to check',
+        'When a new bank SMS needs a look'),
   ];
 
   static Future<void> refresh({
@@ -139,6 +141,7 @@ class ReminderScheduler {
         safe?.message ?? 'Today: ${formatRupees(spentToday)} spent',
         nine,
         route: AppRoutes.transactions,
+        actions: const [('See today', AppRoutes.transactions), ('Budgets', AppRoutes.budgets)],
       );
     } else {
       await n.scheduleOnce(
@@ -147,6 +150,7 @@ class ReminderScheduler {
         'See how today went against your daily limit.',
         nine.add(const Duration(days: 1)),
         route: AppRoutes.transactions,
+        actions: const [('See today', AppRoutes.transactions)],
       );
     }
 
@@ -164,6 +168,7 @@ class ReminderScheduler {
         recap == null ? 'Open AERIS for your weekly recap.' : recap.change,
         sunday,
         route: AppRoutes.insights,
+        actions: const [('Open recap', AppRoutes.insights)],
       );
     }
 
@@ -189,6 +194,7 @@ class ReminderScheduler {
         '${formatRupees(b.amount)}${b.detected ? ' (usual amount)' : ''} · tap to see your bills',
         remind,
         route: AppRoutes.bills,
+        actions: const [('See bills', AppRoutes.bills)],
       );
     }
 
@@ -216,6 +222,7 @@ class ReminderScheduler {
         '$who — tap to send a reminder.',
         at,
         route: AppRoutes.people,
+        actions: const [('Remind them', AppRoutes.people)],
       );
     }
 
@@ -235,6 +242,7 @@ class ReminderScheduler {
       'See your grade for budget, savings and habits.',
       first,
       route: AppRoutes.reportCard,
+      actions: const [('Open report card', AppRoutes.reportCard)],
     );
   }
 

@@ -1,14 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/theme.dart';
 import '../../models/category.dart';
 import '../../models/transaction.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
+import '../../utils/motion.dart';
+import '../../widgets/ds.dart';
 
-/// "Your month in money" — a Spotify-Wrapped-style swipeable recap computed
-/// entirely on-device from this month's transactions.
+/// "Your month in money" — a calm, story-style recap computed entirely
+/// on-device from this month's transactions. Tap the right side to go
+/// forward, the left side to go back; slides also advance on their own.
 class WrappedScreen extends ConsumerStatefulWidget {
   const WrappedScreen({super.key});
   @override
@@ -18,6 +25,8 @@ class WrappedScreen extends ConsumerStatefulWidget {
 class _WrappedScreenState extends ConsumerState<WrappedScreen> {
   final _controller = PageController();
   int _page = 0;
+  int _count = 1;
+  Timer? _auto;
 
   static const _months = [
     '', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -25,236 +34,236 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
   ];
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _auto?.cancel();
+    if (!reduceMotion(context)) {
+      _auto = Timer.periodic(const Duration(seconds: 6), (_) => _go(1));
+    }
+  }
+
+  @override
   void dispose() {
+    _auto?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
+  void _go(int delta) {
+    final next = (_page + delta).clamp(0, _count - 1);
+    if (next == _page || !_controller.hasClients) return;
+    _controller.animateToPage(next,
+        duration: reduceMotion(context) ? const Duration(milliseconds: 1) : Mo.enter,
+        curve: Mo.curve);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final txns =
         ref.watch(transactionsStreamProvider).asData?.value ?? const <Transaction>[];
+    final profile = ref.watch(userProfileProvider).asData?.value;
+    final first = (profile?.displayName ?? '').trim().split(RegExp(r'\s+')).first;
     final now = DateTime.now();
     final stats = _compute(txns, now);
     final monthName = _months[now.month];
 
     final cards = <Widget>[
-      _card(
-        const [Color(0xFF2F8F80), Color(0xFF2A6F66)],
-        [
-          const Text('🗓️', style: TextStyle(fontSize: 52)),
-          const SizedBox(height: 18),
-          _big('$monthName\nin money'),
-          const SizedBox(height: 10),
-          _sub('A quick recap of your month. Swipe →'),
-        ],
+      _slide(
+        sub: '${first.isEmpty ? 'Your' : '$first, your'} month in money',
+        big: '$monthName in money.',
+        visual: CustomPaint(
+            size: const Size(180, 50), painter: _Spark(tk.acc)),
+        caption: 'Tap to begin',
       ),
     ];
 
     if (stats.txnCount == 0) {
-      cards.add(_card(
-        const [Color(0xFF334155), Color(0xFF1E293B)],
-        [
-          const Text('🤷', style: TextStyle(fontSize: 52)),
-          const SizedBox(height: 16),
-          _big('No activity\nyet this month'),
-          const SizedBox(height: 10),
-          _sub('Add a few transactions and check back.'),
-        ],
+      cards.add(_slide(
+        sub: 'Nothing here yet',
+        big: 'No activity yet this month.',
+        caption: 'Add a few transactions and check back.',
       ));
     } else {
-      cards.add(_card(
-        const [Color(0xFFBF433A), Color(0xFF8A3530)],
-        [
-          _sub('This month you spent'),
-          const SizedBox(height: 10),
-          _big(formatRupees(stats.spent)),
-          const SizedBox(height: 10),
-          _sub('across ${stats.txnCount} transaction'
-              '${stats.txnCount == 1 ? '' : 's'}'),
-        ],
+      cards.add(_slide(
+        sub: 'This month you spent',
+        big: formatRupees(stats.spent),
+        caption: 'across ${stats.txnCount} transaction'
+            '${stats.txnCount == 1 ? '' : 's'}',
       ));
 
       if (stats.topCat != null) {
         final c = Categories.byId(stats.topCat!);
-        cards.add(_card(
-          [c.color, Color.lerp(c.color, Colors.black, 0.4)!],
-          [
-            Icon(c.icon, color: Colors.white, size: 52),
-            const SizedBox(height: 16),
-            _sub('Your top category'),
-            const SizedBox(height: 8),
-            _big(c.label),
-            const SizedBox(height: 8),
-            _sub('${formatRupees(stats.topCatAmount)} · '
-                // Refunds lower total spend but not categories, so cap it.
-                '${(stats.spent <= 0 ? 100 : (stats.topCatAmount / stats.spent * 100).clamp(0, 100)).toStringAsFixed(0)}% of spend'),
-          ],
+        cards.add(_slide(
+          visual: CatTile.of(c, size: 64),
+          sub: 'Your top category',
+          big: '${c.label}.',
+          // Refunds lower total spend but not categories, so cap it.
+          caption: '${formatRupees(stats.topCatAmount)} · '
+              '${(stats.spent <= 0 ? 100 : (stats.topCatAmount / stats.spent * 100).clamp(0, 100)).toStringAsFixed(0)}% of spend',
         ));
       }
 
       if (stats.topMerchant != null) {
-        cards.add(_card(
-          const [Color(0xFF8A7ED3), Color(0xFF6C7FC4)],
-          [
-            const Text('🏆', style: TextStyle(fontSize: 52)),
-            const SizedBox(height: 16),
-            _sub('You spent most at'),
-            const SizedBox(height: 8),
-            _big(stats.topMerchant!),
-            const SizedBox(height: 8),
-            _sub(formatRupees(stats.topMerchantAmount)),
-          ],
+        cards.add(_slide(
+          visual: BadgeTile(icon: Ph.storefront, tint: tk.acc, size: 64),
+          sub: 'You spent most at',
+          big: '${stats.topMerchant!}.',
+          caption: formatRupees(stats.topMerchantAmount),
         ));
       }
 
       if (stats.biggestDay != null) {
-        cards.add(_card(
-          const [Color(0xFFC9952E), Color(0xFF8E5E1A)],
-          [
-            const Text('💥', style: TextStyle(fontSize: 52)),
-            const SizedBox(height: 16),
-            _sub('Your biggest day'),
-            const SizedBox(height: 8),
-            _big('${stats.biggestDay!.day} $monthName'),
-            const SizedBox(height: 8),
-            _sub('${formatRupees(stats.biggestDayAmount)} in one day'),
-          ],
+        cards.add(_slide(
+          visual: BadgeTile(icon: Ph.calendarBlank, tint: tk.warn, size: 64),
+          sub: 'Your biggest day',
+          big: '${stats.biggestDay!.day} $monthName.',
+          caption: '${formatRupees(stats.biggestDayAmount)} in one day',
         ));
       }
 
-      cards.add(_card(
-        const [Color(0xFF4C9A6C), Color(0xFF2E6E4C)],
-        [
-          Text('${stats.noSpendDays}', style: const TextStyle(
-              color: Colors.white, fontSize: 80, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 6),
-          _big('no-spend day${stats.noSpendDays == 1 ? '' : 's'}'),
-          const SizedBox(height: 10),
-          _sub(stats.noSpendDays == 0
-              ? 'Spent something every day so far.'
-              : 'Days you didn\'t spend a rupee 🎉'),
-        ],
+      cards.add(_slide(
+        sub: 'No-spend days',
+        big: '${stats.noSpendDays} day${stats.noSpendDays == 1 ? '' : 's'}.',
+        caption: stats.noSpendDays == 0
+            ? 'You spent something every day so far.'
+            : 'Days you didn\'t spend a rupee.',
       ));
 
       if (stats.momPct != null) {
         final down = stats.momPct! < 0;
-        cards.add(_card(
-          down
-              ? const [Color(0xFF4C9A6C), Color(0xFF2E6E4C)]
-              : const [Color(0xFFBF433A), Color(0xFF8A3530)],
-          [
-            Icon(down ? Icons.trending_down : Icons.trending_up,
-                color: Colors.white, size: 52),
-            const SizedBox(height: 16),
-            _sub('vs last month'),
-            const SizedBox(height: 8),
-            _big('${stats.momPct!.abs().toStringAsFixed(0)}% ${down ? 'less' : 'more'}'),
-            const SizedBox(height: 8),
-            _sub(down ? 'Nice — spending is down.' : 'Spending crept up.'),
-          ],
+        cards.add(_slide(
+          visual: BadgeTile(
+              icon: down ? PhBold.trendDown : PhBold.trendUp,
+              tint: down ? tk.ok : tk.warn,
+              size: 64),
+          sub: 'Compared with last month',
+          big: '${stats.momPct!.abs().toStringAsFixed(0)}% ${down ? 'less' : 'more'}.',
+          caption: down ? 'Nice — spending is down.' : 'Spending crept up.',
         ));
       }
 
       // Final: net + share
       final saved = stats.income - stats.spent;
-      cards.add(_card(
-        const [Color(0xFF2F8F80), Color(0xFF2A6F66)],
-        [
-          _sub(saved >= 0 ? 'You saved' : 'You overspent'),
-          const SizedBox(height: 10),
-          _big(formatRupees(saved.abs())),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF2A6F66)),
-            onPressed: () => _share(stats, monthName),
-            icon: const Icon(Icons.share),
-            label: const Text('Share my month'),
-          ),
-        ],
+      cards.add(_slide(
+        sub: saved >= 0 ? 'You saved' : 'You overspent',
+        big: formatRupees(saved.abs()),
+        bigColor: saved >= 0 ? tk.ok : tk.bad,
+        action: FilledButton.icon(
+          onPressed: () => _share(stats, monthName),
+          icon: const Icon(Ph.shareNetwork, size: 18),
+          label: const Text('Share my month'),
+        ),
       ));
     }
+    _count = cards.length;
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          PageView(
-            controller: _controller,
-            onPageChanged: (i) => setState(() => _page = i),
-            children: cards,
+      backgroundColor: tk.bg,
+      body: DecoratedBox(
+        // A quiet accent-tinted ground, never a loud gradient.
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.lerp(tk.bg, tk.acc, tk.isDark ? 0.14 : 0.16)!,
+              Color.lerp(tk.bg, tk.acc, tk.isDark ? 0.03 : 0.06)!,
+            ],
           ),
-          // Progress dots
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+        ),
+        child: SafeArea(
+          child: Column(children: [
+            // Story progress: one segment per slide.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Row(children: [
                 for (var i = 0; i < cards.length; i++)
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: i == _page ? 22 : 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: Colors.white
-                          .withValues(alpha: i == _page ? 0.95 : 0.4),
-                      borderRadius: BorderRadius.circular(4),
+                  Expanded(
+                    child: Container(
+                      height: 3,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(
+                        color: i <= _page
+                            ? tk.t1
+                            : tk.t1.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-              ],
+              ]),
             ),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 2,
-            right: 6,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white70),
-              onPressed: () => Navigator.pop(context),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+              child: Row(children: [
+                CustomPaint(size: const Size(16, 16), painter: _Mark(tk.acc)),
+                const SizedBox(width: 8),
+                Expanded(child: Overline('$monthName wrapped', color: tk.t1)),
+                IconButton(
+                  tooltip: 'Close',
+                  icon: Icon(Ph.x, color: tk.t1),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ]),
             ),
-          ),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapUp: (d) {
+                  final w = MediaQuery.sizeOf(context).width;
+                  _go(d.localPosition.dx > w / 3 ? 1 : -1);
+                },
+                child: PageView(
+                  controller: _controller,
+                  onPageChanged: (i) => setState(() => _page = i),
+                  children: cards,
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _slide({
+    required String sub,
+    required String big,
+    Widget? visual,
+    String? caption,
+    Color? bigColor,
+    Widget? action,
+  }) {
+    final tk = context.tk;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 0, 28, 48),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (visual != null) ...[visual, const SizedBox(height: 24)],
+          Text(sub,
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w500, color: tk.t2)),
+          const SizedBox(height: 12),
+          Text(big,
+              style: TextStyle(
+                  fontSize: 44,
+                  height: 52 / 44,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -1.2,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  color: bigColor ?? tk.t1)),
+          if (caption != null) ...[
+            const SizedBox(height: 16),
+            Text(caption,
+                style: TextStyle(fontSize: 14, height: 20 / 14, color: tk.t2)),
+          ],
+          if (action != null) ...[const SizedBox(height: 28), action],
         ],
       ),
     );
   }
-
-  Widget _card(List<Color> gradient, List<Widget> children) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: gradient,
-        ),
-      ),
-      padding: const EdgeInsets.all(32),
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: children,
-      ),
-    );
-  }
-
-  Widget _big(String s) => Text(
-        s,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-            color: Colors.white,
-            fontSize: 34,
-            fontWeight: FontWeight.w900,
-            height: 1.1),
-      );
-
-  Widget _sub(String s) => Text(
-        s,
-        textAlign: TextAlign.center,
-        style: const TextStyle(color: Colors.white70, fontSize: 15),
-      );
 
   void _share(_Stats s, String month) {
     final saved = s.income - s.spent;
@@ -382,4 +391,60 @@ class _Stats {
     required this.noSpendDays,
     required this.momPct,
   });
+}
+
+/// The cover's little sparkline: a rising line that ends in a dot.
+class _Spark extends CustomPainter {
+  final Color color;
+  _Spark(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+        Path()
+          ..moveTo(2, h - 4)
+          ..lineTo(w * 0.35, h * 0.45)
+          ..lineTo(w * 0.52, h * 0.65)
+          ..lineTo(w - 12, h * 0.05 + 6),
+        p);
+    canvas.drawCircle(Offset(w - 4, 4), 4, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_Spark o) => o.color != color;
+}
+
+/// The AERIS mark: an "A" whose crossbar rises to a dot.
+class _Mark extends CustomPainter {
+  final Color color;
+  _Mark(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 40;
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 4 * s
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+        Path()
+          ..moveTo(9 * s, 32 * s)
+          ..lineTo(20 * s, 8 * s)
+          ..lineTo(31 * s, 32 * s),
+        p);
+    canvas.drawLine(Offset(12.6 * s, 25 * s), Offset(24.5 * s, 19.6 * s), p);
+    canvas.drawCircle(Offset(28.6 * s, 17.8 * s), 3 * s, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_Mark o) => o.color != color;
 }

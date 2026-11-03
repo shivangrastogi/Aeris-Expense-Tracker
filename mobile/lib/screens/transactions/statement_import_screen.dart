@@ -13,6 +13,7 @@ import '../../providers/transactions_provider.dart';
 import '../../services/statement_import_service.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 class StatementImportScreen extends ConsumerStatefulWidget {
   const StatementImportScreen({super.key});
@@ -248,10 +249,10 @@ class _State extends ConsumerState<StatementImportScreen> {
                 ),
               ),
               if (!map.hasAmountSource)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
                   child: Text('Pick at least a Debit/Credit or Amount column.',
-                      style: TextStyle(color: AerisColors.warning, fontSize: 12)),
+                      style: TextStyle(color: context.tk.warn, fontSize: 12)),
                 ),
             ]),
           );
@@ -357,7 +358,7 @@ class _State extends ConsumerState<StatementImportScreen> {
           if (_stage == _Stage.review && (_parsed?.isTabular ?? false))
             IconButton(
               tooltip: 'Map columns',
-              icon: const Icon(Icons.view_column_outlined),
+              icon: const Icon(Ph.columns),
               onPressed: _openMapping,
             ),
         ],
@@ -378,7 +379,7 @@ class _State extends ConsumerState<StatementImportScreen> {
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.upload_file,
+          Icon(Ph.fileArrowUp,
               size: 64, color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: 16),
           const Text('Import from a bank statement',
@@ -396,13 +397,13 @@ class _State extends ConsumerState<StatementImportScreen> {
           const SizedBox(height: 22),
           FilledButton.icon(
             onPressed: _pick,
-            icon: const Icon(Icons.folder_open),
+            icon: const Icon(Ph.folderOpen),
             label: const Text('Choose file'),
           ),
           if (_error != null) ...[
             const SizedBox(height: 18),
             Text(_error!,
-                style: const TextStyle(color: AerisColors.debit),
+                style: TextStyle(color: context.tk.bad),
                 textAlign: TextAlign.center),
           ],
         ]),
@@ -415,7 +416,7 @@ class _State extends ConsumerState<StatementImportScreen> {
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.lock_outline, size: 56),
+          const Icon(Ph.lock, size: 56),
           const SizedBox(height: 12),
           const Text('This PDF is password-protected',
               style: TextStyle(fontWeight: FontWeight.w700)),
@@ -434,7 +435,7 @@ class _State extends ConsumerState<StatementImportScreen> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(_error!, style: const TextStyle(color: AerisColors.debit)),
+            Text(_error!, style: TextStyle(color: context.tk.bad)),
           ],
           const SizedBox(height: 16),
           FilledButton(
@@ -478,7 +479,7 @@ class _State extends ConsumerState<StatementImportScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(_error!,
-                    style: const TextStyle(color: AerisColors.debit, fontSize: 12)),
+                    style: TextStyle(color: context.tk.bad, fontSize: 12)),
               ),
           ]),
         ),
@@ -514,18 +515,18 @@ class _State extends ConsumerState<StatementImportScreen> {
                 overflow: TextOverflow.ellipsis),
           ),
           if (t.duplicate)
-            const Padding(
-              padding: EdgeInsets.only(left: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
               child: Text('• maybe dup',
-                  style: TextStyle(fontSize: 11, color: AerisColors.warning)),
+                  style: TextStyle(fontSize: 11, color: context.tk.warn)),
             ),
         ]),
         trailing: Text(
-          '${isCredit ? '+' : '-'}${formatRupees(t.amount)}',
+          '${isCredit ? '+' : kMinus}${formatRupees(t.amount)}',
           style: TextStyle(
               fontWeight: FontWeight.w700,
               color: isCredit
-                  ? AerisColors.credit
+                  ? context.tk.ok
                   : Theme.of(context).colorScheme.onSurface),
         ),
         onTap: () => _editRow(t),
@@ -550,7 +551,7 @@ class _State extends ConsumerState<StatementImportScreen> {
         padding: const EdgeInsets.all(12),
         child: FilledButton.icon(
           onPressed: count == 0 ? null : _import,
-          icon: const Icon(Icons.download_done),
+          icon: const Icon(Ph.checkCircle),
           label: Text(count == 0
               ? 'Select transactions to import'
               : 'Import $count transaction${count == 1 ? '' : 's'}'),

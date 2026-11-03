@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/app_lock_service.dart';
+import 'ds.dart';
 
 /// Wraps the authenticated app. When app-lock is enabled and the app returns
 /// from the background, it covers the UI with a lock screen until the user
@@ -17,7 +18,7 @@ class AppLockGate extends StatefulWidget {
 class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
   bool _enabled = false;
   bool _locked = false;
-  bool _wentBackground = false;
+  DateTime? _leftAt; // when the app last went to the background
   bool _authing = false;
 
   @override
@@ -39,15 +40,19 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) async {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
-      _wentBackground = true;
+      // The auth sheet itself takes the app off screen; that isn't leaving.
+      if (!_authing) _leftAt ??= DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
+      final left = _leftAt;
+      _leftAt = null;
       // Re-read the flag in case it changed in Settings this session.
       _enabled = await AppLockService.instance.isEnabled();
-      if (_enabled && _wentBackground && !_locked) {
+      final away = left != null &&
+          DateTime.now().difference(left) >= AppLockService.grace;
+      if (_enabled && away && !_locked && mounted) {
         setState(() => _locked = true);
         _promptAuth();
       }
-      _wentBackground = false;
     }
   }
 
@@ -89,7 +94,7 @@ class _LockScreen extends StatelessWidget {
             CircleAvatar(
               radius: 40,
               backgroundColor: scheme.primary.withValues(alpha: 0.12),
-              child: Icon(Icons.lock, size: 40, color: scheme.primary),
+              child: Icon(Ph.lock, size: 40, color: scheme.primary),
             ),
             const SizedBox(height: 20),
             Text('AERIS is locked',
@@ -100,7 +105,7 @@ class _LockScreen extends StatelessWidget {
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: onUnlock,
-              icon: const Icon(Icons.fingerprint),
+              icon: const Icon(Ph.fingerprint),
               label: const Text('Unlock'),
             ),
           ],

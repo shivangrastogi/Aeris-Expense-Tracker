@@ -72,6 +72,11 @@ class SyncOutbox extends ChangeNotifier {
   DateTime? _lastSynced;
 
   int get count => _count;
+
+  /// Ids of documents with writes still waiting to reach the server — rows
+  /// show a cloud-off mark for these.
+  Set<String> get pendingIds => _pendingIds;
+  Set<String> _pendingIds = const {};
   int get bytes => _bytes;
   bool get online => _online;
   bool get syncing => _syncing;
@@ -305,9 +310,18 @@ class SyncOutbox extends ChangeNotifier {
       count = (r.first['c'] as int?) ?? 0;
       bytes = (r.first['b'] as int?) ?? 0;
     }
+    var ids = const <String>{};
+    if (db != null && uid != null && count > 0) {
+      final rows = await db.rawQuery(
+          'SELECT DISTINCT path FROM $_table WHERE uid = ?', [uid]);
+      ids = {for (final row in rows) (row['path'] as String).split('/').last};
+    }
+    final idsChanged = ids.length != _pendingIds.length ||
+        !ids.containsAll(_pendingIds);
+    _pendingIds = ids;
     if (bytes > _peakBytes) _peakBytes = bytes;
     final drained = _count > 0 && count == 0;
-    final changed = count != _count || bytes != _bytes;
+    final changed = count != _count || bytes != _bytes || idsChanged;
     _count = count;
     _bytes = bytes;
     if (drained) {

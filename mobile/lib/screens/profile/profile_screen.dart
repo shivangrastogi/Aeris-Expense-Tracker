@@ -10,6 +10,10 @@ import '../../providers/transactions_provider.dart';
 import '../../providers/village_provider.dart';
 import '../../services/sync_outbox.dart';
 import '../../utils/formatters.dart';
+import '../../providers/privacy_provider.dart';
+import '../../widgets/ds.dart';
+import '../../widgets/income_text.dart';
+import '../../providers/income_lock_provider.dart';
 
 /// The "Me" tab: who you are, then everything else grouped by what it's for —
 /// Money (the things you manage), Tools (ways data gets in) and You (the fun
@@ -19,6 +23,8 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(amountHiddenProvider); // the header's "Hidden" badge
+    final tk = context.tk;
     final profile = ref.watch(userProfileProvider).asData?.value;
     final g = ref.watch(gamificationProvider);
     final pendingCount =
@@ -26,163 +32,176 @@ class ProfileScreen extends ConsumerWidget {
             .where((t) => t.needsReview)
             .length;
 
-    void go(String route) => Navigator.pushNamed(context, route);
+    // On tablets the page opens in the right-hand pane (see [MeTab]).
+    void go(String route) {
+      final pane = _MePane.maybeOf(context);
+      pane != null ? pane(route) : Navigator.pushNamed(context, route);
+    }
+
+    Widget group(String head, List<Widget> rows) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (head.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                child: Overline(head),
+              ),
+            ListGroup(inset: 64, children: rows),
+          ],
+        );
 
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(2, 10, 0, 16),
-              child: Row(children: [
-                const Expanded(
-                  child: Text('Me',
-                      style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.6)),
-                ),
+        bottom: false,
+        // Large "Me" → slim bar once the page scrolls.
+        child: CollapseOnScroll(
+          builder: (context, collapsed) => Column(children: [
+            CollapsingHeader(
+              title: 'Me',
+              collapsed: collapsed,
+              actions: [
                 IconButton(
                   tooltip: 'Settings',
                   onPressed: () => go(AppRoutes.settings),
-                  icon: const Icon(Icons.settings_outlined),
+                  icon: const Icon(Ph.gearSix, size: 22),
                 ),
-              ]),
+              ],
             ),
-            _ProfileCard(profile: profile, g: g),
-            if (pendingCount > 0) ...[
-              const SizedBox(height: 12),
-              _ReviewBanner(
-                  count: pendingCount, onTap: () => go(AppRoutes.smsReview)),
-            ],
-            const SizedBox(height: 22),
-            const SectionLabel('Money'),
-            _Group(rows: [
-              _Row(
-                icon: Icons.stacked_line_chart_rounded,
-                title: 'Net worth',
-                subtitle: 'Everything you own minus what you owe',
-                onTap: () => go(AppRoutes.netWorth),
-              ),
-              _Row(
-                icon: Icons.account_balance_outlined,
-                title: 'Accounts',
-                subtitle: 'Balances by bank, card and wallet',
-                onTap: () => go(AppRoutes.accounts),
-              ),
-              _Row(
-                icon: Icons.savings_outlined,
-                title: 'Budgets',
-                subtitle: 'Monthly limits by category',
-                onTap: () => go(AppRoutes.budgets),
-              ),
-              _Row(
-                icon: Icons.flag_outlined,
-                title: 'Goals',
-                subtitle: 'What you\'re saving for',
-                onTap: () => go(AppRoutes.goals),
-              ),
-              _Row(
-                icon: Icons.calendar_month_outlined,
-                title: 'Bills & subscriptions',
-                subtitle: 'What\'s due, card dues and renewals',
-                onTap: () => go(AppRoutes.bills),
-              ),
-              _Row(
-                icon: Icons.people_alt_outlined,
-                title: 'People',
-                subtitle: 'Shared bills, lent & borrowed',
-                onTap: () => go(AppRoutes.people),
-              ),
-            ]),
-            const SizedBox(height: 22),
-            const SectionLabel('Tools'),
-            _Group(rows: [
-              _Row(
-                icon: Icons.upload_file_outlined,
-                title: 'Import bank statement',
-                subtitle: 'PDF, CSV or Excel from any bank',
-                onTap: () => go(AppRoutes.importStatement),
-              ),
-              _Row(
-                icon: Icons.sms_outlined,
-                title: 'Review imports',
-                subtitle: pendingCount > 0
-                    ? '$pendingCount waiting for a look'
-                    : 'All caught up',
-                badge: pendingCount > 0 ? '$pendingCount' : null,
-                onTap: () => go(AppRoutes.smsReview),
-              ),
-              _Row(
-                icon: Icons.widgets_outlined,
-                title: 'Home-screen widgets',
-                subtitle: 'Budget and quick-add on your launcher',
-                onTap: () => go(AppRoutes.widgets),
-              ),
-            ]),
-            const SizedBox(height: 22),
-            const SectionLabel('You'),
-            _Group(rows: [
-              _Row(
-                icon: Icons.grading_rounded,
-                title: 'Report card',
-                subtitle: 'Your monthly grade — share it',
-                onTap: () => go(AppRoutes.reportCard),
-              ),
-              _Row(
-                icon: Icons.auto_awesome_outlined,
-                title: 'Monthly Wrapped',
-                subtitle: 'Your month in money, as a story',
-                onTap: () => go(AppRoutes.wrapped),
-              ),
-              _Row(
-                icon: Icons.emoji_events_outlined,
-                title: 'Aeris World',
-                subtitle: 'Streaks, challenges and rewards',
-                onTap: () => go(AppRoutes.aerisWorld),
-              ),
-            ]),
-            const SizedBox(height: 22),
-            _Group(rows: [
-              _Row(
-                icon: Icons.settings_outlined,
-                title: 'Settings',
-                subtitle: 'Theme, privacy, backup and export',
-                onTap: () => go(AppRoutes.settings),
-              ),
-            ]),
-            const SizedBox(height: 22),
-            OutlinedButton.icon(
-              onPressed: () => signOutWithCheck(context, ref),
-              icon: const Icon(Icons.logout_rounded, size: 19),
-              label: const Text('Sign out'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AerisColors.danger(context),
-                side: BorderSide(
-                    color: AerisColors.danger(context).withValues(alpha: 0.35)),
-                minimumSize: const Size.fromHeight(50),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 18),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
                 children: [
-                  Icon(Icons.lock_outline_rounded,
-                      size: 13, color: AerisColors.muted(context)),
-                  const SizedBox(width: 5),
-                  Text('Your data is end-to-end encrypted',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: AerisColors.muted(context))),
+                  _ProfileCard(profile: profile, g: g),
+                  if (pendingCount > 0) ...[
+                    const SizedBox(height: 18),
+                    _ReviewBanner(
+                        count: pendingCount,
+                        onTap: () => go(AppRoutes.smsReview)),
+                  ],
+                  const SizedBox(height: 18),
+                  group('Money', [
+                    SettingsRow(
+                        icon: Ph.scales,
+                        title: 'Net worth',
+                        onTap: () => go(AppRoutes.netWorth)),
+                    SettingsRow(
+                        icon: Ph.bank,
+                        title: 'Accounts',
+                        onTap: () => go(AppRoutes.accounts)),
+                    SettingsRow(
+                        icon: Ph.target,
+                        title: 'Budgets',
+                        onTap: () => go(AppRoutes.budgets)),
+                    SettingsRow(
+                        icon: Ph.flagBanner,
+                        title: 'Goals',
+                        onTap: () => go(AppRoutes.goals)),
+                    SettingsRow(
+                        icon: Ph.calendarDots,
+                        title: 'Bills and subscriptions',
+                        onTap: () => go(AppRoutes.bills)),
+                    SettingsRow(
+                        icon: Ph.usersThree,
+                        title: 'People',
+                        onTap: () => go(AppRoutes.people)),
+                  ]),
+                  const SizedBox(height: 18),
+                  group('Tools', [
+                    SettingsRow(
+                        icon: Ph.fileArrowUp,
+                        title: 'Import bank statement',
+                        onTap: () => go(AppRoutes.importStatement)),
+                    SettingsRow(
+                      icon: Ph.eye,
+                      title: 'Review imports',
+                      sub: pendingCount > 0 ? null : 'All caught up',
+                      trailing: pendingCount > 0
+                          ? Row(mainAxisSize: MainAxisSize.min, children: [
+                              _CountBadge(pendingCount),
+                              const SizedBox(width: 8),
+                              Icon(Ph.caretRight, size: 16, color: tk.t3),
+                            ])
+                          : null,
+                      onTap: () => go(AppRoutes.smsReview),
+                    ),
+                    SettingsRow(
+                        icon: Ph.squaresFour,
+                        title: 'Home-screen widgets',
+                        onTap: () => go(AppRoutes.widgets)),
+                  ]),
+                  const SizedBox(height: 18),
+                  group('You', [
+                    SettingsRow(
+                        icon: Ph.exam,
+                        title: 'Report card',
+                        onTap: () => go(AppRoutes.reportCard)),
+                    SettingsRow(
+                        icon: Ph.play,
+                        title: 'Monthly Wrapped',
+                        onTap: () => go(AppRoutes.wrapped)),
+                    SettingsRow(
+                        icon: Ph.globeHemisphereEast,
+                        title: 'Aeris World',
+                        sub: 'Your town grows as you save',
+                        onTap: () => go(AppRoutes.aerisWorld)),
+                  ]),
+                  const SizedBox(height: 18),
+                  group('', [
+                    SettingsRow(
+                        icon: Ph.gearSix,
+                        title: 'Settings',
+                        onTap: () => go(AppRoutes.settings)),
+                  ]),
+                  const SizedBox(height: 18),
+                  OutlinedButton(
+                    onPressed: () => confirmSignOut(context, ref),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: tk.bad,
+                      side: BorderSide(color: tk.hair2, width: 1.5),
+                      minimumSize: const Size.fromHeight(52),
+                    ),
+                    child: const Text('Sign out'),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Ph.lockSimple, size: 13, color: tk.t2),
+                        const SizedBox(width: 5),
+                        Text('Your data is end-to-end encrypted',
+                            style: Ts.label.copyWith(
+                                fontWeight: FontWeight.w400, color: tk.t2)),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
+          ]),
         ),
       ),
+    );
+  }
+}
+
+class _CountBadge extends StatelessWidget {
+  final int count;
+  const _CountBadge(this.count);
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 22),
+      height: 22,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      alignment: Alignment.center,
+      decoration:
+          BoxDecoration(color: tk.acc, borderRadius: BorderRadius.circular(11)),
+      child: Text('$count',
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w800, color: tk.onAcc)),
     );
   }
 }
@@ -195,11 +214,10 @@ class _ProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final name = (profile?.displayName ?? '').trim();
     final email = profile?.email ?? '';
     final initials = _initials(name.isNotEmpty ? name : email);
-    final muted = AerisColors.muted(context);
-    final accent = AerisColors.accent(context);
 
     final bytes = profile?.photoBytes;
     final url = profile?.photoUrl;
@@ -214,23 +232,18 @@ class _ProfileCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       onTap: () => Navigator.pushNamed(context, AppRoutes.editProfile),
       child: Row(children: [
-        Container(
-          width: 60,
-          height: 60,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: img == null ? AerisColors.accentSoft(context) : null,
-            image: img == null
-                ? null
-                : DecorationImage(image: img, fit: BoxFit.cover),
-          ),
-          child: img == null
-              ? Text(initials,
-                  style: TextStyle(
-                      fontSize: 21, fontWeight: FontWeight.w800, color: accent))
-              : null,
-        ),
+        if (img != null)
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              image: DecorationImage(image: img, fit: BoxFit.cover),
+            ),
+          )
+        else
+          InitialAvatar('',
+              initials: initials, size: 56, color: const Color(0xFF8A7ED3)),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -240,37 +253,41 @@ class _ProfileCard extends StatelessWidget {
               Text(name.isEmpty ? 'Add your name' : name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.3)),
+                  style: Ts.title.copyWith(color: tk.t1)),
               if (email.isNotEmpty)
                 Text(email,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w500,
-                        color: muted)),
+                    style: Ts.bodyS.copyWith(color: tk.t2)),
               const SizedBox(height: 8),
               Wrap(spacing: 6, runSpacing: 6, children: [
                 GestureDetector(
                   onTap: () =>
                       Navigator.pushNamed(context, AppRoutes.aerisWorld),
-                  child: _Pill(
-                    icon: Icons.bolt_rounded,
-                    label: 'Level ${g.level} · ${_fmtAura(g.available)} Aura',
+                  child: StatusPill(
+                    'Level ${g.level} · ${_fmtAura(g.available)} Aura',
+                    icon: Ph.trendUp,
+                    tone: Tone.accent,
                   ),
                 ),
                 if (profile != null && profile!.monthlyIncome > 0)
-                  _Pill(
-                      label:
-                          '${formatRupees(profile!.monthlyIncome, compact: true)}/mo'),
+                  // Monthly income: behind the salary lock (tap to unlock).
+                  Consumer(builder: (context, ref, _) {
+                    final masked = ref.watch(incomeLockProvider).masked;
+                    final pill = StatusPill(
+                        '${formatIncome(profile!.monthlyIncome, compact: true)}/mo',
+                        icon: masked ? PhFill.lockSimple : null);
+                    return masked
+                        ? GestureDetector(
+                            onTap: () => unlockIncome(context, ref),
+                            child: pill)
+                        : pill;
+                  }),
               ]),
             ],
           ),
         ),
-        Icon(Icons.chevron_right_rounded, color: muted),
+        Icon(Ph.caretRight, size: 16, color: tk.t3),
       ]),
     );
   }
@@ -291,33 +308,6 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
-class _Pill extends StatelessWidget {
-  final IconData? icon;
-  final String label;
-  const _Pill({required this.label, this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AerisColors.accent(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: AerisColors.accentSoft(context),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icon != null) ...[
-          Icon(icon, size: 13, color: accent),
-          const SizedBox(width: 3),
-        ],
-        Text(label,
-            style: TextStyle(
-                fontSize: 11.5, fontWeight: FontWeight.w700, color: accent)),
-      ]),
-    );
-  }
-}
-
 /// "N imports to review" — the one actionable thing on this tab, so it gets
 /// its own banner above the lists when there's something to do.
 class _ReviewBanner extends StatelessWidget {
@@ -327,136 +317,68 @@ class _ReviewBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return AerisCard(
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-      color: dark ? const Color(0xFF2A2212) : const Color(0xFFFFF8EB),
-      onTap: onTap,
-      child: Row(children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: AerisColors.warning.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.sms_outlined,
-              size: 19, color: AerisColors.warning),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            '$count import${count == 1 ? '' : 's'} to review',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          ),
-        ),
-        const Text('Review',
-            style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w800,
-                color: AerisColors.warning)),
-        const Icon(Icons.chevron_right_rounded, color: AerisColors.warning),
-      ]),
-    );
-  }
-}
-
-// ── Grouped list ──────────────────────────────────────────────
-class _Group extends StatelessWidget {
-  final List<_Row> rows;
-  const _Group({required this.rows});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: AerisColors.cardDecoration(context),
-      child: Column(children: [
-        for (var i = 0; i < rows.length; i++) ...[
-          rows[i],
-          if (i < rows.length - 1)
-            const Divider(height: 1, indent: 64, endIndent: 16),
-        ],
-      ]),
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String? badge;
-  final VoidCallback onTap;
-
-  const _Row({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.badge,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final muted = AerisColors.muted(context);
+    final tk = context.tk;
     return Material(
-      type: MaterialType.transparency,
+      color: tk.accSoft,
+      borderRadius: BorderRadius.circular(Rad.button),
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(Rad.button),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
           child: Row(children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AerisColors.accentSoft(context),
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Icon(icon, size: 19, color: AerisColors.accent(context)),
-            ),
-            const SizedBox(width: 14),
+            Icon(PhFill.eye, size: 20, color: tk.acc),
+            const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 1),
-                  Text(subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w500,
-                          color: muted)),
-                ],
+              child: Text(
+                '$count import${count == 1 ? '' : 's'} to review',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Ts.rowTitle.copyWith(color: tk.t1),
               ),
             ),
-            if (badge != null)
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AerisColors.warning,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(badge!,
-                    style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white)),
-              ),
-            Icon(Icons.chevron_right_rounded, color: muted),
+            FilledButton(
+              onPressed: onTap,
+              style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12))),
+              child: const Text('Review'),
+            ),
           ]),
         ),
       ),
     );
   }
+}
+
+/// "Sign out of AERIS?" — then [signOutWithCheck].
+Future<void> confirmSignOut(BuildContext context, WidgetRef ref) async {
+  final tk = context.tk;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: const Text('Sign out of AERIS?'),
+      content: const Text(
+          'Your encrypted data stays in backup. You\'ll need your password to '
+          'unlock it on this or another phone.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('Cancel')),
+        FilledButton(
+          style: FilledButton.styleFrom(
+              backgroundColor: tk.bad,
+              foregroundColor:
+                  tk.isDark ? const Color(0xFF1A0F0E) : Colors.white),
+          onPressed: () => Navigator.pop(d, true),
+          child: const Text('Sign out'),
+        ),
+      ],
+    ),
+  );
+  if (ok == true && context.mounted) await signOutWithCheck(context, ref);
 }
 
 /// Signs out — but first warns if changes are still waiting to sync, since
@@ -470,7 +392,7 @@ Future<void> signOutWithCheck(BuildContext context, WidgetRef ref) async {
     final go = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        icon: Icon(Icons.cloud_off, color: scheme.error),
+        icon: Icon(Ph.cloudSlash, color: scheme.error),
         title: const Text('Unsynced changes'),
         content: Text(
             '$n ${n == 1 ? 'change hasn\'t' : 'changes haven\'t'} reached the '
@@ -494,4 +416,56 @@ Future<void> signOutWithCheck(BuildContext context, WidgetRef ref) async {
   // The village lives in memory too; drop it so the next account doesn't
   // see this one's town.
   ref.invalidate(villageProvider);
+}
+
+/// The Me tab. On tablets / unfolded foldables it's list–detail: Me on the
+/// left, the chosen page (Settings, Accounts, …) in a pane on the right with
+/// its own back stack. Phones get the plain [ProfileScreen].
+class MeTab extends StatefulWidget {
+  const MeTab({super.key});
+
+  @override
+  State<MeTab> createState() => _MeTabState();
+}
+
+class _MeTabState extends State<MeTab> {
+  final _pane = GlobalKey<NavigatorState>();
+
+  void _open(String route) =>
+      _pane.currentState?.pushNamedAndRemoveUntil(route, (_) => false);
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return LayoutBuilder(builder: (context, box) {
+      if (box.maxWidth < 760) return const ProfileScreen();
+      return Row(children: [
+        SizedBox(
+          width: 400,
+          child: _MePane(open: _open, child: const ProfileScreen()),
+        ),
+        Container(width: 1, color: tk.hair),
+        Expanded(
+          child: ClipRect(
+            child: Navigator(
+              key: _pane,
+              initialRoute: AppRoutes.settings,
+              onGenerateRoute: AppRoutes.onGenerateRoute,
+            ),
+          ),
+        ),
+      ]);
+    });
+  }
+}
+
+class _MePane extends InheritedWidget {
+  final ValueChanged<String> open;
+  const _MePane({required this.open, required super.child});
+
+  static ValueChanged<String>? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_MePane>()?.open;
+
+  @override
+  bool updateShouldNotify(_MePane old) => old.open != open;
 }

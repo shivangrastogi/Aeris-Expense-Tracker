@@ -11,15 +11,11 @@
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
-    <!-- Ask the user to exempt AERIS from battery optimisation so the SMS
-         broadcast receiver keeps firing when the app is closed (needed on
-         aggressive OEMs like Realme/Xiaomi). Surfaced from Settings only after
-         live SMS tracking is enabled. -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
     <!-- Local notifications for budget alerts / new-txn confirmations -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Re-arm the widget refresh after a reboot (alarms don't survive one). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Camera for taking a profile photo (gallery needs no permission on
          Android 13+ via the system photo picker). Marked not-required so the
@@ -48,8 +44,23 @@
         android:label="AERIS Expense"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
+        android:allowBackup="false"
         android:enableOnBackInvokedCallback="true">
 
+        <!-- Receipt/screenshot OCR comes from Google Play services (not
+             bundled, ~11 MB smaller); fetch its models as soon as possible: Latin,
+             and Devanagari for Hindi notes. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr,ocr_devanagari" />
+
+        <!-- Push notifications use the AERIS mark in the brand colour. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_aeris" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/aeris_notification" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -203,13 +214,16 @@
             android:name="flutterEmbedding"
             android:value="2" />
         <!-- Re-renders all widgets after midnight and when the clock or time
-             zone changes, so "today", the month and the streak roll over. -->
+             zone changes, so "today", the month and the streak roll over; and
+             after a reboot or app update, which clear scheduled alarms. -->
         <receiver
             android:name=".WidgetTickReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
     </application>

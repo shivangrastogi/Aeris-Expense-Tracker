@@ -32,7 +32,7 @@ Future<void> deleteTransactionsWithUndo(
     duration: const Duration(seconds: 6),
     behavior: SnackBarBehavior.floating,
     action: SnackBarAction(
-      label: 'UNDO',
+      label: 'Undo',
       onPressed: () async {
         for (final t in txns) {
           await fs.addTransaction(uid, t);

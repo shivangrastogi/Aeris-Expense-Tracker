@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../models/transaction.dart';
 import '../providers/transactions_provider.dart';
 import '../utils/formatters.dart';
+import 'ds.dart';
 import 'transaction_tile.dart';
 
 /// A GitHub-contributions-style calendar of daily spend over the last ~18
@@ -22,7 +23,7 @@ class SpendingHeatmap extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final txns =
         ref.watch(transactionsStreamProvider).asData?.value ?? const <Transaction>[];
-    final scheme = Theme.of(context).colorScheme;
+    final tk = context.tk;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final startRaw = today.subtract(const Duration(days: _weeks * 7 - 1));
@@ -51,8 +52,8 @@ class SpendingHeatmap extends ConsumerWidget {
                       ? 0.75
                       : 1.0;
       return a == null
-          ? scheme.surfaceContainerHighest.withValues(alpha: 0.35)
-          : AerisColors.accent(context).withValues(alpha: a);
+          ? tk.track
+          : tk.acc.withValues(alpha: a);
     }
 
     Color cellColor(double v) =>
@@ -72,7 +73,7 @@ class SpendingHeatmap extends ConsumerWidget {
           margin: const EdgeInsets.only(bottom: _gap),
           decoration: BoxDecoration(
             color: future ? Colors.transparent : cellColor(v),
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(4),
           ),
         ),
       );
@@ -103,70 +104,59 @@ class SpendingHeatmap extends ConsumerWidget {
             alignment: Alignment.centerLeft,
             child: Text(
               i == 0 ? 'Mon' : i == 2 ? 'Wed' : i == 4 ? 'Fri' : '',
-              style: TextStyle(fontSize: 9, color: scheme.onSurfaceVariant),
+              style: TextStyle(fontSize: 10, color: tk.t2),
             ),
           ),
       ],
     );
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Spending heatmap',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 2),
-            Text('Last $_weeks weeks · tap a day',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant)),
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                weekdayLabels,
-                const SizedBox(width: 6),
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    reverse: true, // newest weeks shown first
-                    child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: columns),
+    return AerisCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionTitle('Spending heatmap'),
+          const SizedBox(height: 2),
+          Text('Last $_weeks weeks · tap a day',
+              style: Ts.label.copyWith(fontWeight: FontWeight.w400, color: tk.t2)),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              weekdayLabels,
+              const SizedBox(width: 6),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  reverse: true, // newest weeks shown first
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: columns),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text('Less', style: TextStyle(fontSize: 11, color: tk.t2)),
+              const SizedBox(width: 6),
+              for (final r in const [0.0, 0.3, 0.5, 0.75, 1.0])
+                Container(
+                  width: 11,
+                  height: 11,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  decoration: BoxDecoration(
+                    color: levelColor(r == 0.0 ? 0 : r),
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text('Less',
-                    style: TextStyle(
-                        fontSize: 10, color: scheme.onSurfaceVariant)),
-                const SizedBox(width: 6),
-                for (final r in const [0.0, 0.3, 0.5, 0.75, 1.0])
-                  Container(
-                    width: 11,
-                    height: 11,
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    decoration: BoxDecoration(
-                      color: levelColor(r == 0.0 ? 0 : r),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                const SizedBox(width: 6),
-                Text('More',
-                    style: TextStyle(
-                        fontSize: 10, color: scheme.onSurfaceVariant)),
-              ],
-            ),
-          ],
-        ),
+              const SizedBox(width: 6),
+              Text('More', style: TextStyle(fontSize: 11, color: tk.t2)),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -181,41 +171,21 @@ class SpendingHeatmap extends ConsumerWidget {
             t.timestamp.day == day.day)
         .toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text('${day.day}/${day.month}/${day.year}',
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              trailing: Text(
-                total > 0 ? formatRupees(total) : '—',
-                style: TextStyle(
-                    fontWeight: FontWeight.w800, color: AerisColors.moneyOut(context)),
-              ),
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    showDsSheet<void>(
+      context,
+      title: '${weekdays[day.weekday - 1]}, ${shortDate(day)}',
+      subtitle: total > 0
+          ? 'Spent ${signedMoney(total, credit: false)}'
+          : 'No spending on this day.',
+      scrollControlled: true,
+      builder: (_) => items.isEmpty
+          ? const SizedBox(height: 8)
+          : SingleChildScrollView(
+              child: ListGroup(children: [
+                for (final t in items) TransactionTile(txn: t, showDate: false)
+              ]),
             ),
-            if (items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 8, 20, 28),
-                child: Text('No spending on this day.'),
-              )
-            else
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.only(bottom: 16),
-                  children: [
-                    for (final t in items)
-                      TransactionTile(txn: t, showDate: false)
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }

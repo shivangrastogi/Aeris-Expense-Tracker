@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'ds.dart';
 
 /// Guards a form screen against accidental loss of entered data.
 ///
@@ -48,7 +49,7 @@ Future<bool> confirmDiscard(
   final result = await showDialog<bool>(
     context: context,
     builder: (d) => AlertDialog(
-      icon: Icon(Icons.warning_amber_rounded, color: scheme.error),
+      icon: Icon(Ph.warning, color: scheme.error),
       title: Text(title),
       content: Text(message),
       actions: [

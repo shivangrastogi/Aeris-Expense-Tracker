@@ -1,47 +1,100 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/routes.dart';
 import '../../core/theme.dart';
 import '../../providers/accounts_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/prefs_data_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/formatters.dart';
-import '../transactions/transactions_screen.dart';
+import 'account_detail_screen.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../widgets/text_input_dialog.dart';
+import '../../widgets/ds.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tk = context.tk;
     final accounts = ref.watch(accountsProvider);
+    final cash = accounts
+        .where((a) => a.balance != null)
+        .fold<double>(0, (s, a) => s + a.balance!);
+    final anyBalance = accounts.any((a) => a.balance != null);
     return Scaffold(
       appBar: AppBar(title: const Text('Accounts')),
       body: accounts.isEmpty
           ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(28),
-                child: Text(
-                  'No accounts yet. Once AERIS reads bank SMS or you import a '
-                  'statement, your accounts appear here.',
-                  textAlign: TextAlign.center,
-                ),
+              child: EmptyState(
+                icon: Ph.bank,
+                title: 'No accounts yet',
+                body: 'Once AERIS reads bank SMS or you import a statement, '
+                    'your accounts appear here.',
               ),
             )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
               children: [
+                Row(children: [
+                  Icon(Ph.chatText, size: 15, color: tk.t2),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text('Balances come from your bank SMS',
+                        style: Ts.bodyS.copyWith(color: tk.t2)),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                if (anyBalance) ...[
+                  Material(
+                    color: tk.accSoft,
+                    borderRadius: BorderRadius.circular(Rad.button),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(Rad.button),
+                      onTap: () =>
+                          Navigator.pushNamed(context, AppRoutes.netWorth),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                        child: Row(children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Cash in accounts',
+                                    style: Ts.bodyS.copyWith(color: tk.t2)),
+                                MoneyText(cash,
+                                    smallDecimals: true,
+                                    smallSymbol: false,
+                                    style: Ts.amountM
+                                        .copyWith(fontWeight: FontWeight.w700)),
+                              ],
+                            ),
+                          ),
+                          Text('Net worth',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: tk.acc)),
+                          const SizedBox(width: 4),
+                          Icon(Ph.arrowRight, size: 16, color: tk.acc),
+                        ]),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                for (final a in accounts) ...[
+                  _AccountCard(account: a),
+                  const SizedBox(height: 16),
+                ],
                 Text(
-                  'Balances come from your bank SMS. For an account whose SMS '
-                  'show no balance, set an opening balance instead. Tap an '
-                  'account to see its activity.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  'For an account whose SMS show no balance, set an opening '
+                  'balance from its menu. Tap an account to see its activity.',
+                  style: Ts.label
+                      .copyWith(fontWeight: FontWeight.w400, color: tk.t3),
                 ),
-                const SizedBox(height: 10),
-                for (final a in accounts) _AccountCard(account: a),
               ],
             ),
     );
@@ -80,7 +133,7 @@ class _AccountCard extends ConsumerWidget {
               decoration: InputDecoration(
                   labelText: 'Opening balance',
                   prefixText: '${kCurrency.symbol.trim()} ',
-                  prefixIcon: const Icon(Icons.account_balance_wallet_outlined)),
+                  prefixIcon: const Icon(Ph.wallet)),
             ),
           ],
         ),
@@ -117,133 +170,161 @@ class _AccountCard extends ConsumerWidget {
         .setAccountName(uid, account.key, name, names);
   }
 
+  /// "HDFC salary" → "HD"; "A/C ••1234" → "AC"; "SBI ••8208" → "SBI".
+  static String _badge(String label) {
+    final w = label.trim().split(RegExp(r'\s+')).first.toUpperCase();
+    final letters = w.replaceAll(RegExp(r'[^A-Z]'), '');
+    if (letters.isEmpty) return '••';
+    return letters.length <= 3 ? letters : letters.substring(0, 2);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tk = context.tk;
     final net = account.net;
     final bal = account.balance;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => TransactionsScreen(initialAccount: account.key),
-          ),
+    final sub = [
+      if (account.nickname != null) accountLabel(account.key),
+      '${account.count} txns',
+      if (account.lastTxn != null) relativeDate(account.lastTxn!),
+    ].join(' · ');
+    return AerisCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AccountDetailScreen(accountKey: account.key),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: AerisColors.accent(context).withValues(alpha: 0.15),
-                    child: const Icon(Icons.account_balance, size: 18),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(account.label,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 16)),
-                        Text(
-                          '${account.nickname != null ? '${accountLabel(account.key)} · ' : ''}'
-                          '${account.count} txns'
-                          '${account.lastTxn != null ? ' · last ${relativeDate(account.lastTxn!)}' : ''}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (account.key != unassignedAccount)
-                    PopupMenuButton<String>(
-                      tooltip: 'Account options',
-                      icon: const Icon(Icons.more_vert_rounded, size: 20),
-                      onSelected: (v) => v == 'rename'
-                          ? _rename(context, ref)
-                          : _setOpeningBalance(context, ref),
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                            value: 'rename',
-                            child: Text(account.nickname == null
-                                ? 'Name this account'
-                                : 'Rename')),
-                        const PopupMenuItem(
-                            value: 'opening', child: Text('Opening balance')),
-                      ],
-                    ),
-                ],
+              BadgeTile(text: _badge(account.label)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(account.label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            Ts.rowTitle.copyWith(fontSize: 17, color: tk.t1)),
+                    Text(sub,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Ts.label.copyWith(
+                            fontWeight: FontWeight.w400, color: tk.t2)),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              // Live balance: as the bank last reported it, else opening +
-              // tracked activity.
-              if (bal != null) ...[
-                Text(
-                    account.bankBalance != null
-                        ? 'Balance · per bank SMS, ${asOfLabel(account.bankBalanceAt!)}'
-                        : 'Current balance',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                Text(formatRupees(bal),
-                    style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        color: bal >= 0 ? AerisColors.moneyIn(context) : AerisColors.danger(context))),
-                const SizedBox(height: 10),
-              ] else if (account.key != unassignedAccount)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: TextButton.icon(
+              if (account.key != unassignedAccount)
+                PopupMenuButton<String>(
+                  tooltip: 'Account options',
+                  icon: Icon(Ph.dotsThreeVertical, size: 20, color: tk.t2),
+                  onSelected: (v) => v == 'rename'
+                      ? _rename(context, ref)
+                      : _setOpeningBalance(context, ref),
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                        value: 'rename',
+                        child: Text(account.nickname == null
+                            ? 'Name this account'
+                            : 'Rename')),
+                    const PopupMenuItem(
+                        value: 'opening', child: Text('Opening balance')),
+                  ],
+                )
+              else
+                const SizedBox(width: 8),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 12),
+                // Live balance: as the bank last reported it, else opening +
+                // tracked activity.
+                if (bal != null) ...[
+                  MoneyText(bal,
+                      smallDecimals: true,
+                      credit: bal < 0 ? false : null,
+                      color: bal < 0 ? tk.bad : tk.t1,
+                      style: const TextStyle(
+                          fontSize: 36,
+                          height: 40 / 36,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -1)),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Icon(Ph.chatText, size: 13, color: tk.t2),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                          account.bankBalance != null
+                              ? 'per bank SMS, ${asOfLabel(account.bankBalanceAt!)}'
+                              : 'from your opening balance + tracked activity',
+                          style: Ts.label.copyWith(
+                              fontWeight: FontWeight.w400, color: tk.t2)),
+                    ),
+                  ]),
+                ] else if (account.key != unassignedAccount)
+                  TextButton.icon(
                     onPressed: () => _setOpeningBalance(context, ref),
-                    icon: const Icon(Icons.add, size: 18),
+                    icon: const Icon(Ph.plus, size: 16),
                     label: const Text('Set opening balance for live balance'),
                     style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
-                        minimumSize: const Size(0, 0),
+                        minimumSize: const Size(0, 40),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                   ),
+                const SizedBox(height: 12),
+                Container(height: 1, color: tk.hair),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _metric(context, 'Spent', account.spent, tk.t1),
+                    _metric(context, 'Received', account.received, tk.ok),
+                    _metric(context, 'Net', net, net >= 0 ? tk.ok : tk.t1,
+                        signed: true),
+                  ],
                 ),
-              Row(
-                children: [
-                  _metric(context, 'Spent', account.spent, AerisColors.moneyOut(context)),
-                  _metric(
-                      context, 'Received', account.received, AerisColors.moneyIn(context)),
-                  _metric(context, 'Net', net,
-                      net >= 0 ? AerisColors.moneyIn(context) : AerisColors.danger(context)),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _metric(BuildContext context, String label, double v, Color c) {
+  Widget _metric(BuildContext context, String label, double v, Color c,
+      {bool signed = false}) {
+    final tk = context.tk;
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              style:
+                  Ts.label.copyWith(fontWeight: FontWeight.w400, color: tk.t2)),
           const SizedBox(height: 2),
-          Text(formatRupees(v, compact: true),
-              style: TextStyle(
-                  fontWeight: FontWeight.w800, fontSize: 15, color: c)),
+          MoneyText(v,
+              compact: true,
+              credit: signed ? v >= 0 : null,
+              color: c,
+              style:
+                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
         ],
       ),
     );
   }
 }
+
 
 /// Opening balance typed in the display currency (may be negative, e.g. an
 /// overdrawn account) → INR. Empty or invalid input counts as 0.

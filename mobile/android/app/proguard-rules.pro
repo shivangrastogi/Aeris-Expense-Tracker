@@ -25,7 +25,7 @@
 -dontwarn com.google.android.play.core.**
 
 # google_mlkit_text_recognition references the optional Chinese / Devanagari /
-# Japanese / Korean recognizer modules; only the Latin one is shipped.
+# Japanese / Korean recognizer modules; only Latin + Devanagari are shipped.
 -dontwarn com.google.mlkit.vision.text.chinese.**
 -dontwarn com.google.mlkit.vision.text.devanagari.**
 -dontwarn com.google.mlkit.vision.text.japanese.**

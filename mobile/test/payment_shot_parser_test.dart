@@ -126,4 +126,62 @@ void main() {
     expect(text,
         'Received from\nAP\tAYUSH PATEL\t₹4,750\nayushpatel5735@okicici');
   });
+
+  // A real PhonePe "Paid to" screen (dark, 1080×2412): the name wraps onto a
+  // second line, and the recogniser may split the UPI ID in two.
+  group('PhonePe paid, long name and Paytm UPI ID', () {
+    final lines = [
+      const OcrLine('Transaction Successful', left: 218, top: 160, bottom: 205),
+      const OcrLine('11:55 am on 21 Oct 2026', left: 218, top: 215, bottom: 255),
+      const OcrLine('Paid to', left: 73, top: 360, bottom: 400),
+      const OcrLine('YB', left: 103, top: 490, bottom: 545),
+      const OcrLine('Yougendra Mohan Dev', left: 242, top: 455, bottom: 505),
+      const OcrLine('₹80', left: 920, top: 458, bottom: 502),
+      const OcrLine('Banshi', left: 242, top: 515, bottom: 565),
+      const OcrLine('Transfer Details', left: 194, top: 745, bottom: 790),
+      const OcrLine('PhonePe Transaction ID', left: 73, top: 852, bottom: 890),
+      const OcrLine('T2610211155579983418665', left: 73, top: 915, bottom: 960),
+      const OcrLine('Debited from', left: 73, top: 1012, bottom: 1052),
+      const OcrLine('XXXXXX1268', left: 242, top: 1095, bottom: 1145),
+      const OcrLine('₹80', left: 925, top: 1095, bottom: 1145),
+      const OcrLine('UTR: 337004094099', left: 242, top: 1198, bottom: 1245),
+    ];
+    final when = DateTime(2026, 10, 21, 11, 55);
+
+    for (final (label, vpa) in [
+      ('UPI ID read whole', [
+        const OcrLine('paytm.s18w6rp@pty', left: 242, top: 585, bottom: 630)
+      ]),
+      ('UPI ID read in two pieces', [
+        const OcrLine('paytm.s18w6', left: 242, top: 585, bottom: 630),
+        const OcrLine('rp@pty', left: 520, top: 585, bottom: 630),
+      ]),
+      ('UPI ID read with a space', [
+        const OcrLine('paytm.s18w6 rp@pty', left: 242, top: 585, bottom: 630)
+      ]),
+    ]) {
+      test(label, () {
+        final p = PaymentShotParser.parse(
+            PaymentShotParser.layout([...lines, ...vpa]),
+            now: now.add(const Duration(days: 20)))!;
+        expect(p.amount, 80);
+        expect(p.direction, TxnDirection.debit);
+        expect(p.name, 'Yougendra Mohan Dev Banshi');
+        expect(p.upiVpa, 'paytm.s18w6rp@pty');
+        expect(p.when, when);
+        expect(p.reference, '337004094099');
+        expect(p.account, '1268');
+      });
+    }
+
+    test('in raw block order too', () {
+      final p = PaymentShotParser.parse(
+          'Transaction Successful\n11:55 am on 21 Oct 2026\nPaid to\n'
+          'Yougendra Mohan Dev\nBanshi\n₹80\nYB\npaytm.s18w6rp@pty\n'
+          'Transfer Details\nUTR: 337004094099',
+          now: now.add(const Duration(days: 20)))!;
+      expect(p.name, 'Yougendra Mohan Dev Banshi');
+      expect(p.upiVpa, 'paytm.s18w6rp@pty');
+    });
+  });
 }

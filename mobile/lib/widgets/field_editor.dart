@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/category.dart';
 import '../utils/amount_input_formatter.dart';
 import '../utils/formatters.dart';
+import 'ds.dart';
 
 /// Small bottom sheets that edit **one** field of an existing entry
 /// (transaction, lent/borrowed entry…). Tapping "Note" shows just a note box,
@@ -19,7 +20,7 @@ Future<String?> editTextField(
   required String initial,
   String? label,
   String? hint,
-  IconData icon = Icons.edit_outlined,
+  IconData icon = Ph.pencilSimple,
   int maxLength = 200,
   bool multiline = false,
   bool required = false,

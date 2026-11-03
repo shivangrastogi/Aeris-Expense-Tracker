@@ -9,6 +9,10 @@ class AppLockService {
   static final AppLockService instance = AppLockService._();
 
   static const _prefKey = 'app_lock_enabled';
+
+  /// Away for less than this (a screenshot, the camera or gallery picker, a
+  /// glance at notifications) doesn't lock again.
+  static const grace = Duration(seconds: 30);
   final _auth = LocalAuthentication();
 
   Future<bool> isEnabled() async =>

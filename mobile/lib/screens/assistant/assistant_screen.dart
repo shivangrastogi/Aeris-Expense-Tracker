@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/budgets_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../services/assistant_service.dart';
+import '../../utils/motion.dart';
 import '../../widgets/brand_mark.dart';
+import '../../widgets/ds.dart';
 
 class _Msg {
   final String text;
@@ -79,79 +82,135 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     _scrollDown();
   }
 
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tk = context.tk;
     return Scaffold(
-      appBar: AppBar(title: const Text('Ask Aeris')),
+      appBar: AppBar(
+        titleSpacing: 0,
+        title: Row(children: [
+          const AerisBrandMark(size: 36),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Ask Aeris', style: Ts.title.copyWith(color: tk.t1)),
+                Row(children: [
+                  Icon(PhFill.lockSimple, size: 11, color: tk.t2),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text('Answered on your phone, privately',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: tk.t2)),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ]),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: tk.hair),
+        ),
+      ),
       body: Column(
         children: [
           Expanded(
             child: ListView.builder(
               controller: _scroll,
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               itemCount: _msgs.length,
-              itemBuilder: (_, i) => _bubble(_msgs[i], scheme),
+              itemBuilder: (_, i) => _bubble(_msgs[i]),
             ),
           ),
           // Suggestion chips (disabled while thinking)
           SizedBox(
             height: 52,
-            child: ListView(
+            child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: [
-                for (final s in _suggestions)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8, top: 6, bottom: 6),
-                    child: ActionChip(
-                      label: Text(s),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      onPressed: _thinking ? null : () => _send(s),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              itemCount: _suggestions.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) => Material(
+                color: tk.surface,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Rad.chip),
+                    side: BorderSide(color: tk.hair2)),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(Rad.chip),
+                  onTap: _thinking ? null : () => _send(_suggestions[i]),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Center(
+                      child: Text(_suggestions[i],
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _thinking ? tk.t3 : tk.t1)),
                     ),
                   ),
-              ],
+                ),
+              ),
             ),
           ),
           // Input (Scaffold already resizes above the keyboard, so no manual
           // viewInsets padding — that was pushing the field to the top).
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _input,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: _thinking ? null : _send,
-                    maxLength: 160,
-                    minLines: 1,
-                    maxLines: 3,
-                    buildCounter: (_,
-                            {required currentLength,
-                            required isFocused,
-                            maxLength}) =>
-                        null, // hide the character counter
-                    decoration: const InputDecoration(
-                      hintText: 'Ask about your money…',
-                      border: OutlineInputBorder(),
-                      isDense: true,
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 56),
+                padding: const EdgeInsets.fromLTRB(18, 4, 6, 4),
+                decoration: BoxDecoration(
+                  color: tk.surface,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: tk.hair),
+                  boxShadow: tk.shadow,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _input,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: _thinking ? null : _send,
+                        onChanged: (_) => setState(() {}),
+                        maxLength: 160,
+                        minLines: 1,
+                        maxLines: 3,
+                        buildCounter: (_,
+                                {required currentLength,
+                                required isFocused,
+                                maxLength}) =>
+                            null, // hide the character counter
+                        decoration: const InputDecoration(
+                          hintText: 'Ask about your money',
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    _SendButton(
+                      busy: _thinking,
+                      enabled: !_thinking && _input.text.trim().isNotEmpty,
+                      onTap: () => _send(_input.text),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _thinking ? null : () => _send(_input.text),
-                  icon: _thinking
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.send),
-                ),
-              ],
+              ),
             ),
           ),
         ],
@@ -159,55 +218,91 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
     );
   }
 
-  Widget _bubble(_Msg m, ColorScheme scheme) {
+  Widget _bubble(_Msg m) {
+    final tk = context.tk;
+    final maxW = MediaQuery.sizeOf(context).width * 0.8;
     if (m.fromUser) {
       return Align(
         alignment: Alignment.centerRight,
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
+          margin: const EdgeInsets.symmetric(vertical: 6),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          constraints: const BoxConstraints(maxWidth: 280),
+          constraints: BoxConstraints(maxWidth: maxW),
           decoration: BoxDecoration(
-            color: scheme.primary,
+            color: tk.acc,
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-              bottomLeft: Radius.circular(16),
-              bottomRight: Radius.circular(4),
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(6),
             ),
           ),
-          child: Text(m.text, style: TextStyle(color: scheme.onPrimary)),
+          child: Text(m.text,
+              style: TextStyle(
+                  fontSize: 15, height: 21 / 15, color: tk.onAcc)),
         ),
-      ).animate().fadeIn(duration: 200.ms).slideX(begin: 0.1, end: 0);
+      ).animate().fadeIn(duration: Mo.standard).slideY(begin: 0.15, end: 0);
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(top: 4),
-          child: AerisBrandMark(size: 32),
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(4),
-                topRight: Radius.circular(16),
-                bottomLeft: Radius.circular(16),
-                bottomRight: Radius.circular(16),
-              ),
-            ),
-            child: m.typing
-                ? const _TypingDots()
-                : Text(m.text, style: const TextStyle(height: 1.35)),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        constraints: BoxConstraints(maxWidth: maxW),
+        decoration: BoxDecoration(
+          color: tk.surface,
+          border: tk.edge,
+          boxShadow: tk.shadow,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(6),
+            topRight: Radius.circular(20),
+            bottomLeft: Radius.circular(20),
+            bottomRight: Radius.circular(20),
           ),
         ),
-      ],
-    ).animate().fadeIn(duration: 220.ms).slideX(begin: -0.1, end: 0);
+        child: m.typing
+            ? const _TypingDots()
+            : Text(m.text,
+                style: TextStyle(fontSize: 15, height: 22 / 15, color: tk.t1)),
+      ),
+    ).animate().fadeIn(duration: Mo.standard).slideY(begin: 0.15, end: 0);
+  }
+}
+
+/// 44 dp round send button: accent when there's something to send, the
+/// rising-line loader while Aeris is answering.
+class _SendButton extends StatelessWidget {
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onTap;
+  const _SendButton(
+      {required this.busy, required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Semantics(
+      button: true,
+      label: 'Send',
+      child: Material(
+        color: enabled ? tk.acc : tk.press,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: enabled ? onTap : null,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Center(
+              child: busy
+                  ? const RisingLoader(width: 20)
+                  : Icon(PhBold.arrowUp,
+                      size: 20, color: enabled ? tk.onAcc : tk.t3),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -215,7 +310,10 @@ class _TypingDots extends StatelessWidget {
   const _TypingDots();
   @override
   Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme.onSurfaceVariant;
+    final c = context.tk.t2;
+    if (reduceMotion(context)) {
+      return Text('Thinking…', style: TextStyle(fontSize: 14, color: c));
+    }
     Widget dot(int i) => Container(
           width: 7,
           height: 7,

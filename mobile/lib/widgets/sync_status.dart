@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/sync_provider.dart';
 import '../services/sync_outbox.dart';
+import '../core/theme.dart';
+import 'ds.dart';
 
 String _mb(int bytes) {
   if (bytes < 1024) return '$bytes B';
@@ -128,19 +130,19 @@ class _SyncStrip extends StatelessWidget {
       OutboxLevel.critical => (
           scheme.error,
           scheme.onError,
-          Icons.warning_amber_rounded,
+          Ph.warning,
           'Offline space $pct% full — connect to the internet now',
         ),
       OutboxLevel.warn => (
-          const Color(0xFFC9952E),
-          Colors.black,
-          Icons.cloud_off,
+          context.tk.warn,
+          context.tk.isDark ? const Color(0xFF1A140A) : Colors.white,
+          Ph.cloudSlash,
           'Offline space $pct% full · ${_changes(box.count)} waiting',
         ),
       _ => (
           scheme.inverseSurface,
           scheme.onInverseSurface,
-          Icons.cloud_off,
+          Ph.cloudSlash,
           box.online
               ? 'Syncing ${_changes(box.count)}…'
               : 'Offline · ${_changes(box.count)} saved on this phone',
@@ -201,7 +203,7 @@ class _StorageAlert extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final pct = (box.fill * 100).clamp(0, 100).round();
     return AlertDialog(
-      icon: Icon(Icons.cloud_off, color: scheme.error, size: 36),
+      icon: Icon(Ph.cloudSlash, color: scheme.error, size: 36),
       title: Text(nearlyFull
           ? 'Offline space almost full'
           : 'Please connect to the internet'),
@@ -240,7 +242,7 @@ class _StorageAlert extends ConsumerWidget {
                   final ok = await box.syncNow();
                   if (ok && context.mounted) Navigator.pop(context);
                 },
-          icon: const Icon(Icons.refresh),
+          icon: const Icon(Ph.arrowClockwise),
           label: const Text('Sync now'),
         ),
       ],
@@ -278,14 +280,14 @@ class _SyncLockState extends State<_SyncLock> {
     final scheme = Theme.of(context).colorScheme;
     // Opaque-ish scrim that swallows every tap to the app underneath.
     return Material(
-      color: Colors.black.withValues(alpha: 0.72),
+      color: context.tk.scrim,
       child: SafeArea(
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Material(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(24),
+              color: context.tk.raised,
+              borderRadius: BorderRadius.circular(Rad.dialog),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
                 child: Column(
@@ -295,10 +297,10 @@ class _SyncLockState extends State<_SyncLock> {
                       width: 72,
                       height: 72,
                       decoration: BoxDecoration(
-                        color: scheme.errorContainer,
+                        color: context.tk.badSoft,
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(Icons.lock_rounded,
+                      child: Icon(Ph.lock,
                           size: 38, color: scheme.onErrorContainer),
                     ),
                     const SizedBox(height: 18),
@@ -349,7 +351,7 @@ class _SyncLockState extends State<_SyncLock> {
                                 height: 18,
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.refresh),
+                            : const Icon(Ph.arrowClockwise),
                         label: Text(box.syncing ? 'Checking…' : 'Refresh'),
                       ),
                     ),

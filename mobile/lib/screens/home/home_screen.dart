@@ -1,4 +1,6 @@
+import '../../widgets/sms_disclosure.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,6 +13,7 @@ import '../../models/user_profile.dart';
 import '../../providers/accounts_provider.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/income_lock_provider.dart';
 import '../../providers/gamification_provider.dart';
 import '../../providers/goals_provider.dart';
 import '../../providers/insights_provider.dart';
@@ -21,13 +24,12 @@ import '../../providers/transactions_provider.dart';
 import '../../providers/money_providers.dart';
 import '../../services/money_insights.dart';
 import '../../services/notification_intake.dart';
-import '../../services/sms_service.dart';
 import '../../utils/formatters.dart';
-import '../../utils/motion.dart';
-import '../../widgets/budget_ring.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/transaction_tile.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../utils/motion.dart';
+import '../../widgets/ds.dart';
 
 // Home dashboard ids the "Customize dashboard" screen can hide.
 const kHomeCardForecast = 'forecast';
@@ -39,13 +41,6 @@ const kHomeCardBalances = 'balances';
 // The hero's spend figure counts up once per app session — the single
 // entrance moment on Home. Everything else paints immediately.
 bool _heroCounted = false;
-
-// Colours used on the graphite hero, in both themes.
-const _heroMuted = Color(0xB3E6E8EB); // caption text 70%
-const _heroGood = AerisColors.mint; // "down" trends, safe figures
-const _heroBad = Color(0xFFE8968E); // over budget
-const _heroUp = AerisColors.amber; // spending up
-const _heroBar = Color(0xFF8DB3E0); // budget used, within cap
 
 // ── Home Screen ──────────────────────────────────────────────
 //
@@ -60,36 +55,107 @@ class HomeScreen extends ConsumerWidget {
     final importProgress = ref.watch(importProgressProvider);
     final hidden = ref.watch(gamificationProvider.select((g) => g.hiddenCards));
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(transactionsStreamProvider),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-          children: [
-            const SafeArea(bottom: false, child: _Header()),
-            const _HeroCard(),
-            const _SetupCard(),
-            if (!hidden.contains(kHomeCardBalances)) const _BalancesCard(),
-            if (!hidden.contains(kHomeCardMomentum)) ...[
-              const SizedBox(height: 14),
-              const _MomentumCard(),
-            ],
-            if (!hidden.contains(kHomeCardCategories)) ...[
-              const SizedBox(height: 14),
-              const _TopCategories(),
-            ],
-            const _AttentionSlot(),
-            // Always rendered (an empty box when idle). Conditionally inserting
-            // the banner here used to shift every keyless child below it, so
-            // reconciliation re-matched them by index and churned their
-            // elements mid-rebuild during SMS import. A constant slot keeps
-            // every sibling at a stable index.
-            _importBanner(context, importProgress),
-            const SizedBox(height: 24),
-            const _RecentActivitySection(),
-          ],
+      // The whole list sits below the status bar, so nothing scrolls under
+      // the clock.
+      body: SafeArea(
+        bottom: false,
+        // The design's scroll behaviour: the greeting scrolls away under a
+        // pinned bar, which then takes the page colour, a hairline and a
+        // small avatar + name.
+        child: CollapseOnScroll(
+          threshold: 30,
+          builder: (context, collapsed) => Stack(children: [
+            SyncRefresh(
+              top: _kHomeBarH + 4,
+              label: _syncLabel(ref),
+              onRefresh: () async {
+                ref.invalidate(transactionsStreamProvider);
+                // Hold the pill until fresh data is in (and long enough to
+                // read it).
+                await Future.wait([
+                  ref.read(transactionsStreamProvider.future).timeout(
+                      const Duration(seconds: 8),
+                      onTimeout: () => const <Transaction>[]),
+                  Future<void>.delayed(const Duration(milliseconds: 600)),
+                ]);
+              },
+              child: LayoutBuilder(builder: (context, box) {
+                // This month: spend, setup, balances.
+                final money = <Widget>[
+                  const _HeroCard(),
+                  const _SetupCard(),
+                  if (!hidden.contains(kHomeCardBalances))
+                    const _BalancesCard(),
+                ];
+                // Where it went, momentum, what needs you, recent.
+                final story = <Widget>[
+                  if (!hidden.contains(kHomeCardCategories)) ...[
+                    const SizedBox(height: 16),
+                    const _TopCategories(),
+                  ],
+                  if (!hidden.contains(kHomeCardMomentum)) ...[
+                    const SizedBox(height: 16),
+                    const _MomentumCard(),
+                  ],
+                  const _AttentionSlot(),
+                  // Always rendered (an empty box when idle). Conditionally
+                  // inserting the banner used to shift every keyless child
+                  // below it, so reconciliation re-matched them by index and
+                  // churned their elements mid-rebuild during SMS import. A
+                  // constant slot keeps every sibling at a stable index.
+                  _importBanner(context, importProgress),
+                  const SizedBox(height: 16),
+                  const _RecentActivitySection(),
+                ];
+                // Tablets / unfolded foldables: two columns side by side.
+                final wide = box.maxWidth >= 760;
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+                  children: [
+                    _Greeting(collapsed: collapsed),
+                    const SizedBox(height: 8),
+                    if (wide)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: Column(children: money)),
+                          const SizedBox(width: 20),
+                          // Its first item is a 16 dp gap; drop it so both
+                          // columns start level.
+                          Expanded(
+                              child: Column(
+                                  children: story.first is SizedBox
+                                      ? story.skip(1).toList()
+                                      : story)),
+                        ],
+                      )
+                    else ...[
+                      ...money,
+                      ...story,
+                    ],
+                  ],
+                );
+              }),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _Header(collapsed: collapsed),
+            ),
+          ]),
         ),
       ),
     );
+  }
+
+  /// "Syncing 3 accounts" for the pull-to-refresh pill.
+  String _syncLabel(WidgetRef ref) {
+    final n = ref
+        .watch(accountsProvider)
+        .where((a) => a.key != unassignedAccount)
+        .length;
+    return n == 0 ? 'Syncing' : 'Syncing $n account${n == 1 ? '' : 's'}';
   }
 
   Widget _importBanner(BuildContext context, ({int done, int total})? p) {
@@ -115,9 +181,82 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-// ── Header: avatar · greeting · bell · eye · Ask Aeris ────────
+/// First name ("Shivang") and initials ("SR") for the header.
+({String name, String initials}) _who(UserProfile? profile) {
+  final rawName = profile?.displayName?.trim().split(' ').first ?? '';
+  final name = rawName.isEmpty
+      ? 'there'
+      : rawName[0].toUpperCase() + rawName.substring(1);
+  final initials = (profile?.displayName ?? '?')
+      .trim()
+      .split(RegExp(r'\s+'))
+      .take(2)
+      .map((w) => w.isEmpty ? '' : w[0].toUpperCase())
+      .join();
+  return (name: name, initials: initials);
+}
+
+/// Height of Home's pinned top bar (and of the greeting row under it).
+const _kHomeBarH = 68.0;
+
+// ── Greeting: scrolls with the page; the pinned bar's buttons sit over its
+// right side, so its text stops short of them ─────────────────────────────
+class _Greeting extends ConsumerWidget {
+  final bool collapsed;
+  const _Greeting({required this.collapsed});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tk = context.tk;
+    final profile = ref.watch(userProfileProvider).asData?.value;
+    final who = _who(profile);
+    final hour = DateTime.now().hour;
+    final greet = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+    return AnimatedOpacity(
+      opacity: collapsed ? 0 : 1,
+      duration: reduceMotion(context) ? Duration.zero : Mo.exit,
+      child: SizedBox(
+        height: _kHomeBarH,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 150),
+          child: Row(children: [
+            GestureDetector(
+              onTap: () => Navigator.pushNamed(context, AppRoutes.editProfile),
+              child: _ProfileAvatar(profile: profile, initials: who.initials),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(greet,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Ts.bodyS.copyWith(color: tk.t2)),
+                  Text(who.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Ts.headline.copyWith(color: tk.t1)),
+                ],
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Pinned top bar: bell · eye · Ask Aeris always; once Home scrolls it gets
+// the page colour, a hairline, and a small avatar + name on the left ───────
 class _Header extends ConsumerWidget {
-  const _Header();
+  final bool collapsed;
+  const _Header({required this.collapsed});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -126,73 +265,67 @@ class _Header extends ConsumerWidget {
     // The bell only shows a dot when the notifications screen actually has
     // something: imports (bank SMS, screenshots) waiting for review or a budget about to blow.
     final pendingSms = ref.watch(transactionsStreamProvider.select((a) =>
-        (a.valueOrNull ?? const <Transaction>[])
-            .any((t) => t.needsReview)));
+        (a.valueOrNull ?? const <Transaction>[]).any((t) => t.needsReview)));
     final riskyBudget = ref.watch(insightsProvider.select((a) =>
         (a.valueOrNull?.budgetProjections ?? const []).any((p) =>
             p.alreadyOver ||
             (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))));
+    final who = _who(profile);
+    final tk = context.tk;
+    final d = reduceMotion(context) ? Duration.zero : Mo.standard;
 
-    final rawName = profile?.displayName?.trim().split(' ').first ?? '';
-    final name = rawName.isEmpty
-        ? 'there'
-        : rawName[0].toUpperCase() + rawName.substring(1);
-    final initials = (profile?.displayName ?? '?')
-        .trim()
-        .split(RegExp(r'\s+'))
-        .take(2)
-        .map((w) => w.isEmpty ? '' : w[0].toUpperCase())
-        .join();
-
-    final hour = DateTime.now().hour;
-    final greet = hour < 12
-        ? 'Good morning'
-        : hour < 17
-            ? 'Good afternoon'
-            : 'Good evening';
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 10, 0, 18),
+    return AnimatedContainer(
+      duration: d,
+      curve: Mo.curve,
+      height: _kHomeBarH,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: collapsed ? tk.bg : tk.bg.withValues(alpha: 0),
+        border: Border(
+            bottom: BorderSide(
+                color: collapsed ? tk.hair : tk.hair.withValues(alpha: 0))),
+      ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.pushNamed(context, AppRoutes.editProfile),
-            child: _ProfileAvatar(profile: profile, initials: initials),
-          ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(greet,
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: AerisColors.muted(context),
-                        fontWeight: FontWeight.w500)),
-                const SizedBox(height: 1),
-                Text(name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        height: 1.15)),
-              ],
+            child: IgnorePointer(
+              ignoring: !collapsed,
+              child: AnimatedOpacity(
+                opacity: collapsed ? 1 : 0,
+                duration: d,
+                child: AnimatedSlide(
+                  offset: collapsed ? Offset.zero : const Offset(0, 0.15),
+                  duration: d,
+                  curve: Mo.curve,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () =>
+                        Navigator.pushNamed(context, AppRoutes.editProfile),
+                    child: Row(children: [
+                      _ProfileAvatar(
+                          profile: profile, initials: who.initials, size: 32),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(who.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Ts.title.copyWith(color: tk.t1)),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
             ),
           ),
-          _RoundIconBtn(
-            icon: Icons.notifications_none_rounded,
+          RoundIconButton(
+            icon: Ph.bell,
             tooltip: 'Notifications',
-            badge: pendingSms || riskyBudget,
+            dot: pendingSms || riskyBudget,
             onTap: () => Navigator.pushNamed(context, AppRoutes.notifications),
           ),
-          const SizedBox(width: 8),
-          _RoundIconBtn(
-            icon: hidden
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
+          const SizedBox(width: 6),
+          RoundIconButton(
+            icon: hidden ? Ph.eyeSlash : Ph.eye,
             tooltip: hidden ? 'Show amounts' : 'Hide amounts',
             active: hidden,
             onTap: () {
@@ -204,75 +337,13 @@ class _Header extends ConsumerWidget {
                       : 'Amounts hidden — tap the eye again to show')));
             },
           ),
-          const SizedBox(width: 8),
-          _RoundIconBtn(
-            icon: Icons.auto_awesome_rounded,
+          const SizedBox(width: 6),
+          RoundIconButton(
+            icon: Ph.sparkle,
             tooltip: 'Ask Aeris',
-            active: true,
             onTap: () => Navigator.pushNamed(context, AppRoutes.assistant),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _RoundIconBtn extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-  final bool active;
-  final bool badge;
-  const _RoundIconBtn({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-    this.active = false,
-    this.badge = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AerisColors.accent(context);
-    return Tooltip(
-      message: tooltip,
-      child: Semantics(
-        button: true,
-        label: tooltip,
-        child: GestureDetector(
-          onTap: onTap,
-          child: Stack(clipBehavior: Clip.none, children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: active
-                  ? BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AerisColors.accentSoft(context))
-                  : AerisColors.cardDecoration(context, radius: 21),
-              child: Icon(icon,
-                  size: 20,
-                  color: active
-                      ? accent
-                      : Theme.of(context).colorScheme.onSurface),
-            ),
-            if (badge)
-              Positioned(
-                top: 1,
-                right: 1,
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AerisColors.danger(context),
-                    border: Border.all(
-                        color: AerisColors.canvas(context), width: 2),
-                  ),
-                ),
-              ),
-          ]),
-        ),
       ),
     );
   }
@@ -282,11 +353,12 @@ class _RoundIconBtn extends StatelessWidget {
 class _ProfileAvatar extends StatelessWidget {
   final UserProfile? profile;
   final String initials;
-  const _ProfileAvatar({required this.profile, required this.initials});
+  final double size;
+  const _ProfileAvatar(
+      {required this.profile, required this.initials, this.size = 48});
 
   @override
   Widget build(BuildContext context) {
-    const size = 44.0;
     final bytes = profile?.photoBytes;
     final url = profile?.photoUrl;
     ImageProvider? img;
@@ -305,21 +377,10 @@ class _ProfileAvatar extends StatelessWidget {
         ),
       );
     }
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-          shape: BoxShape.circle, color: AerisColors.accentSoft(context)),
-      child: Center(
-        child: Text(
-          initials.isEmpty ? '?' : initials,
-          style: TextStyle(
-              color: AerisColors.accent(context),
-              fontSize: size * 0.36,
-              fontWeight: FontWeight.w800),
-        ),
-      ),
-    );
+    return InitialAvatar('',
+        initials: initials.isEmpty ? '?' : initials,
+        size: size,
+        color: const Color(0xFF8A7ED3));
   }
 }
 
@@ -342,91 +403,88 @@ class _HeroCard extends ConsumerWidget {
 
   Widget _card(
       BuildContext context, AnalyticsSnapshot s, AnalyticsRange range) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final tk = context.tk;
     final mom = _computeMom(s);
     final isThisMonth = range.kind == RangeKind.thisMonth;
     return Semantics(
       button: true,
-      label: 'Spent ${range.label}: ${formatRupees(s.monthExpense)}',
+      label: 'Spent ${range.label}: '
+          '${kAmountsHidden ? 'amount hidden' : formatRupees(s.monthExpense)}',
       child: GestureDetector(
         onTap: () => Navigator.pushNamed(context, AppRoutes.transactions,
             arguments: TxnDirection.debit),
+        // The hero gradient — used on this one card and the "+" only.
         child: Container(
           clipBehavior: Clip.antiAlias,
-          // A flat graphite panel with a hairline edge — the one dark,
-          // emphatic surface on Home.
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            gradient: AerisColors.inkGradient,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-            boxShadow: dark
-                ? null
-                : const [
-                    BoxShadow(
-                        color: Color(0x1F151A22),
-                        blurRadius: 20,
-                        offset: Offset(0, 8)),
-                  ],
+            gradient: LinearGradient(
+              begin: const Alignment(-0.85, -1),
+              end: const Alignment(0.85, 1),
+              colors: [tk.heroA, tk.heroB],
+            ),
+            boxShadow: tk.shadow,
           ),
-          child: Stack(children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+          child: DecoratedBox(
+            // A soft light falling from the top-left corner.
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.topLeft,
+                radius: 1.2,
+                colors: [Color(0x2EFFFFFF), Color(0x00FFFFFF)],
+                stops: [0, 0.55],
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                            shape: BoxShape.circle, color: _heroBar),
-                      ),
-                      const SizedBox(width: 8),
-                      // Flexible: on 320dp phones the wide-tracked caption
-                      // must give way to the range pill, not overflow.
                       Expanded(
-                        child: Text('SPENT · ${range.label.toUpperCase()}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: hudLabel(context, color: _heroMuted)),
+                        child: Overline('Spent · ${range.label}',
+                            color: tk.onHero),
                       ),
                       const SizedBox(width: 8),
                       _RangePill(label: range.label),
                     ]),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     _HeroAmount(value: s.monthExpense),
                     if (isThisMonth) ...[
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
                       _BudgetStatus(spent: s.monthExpense),
                     ],
                     if (mom != null) ...[
                       const SizedBox(height: 14),
-                      _momChip(mom),
+                      _momChip(context, mom),
                     ],
                   ]),
             ),
-          ]),
+          ),
         ),
       ),
     );
   }
 
-  Widget _momChip(({double pct, bool down}) m) {
-    final color = m.down ? _heroGood : _heroUp;
+  /// "↘ 12% less than last month" on a surface pill. The arrow carries the
+  /// tone (green when spending fell); the words stay plain.
+  Widget _momChip(BuildContext context, ({double pct, bool down}) m) {
+    final tk = context.tk;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(99),
+        color: tk.surface,
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(m.down ? Icons.trending_down_rounded : Icons.trending_up_rounded,
-            size: 15, color: color),
-        const SizedBox(width: 5),
+        Icon(m.down ? PhBold.trendDown : PhBold.trendUp,
+            size: 14, color: m.down ? tk.ok : tk.warn),
+        const SizedBox(width: 6),
         Text(
             '${m.pct.toStringAsFixed(0)}% ${m.down ? 'less' : 'more'} than last month',
             style: TextStyle(
-                color: color, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                color: tk.t1, fontSize: 12, fontWeight: FontWeight.w700)),
       ]),
     );
   }
@@ -447,63 +505,23 @@ class _HeroCard extends ConsumerWidget {
 }
 
 // ── Hero figure: count-up once per session, ₹ set smaller ─────
-class _HeroAmount extends StatefulWidget {
+class _HeroAmount extends StatelessWidget {
   final double value;
   const _HeroAmount({required this.value});
 
-  @override
-  State<_HeroAmount> createState() => _HeroAmountState();
-}
-
-class _HeroAmountState extends State<_HeroAmount> {
   // First time Home appears this session the figure counts up from 0; after
   // that it only tweens between real changes (never re-counts on rebuild).
-  late double _from = _heroCounted ? widget.value : 0;
-
   @override
-  void initState() {
-    super.initState();
-    _heroCounted = true;
-  }
-
-  @override
-  void didUpdateWidget(_HeroAmount old) {
-    super.didUpdateWidget(old);
-    if (old.value != widget.value) _from = old.value;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final still = reduceMotion(context) || _from == widget.value;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: still ? widget.value : _from, end: widget.value),
-      duration: still ? Duration.zero : const Duration(milliseconds: 900),
-      curve: Curves.easeOutCubic,
-      builder: (_, v, __) {
-        final text = formatRupees(v);
-        // "₹12,340" → symbol + number, so the symbol can sit smaller.
-        final m = RegExp(r'^([^\d•]*)(.*)$').firstMatch(text)!;
-        return Text.rich(
-          TextSpan(children: [
-            TextSpan(
-              text: m[1],
-              style: const TextStyle(
-                  fontSize: 26, fontWeight: FontWeight.w600, color: _heroMuted),
-            ),
-            TextSpan(text: m[2]),
-          ]),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-              color: Colors.white,
-              fontSize: 44,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -1.5,
-              height: 1.05),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: CountUpMoney(
+          value: value,
+          counted: () => _heroCounted,
+          markCounted: () => _heroCounted = true,
+          color: context.tk.onHero,
+        ),
+      );
 }
 
 // ── Monthly budget: one thin bar + what's safe to spend per day ─
@@ -513,32 +531,43 @@ class _BudgetStatus extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tk = context.tk;
     final budgets = ref.watch(effectiveBudgetsProvider);
     final total = _totalBudget(budgets);
     if (total <= 0) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => Navigator.pushNamed(context, AppRoutes.budgets),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Row(children: [
-            Icon(Icons.savings_outlined, size: 18, color: _heroGood),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text('Set a monthly budget to see what\'s safe to spend',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600)),
-            ),
-            Icon(Icons.chevron_right_rounded, size: 18, color: _heroMuted),
-          ]),
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 260),
+          child: Text('Set a monthly budget to see what\'s safe to spend.',
+              style: TextStyle(
+                  color: tk.onHero,
+                  fontSize: 15,
+                  height: 22 / 15,
+                  fontWeight: FontWeight.w500)),
         ),
-      );
+        const SizedBox(height: 10),
+        Material(
+          color: tk.surface,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => Navigator.pushNamed(context, AppRoutes.budgets),
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Ph.target, size: 16, color: tk.acc),
+                const SizedBox(width: 6),
+                Text('Set budget',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: tk.t1)),
+              ]),
+            ),
+          ),
+        ),
+      ]);
     }
 
     final left = total - spent;
@@ -553,79 +582,51 @@ class _BudgetStatus extends ConsumerWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.pushNamed(context, AppRoutes.budgets),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(99),
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: v),
-            duration: reduceMotion(context)
-                ? Duration.zero
-                : const Duration(milliseconds: 900),
-            curve: Curves.easeOutCubic,
-            builder: (_, x, __) => _BudgetBar(value: x, over: over),
-          ),
+        // Progress as the rising line that ends in a dot.
+        RisingProgress(
+          value: v,
+          color: tk.onHero,
+          track: tk.onHero.withValues(alpha: 0.22),
+          stroke: 4,
+          rise: 14,
+          dot: 5.5,
         ),
-        const SizedBox(height: 10),
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Expanded(
-            child: Text(
-              over
-                  ? '${formatRupees(-left, compact: true)} over your '
-                      '${formatRupees(total, compact: true)} budget'
-                  : '${formatRupees(left, compact: true)} left of '
+        const SizedBox(height: 8),
+        DefaultTextStyle.merge(
+          style: TextStyle(
+              color: tk.onHero,
+              fontSize: 13,
+              height: 18 / 13,
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()]),
+          child: Row(children: [
+            Expanded(
+              child: over
+                  ? Row(children: [
+                      Icon(PhFill.warningCircle, size: 15, color: tk.onHero),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                            'Over by ${formatRupees(-left, compact: true)} of '
+                            '${formatRupees(total, compact: true)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                    ])
+                  : Text(
+                      '${formatRupees(left, compact: true)} left of '
                       '${formatRupees(total, compact: true)}',
-              style: TextStyle(
-                  color: over ? _heroBad : Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
             ),
-          ),
-          if (!over)
-            Text.rich(
-              TextSpan(children: [
-                TextSpan(
-                    text: formatRupees(perDay, compact: true),
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w800)),
-                TextSpan(
-                    text: daysLeft == 1
-                        ? '/day · last day'
-                        : '/day · $daysLeft days'),
-              ]),
-              style: const TextStyle(
-                  color: _heroMuted,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600),
-            ),
-        ]),
-      ]),
-    );
-  }
-}
-
-/// Budget bar: a soft blue fill on a dim track; soft red when over budget.
-class _BudgetBar extends StatelessWidget {
-  final double value;
-  final bool over;
-  const _BudgetBar({required this.value, required this.over});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 7,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      alignment: Alignment.centerLeft,
-      child: FractionallySizedBox(
-        widthFactor: value.clamp(0.0, 1.0),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(99),
-            color: over ? _heroBad : _heroBar,
-          ),
+            if (!over)
+              Text(
+                  '${formatRupees(perDay, compact: true)}/day · '
+                  '${daysLeft == 1 ? 'last day' : '$daysLeft days'}',
+                  maxLines: 1),
+          ]),
         ),
-      ),
+      ]),
     );
   }
 }
@@ -633,48 +634,8 @@ class _BudgetBar extends StatelessWidget {
 // ── Momentum: the motivation panel ────────────────────────────
 //
 // Three live numbers that reward good behaviour — how much of your income
-// you're keeping, your check-in streak, and your closest goal — plus one
-// money line that changes every day.
-const _quotes = <(String, String)>[
-  (
-    'Do not save what is left after spending; spend what is left after saving.',
-    'Warren Buffett'
-  ),
-  (
-    'A budget is telling your money where to go instead of wondering where it went.',
-    'Dave Ramsey'
-  ),
-  ('Small daily wins compound into big results.', 'AERIS'),
-  (
-    'Beware of little expenses. A small leak will sink a great ship.',
-    'Benjamin Franklin'
-  ),
-  ('Wealth is what you don\'t see — the cars not bought.', 'Morgan Housel'),
-  ('The habit of saving is itself an education.', 'T.T. Munger'),
-  ('Every rupee you track is a rupee you control.', 'AERIS'),
-  (
-    'It\'s not your salary that makes you rich, it\'s your spending habits.',
-    'Charles A. Jaffe'
-  ),
-  (
-    'Financial freedom is available to those who learn about it and work for it.',
-    'Robert Kiyosaki'
-  ),
-  (
-    'Rich people plan for three generations. Poor people plan for Saturday night.',
-    'Gloria Steinem'
-  ),
-  (
-    'Too many people spend money they haven\'t earned to impress people they don\'t like.',
-    'Will Rogers'
-  ),
-  ('Discipline today, freedom tomorrow.', 'AERIS'),
-  (
-    'The best time to start was yesterday. The next best time is today.',
-    'Proverb'
-  ),
-  ('An investment in knowledge pays the best interest.', 'Benjamin Franklin'),
-];
+// you're keeping, your check-in streak, and your closest goal — plus where
+// today's saving pace lands you.
 
 class _MomentumCard extends ConsumerWidget {
   const _MomentumCard();
@@ -682,6 +643,7 @@ class _MomentumCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(amountHiddenProvider);
+    ref.watch(incomeLockProvider); // "₹X kept" + the rate would reveal salary
     final analytics = ref.watch(analyticsProvider).asData?.value;
     final range = ref.watch(analyticsRangeProvider);
     final profile = ref.watch(userProfileProvider).asData?.value;
@@ -707,144 +669,117 @@ class _MomentumCard extends ConsumerWidget {
       ..sort((a, b) => b.progress.compareTo(a.progress));
     final goal = open.isNotEmpty ? open.first : null;
 
-    final now = DateTime.now();
-    final dayOfYear = now.difference(DateTime(now.year)).inDays;
-    final (quote, author) = _quotes[dayOfYear % _quotes.length];
-    final muted = AerisColors.muted(context);
-    final accent = AerisColors.accent(context);
+    final tk = context.tk;
+    const months = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
 
     return AerisCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.bolt_rounded, size: 15, color: accent),
-          const SizedBox(width: 6),
-          Text('MOMENTUM', style: hudLabel(context, color: accent)),
-          const Spacer(),
-          if (rate != null && rate >= 0.2)
-            Text('On track',
-                style: hudLabel(context, color: AerisColors.moneyIn(context))),
-        ]),
+        const SectionTitle('Momentum'),
         const SizedBox(height: 14),
-        IntrinsicHeight(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(
-              child: _Stat(
-                label: 'SAVED',
-                value: rate == null
-                    ? '—'
-                    : '${(rate * 100).clamp(-999, 100).toStringAsFixed(0)}%',
-                sub: rate == null
-                    ? (noData && income > 0 ? 'No spends yet' : 'Add income')
-                    : saved >= 0
-                        ? '${formatRupees(saved, compact: true)} kept'
-                        : '${formatRupees(-saved, compact: true)} over',
-                color: rate == null
-                    ? muted
-                    : rate >= 0
-                        ? AerisColors.moneyIn(context)
-                        : AerisColors.danger(context),
-                onTap: () => Navigator.pushNamed(context,
-                    income <= 0 ? AppRoutes.editProfile : AppRoutes.insights),
-              ),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: _Stat(
+              label: 'Saved',
+              value: rate == null
+                  ? '—'
+                  : '${(rate * 100).clamp(-999, 100).toStringAsFixed(0)}%',
+              sub: rate == null
+                  ? (noData && income > 0 ? 'No spends yet' : 'Add income')
+                  : saved >= 0
+                      ? '${formatIncome(saved, compact: true)} kept'
+                      : '${formatIncome(-saved, compact: true)} over',
+              color: rate != null && rate < 0 ? tk.bad : null,
+              onTap: () => Navigator.pushNamed(context,
+                  income <= 0 ? AppRoutes.editProfile : AppRoutes.insights),
             ),
-            VerticalDivider(width: 1, color: AerisColors.line(context)),
-            Expanded(
-              child: _Stat(
-                label: 'STREAK',
-                value: '$streak',
-                sub: streak == 1 ? 'day' : 'days',
-                color: AerisColors.amber,
-                icon: Icons.local_fire_department_rounded,
-                onTap: () => _showStreakSheet(context),
-              ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _Stat(
+              label: 'Streak',
+              value: '$streak',
+              sub: streak == 1 ? 'day' : 'days',
+              onTap: () => _showStreakSheet(context),
             ),
-            VerticalDivider(width: 1, color: AerisColors.line(context)),
-            Expanded(
-              child: _Stat(
-                label: 'GOAL',
-                value: goal == null
-                    ? '+'
-                    : '${(goal.progress * 100).toStringAsFixed(0)}%',
-                sub: goal == null ? 'Set one' : goal.title,
-                color: AerisColors.violet,
-                progress: goal?.progress,
-                onTap: () => Navigator.pushNamed(context, AppRoutes.goals),
-              ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _Stat(
+              label: 'Goal',
+              value: goal == null
+                  ? '—'
+                  : '${(goal.progress * 100).toStringAsFixed(0)}%',
+              sub: goal == null ? 'Set one' : goal.title,
+              progress: goal?.progress,
+              onTap: () => Navigator.pushNamed(context, AppRoutes.goals),
             ),
-          ]),
-        ),
+          ),
+        ]),
         if (projection != null) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           // Future-you: where today's saving pace lands you.
           Semantics(
             button: true,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
+            child: InkWell(
               onTap: () => Navigator.pushNamed(context, AppRoutes.netWorth),
-              child: Row(children: [
-                const Icon(Icons.rocket_launch_outlined,
-                    size: 16, color: AerisColors.violet),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(children: [
-                      TextSpan(
-                          text:
-                              'At ${formatRupees(projection.perMonth, compact: true)}/month you\'ll have '),
-                      TextSpan(
-                          text: formatRupees(projection.value, compact: true),
-                          style: const TextStyle(fontWeight: FontWeight.w800)),
-                      TextSpan(
-                          text:
-                              ' by ${const ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][projection.by.month]} ${projection.by.year}'),
-                    ]),
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w500,
-                        color: Theme.of(context).colorScheme.onSurface),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 48),
+                padding: const EdgeInsets.only(top: 12),
+                decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: tk.hair))),
+                child: Row(children: [
+                  Icon(Ph.trendUp, size: 18, color: tk.acc),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                            text:
+                                'At ${formatRupees(projection.perMonth, compact: true)}/month you\'ll have '),
+                        TextSpan(
+                            text: formatRupees(projection.value, compact: true),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        TextSpan(
+                            text:
+                                ' by ${months[projection.by.month]} ${projection.by.year}'),
+                      ]),
+                      style: TextStyle(
+                          fontSize: 13, height: 18 / 13, color: tk.t1),
+                    ),
                   ),
-                ),
-                Icon(Icons.chevron_right_rounded, size: 18, color: muted),
-              ]),
+                  Icon(Ph.arrowRight, size: 16, color: tk.t2),
+                ]),
+              ),
             ),
           ),
         ],
-        const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: AerisColors.accentSoft(context),
-            borderRadius: BorderRadius.circular(14),
-            border: Border(left: BorderSide(color: accent, width: 3)),
-          ),
-          child: Text.rich(
-            TextSpan(children: [
-              TextSpan(
-                  text: '“$quote”',
-                  style: TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface)),
-              TextSpan(
-                  text: '\n— $author',
-                  style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w500, color: muted)),
-            ]),
-          ),
-        ),
       ]),
     );
   }
 }
 
+/// One Momentum figure: overline, value, sub-line, optional progress.
 class _Stat extends StatelessWidget {
   final String label;
   final String value;
   final String sub;
-  final Color color;
-  final IconData? icon;
+  final Color? color;
   final double? progress;
   final VoidCallback onTap;
 
@@ -852,15 +787,14 @@ class _Stat extends StatelessWidget {
     required this.label,
     required this.value,
     required this.sub,
-    required this.color,
     required this.onTap,
-    this.icon,
+    this.color,
     this.progress,
   });
 
   @override
   Widget build(BuildContext context) {
-    final muted = AerisColors.muted(context);
+    final tk = context.tk;
     return Semantics(
       button: true,
       label: '$label $value $sub',
@@ -868,43 +802,22 @@ class _Stat extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Column(children: [
-            Text(label, style: hudLabel(context, size: 10)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Overline(label),
+          const SizedBox(height: 2),
+          Text(value,
+              maxLines: 1, style: Ts.amountM.copyWith(color: color ?? tk.t1)),
+          const SizedBox(height: 2),
+          Text(sub,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  Ts.label.copyWith(fontWeight: FontWeight.w400, color: tk.t2)),
+          if (progress != null) ...[
             const SizedBox(height: 6),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              if (icon != null) ...[
-                Icon(icon, size: 18, color: color),
-                const SizedBox(width: 2),
-              ],
-              Text(value,
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
-                      color: color)),
-            ]),
-            const SizedBox(height: 2),
-            Text(sub,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 11.5, fontWeight: FontWeight.w500, color: muted)),
-            if (progress != null) ...[
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(99),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 3,
-                  color: color,
-                  backgroundColor: color.withValues(alpha: 0.15),
-                ),
-              ),
-            ],
-          ]),
-        ),
+            RisingProgress(value: progress!, dot: 3),
+          ],
+        ]),
       ),
     );
   }
@@ -918,18 +831,19 @@ void _showStreakSheet(BuildContext context) {
     builder: (ctx) => Consumer(builder: (ctx, ref2, _) {
       final g = ref2.watch(gamificationProvider);
       final streak = g.liveStreak; // lapses if a day was missed
-      final week = g.weekCheckins(); // real Sun→Sat check-in days
+      // The last 7 days, today on the right — never wiped by a new week.
+      final days = GamificationState.recentDays();
+      final week = g.recentCheckins();
       final notifier = ref2.read(gamificationProvider.notifier);
       final done = notifier.checkedInToday;
       final accent = AerisColors.accent(ctx);
-      final todayIdx = g.todayWeekIndex; // Sun=0 … Sat=6
-      const labels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+      const todayIdx = 6;
+      final labels = [for (final d in days) GamificationState.dayLetter(d)];
       final now = DateTime.now();
       final noSpend = noSpendWeek(
         ref2.watch(transactionsStreamProvider).valueOrNull ?? const [],
         now,
-        weekStart: DateTime(now.year, now.month, now.day)
-            .subtract(Duration(days: todayIdx)),
+        weekStart: days.first,
       );
       final noSpendCount = noSpend.where((d) => d == true).length;
 
@@ -968,7 +882,7 @@ void _showStreakSheet(BuildContext context) {
                             : null,
                       ),
                       child: i < week.length && week[i]
-                          ? Icon(Icons.check_rounded,
+                          ? Icon(PhBold.check,
                               size: 18, color: AerisColors.onAccent(ctx))
                           : null,
                     ),
@@ -1004,7 +918,7 @@ void _showStreakSheet(BuildContext context) {
             Text(
               noSpendCount == 0
                   ? 'No-spend days earn +10 Aura each — they show up here.'
-                  : '$noSpendCount no-spend day${noSpendCount == 1 ? '' : 's'} this week · +${noSpendCount * 10} Aura',
+                  : '$noSpendCount no-spend day${noSpendCount == 1 ? '' : 's'} in the last 7 days · +${noSpendCount * 10} Aura',
               style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
@@ -1051,19 +965,19 @@ class _RangePill extends ConsumerWidget {
       child: GestureDetector(
         onTap: () => _showSheet(context, ref),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
+          height: 32,
+          padding: const EdgeInsets.fromLTRB(12, 0, 10, 0),
           decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(99)),
+              color: context.tk.onHero.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(12)),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(label,
-                style: const TextStyle(
-                    color: Colors.white,
+                style: TextStyle(
+                    color: context.tk.onHero,
                     fontSize: 12,
                     fontWeight: FontWeight.w700)),
-            const SizedBox(width: 2),
-            const Icon(Icons.expand_more_rounded,
-                color: Colors.white, size: 16),
+            const SizedBox(width: 4),
+            Icon(PhBold.caretDown, color: context.tk.onHero, size: 12),
           ]),
         ),
       ),
@@ -1077,38 +991,23 @@ class _RangePill extends ConsumerWidget {
       AnalyticsRange.lastDays(30, 'Last 30 days'),
       AnalyticsRange.thisYear(),
     ];
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 6),
-              child: Text('Show spending for',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-            ),
-            ...options.map((r) {
-              final on = r.label == label;
-              return ListTile(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                title: Text(r.label,
-                    style: TextStyle(
-                        fontWeight: on ? FontWeight.w700 : FontWeight.w500)),
-                trailing: on
-                    ? Icon(Icons.check_rounded, color: AerisColors.accent(ctx))
-                    : null,
-                onTap: () {
-                  ref.read(analyticsRangeProvider.notifier).state = r;
-                  Navigator.pop(ctx);
-                },
-              );
-            }),
-          ]),
-        ),
-      ),
+    showDsSheet<void>(
+      context,
+      title: 'Show spending for',
+      builder: (ctx) => ListGroup(inset: 16, children: [
+        for (final r in options)
+          DsRow(
+            minHeight: 52,
+            title: r.label,
+            trailing: r.label == label
+                ? Icon(PhBold.check, size: 18, color: ctx.tk.acc)
+                : null,
+            onTap: () {
+              ref.read(analyticsRangeProvider.notifier).state = r;
+              Navigator.pop(ctx);
+            },
+          ),
+      ]),
     );
   }
 }
@@ -1184,7 +1083,7 @@ class _SetupCardState extends ConsumerState<_SetupCard>
   }
 
   Future<void> _sms() async {
-    if (await SmsService.instance.requestPermission()) {
+    if (await requestSmsWithDisclosure(context)) {
       _toast('Bank SMS will be read on your phone, privately.');
     } else if (mounted) {
       // Sideloaded apps need "Allow restricted settings" first; Settings
@@ -1206,66 +1105,99 @@ class _SetupCardState extends ConsumerState<_SetupCard>
     if (_hidden != false) return const SizedBox.shrink();
     final s = ref.watch(setupStatusProvider).valueOrNull;
     if (s == null || s.complete) return const SizedBox.shrink();
-    final muted = AerisColors.muted(context);
+    final tk = context.tk;
 
-    final steps = <(bool, IconData, String, String, VoidCallback)>[
-      (s.sms, Icons.sms_outlined, 'Read bank SMS',
-          'Transactions add themselves', _sms),
-      (s.notifications, Icons.notifications_active_outlined,
-          'Catch UPI app payments', 'Google Pay, PhonePe, Paytm',
-          () => NotificationIntake.instance.openSettings()),
-      (s.income, Icons.payments_outlined, 'Add your monthly income',
-          'For your savings rate', () =>
-              Navigator.pushNamed(context, AppRoutes.editProfile)),
-      (s.budget, Icons.savings_outlined, 'Set a monthly budget',
-          'See what\'s safe to spend', () =>
-              Navigator.pushNamed(context, AppRoutes.budgets)),
-      (s.reminders, Icons.alarm_on_outlined, 'Turn on reminders',
-          'Bills, card dues, money owed', _reminders),
+    final steps = <(bool, IconData, String, VoidCallback)>[
+      (s.sms, Ph.chatText, 'Read bank SMS', _sms),
+      (
+        s.notifications,
+        Ph.bellRinging,
+        'Catch UPI app payments',
+        () => NotificationIntake.instance.openSettings()
+      ),
+      (
+        s.income,
+        Ph.briefcase,
+        'Add your monthly income',
+        () => Navigator.pushNamed(context, AppRoutes.editProfile)
+      ),
+      (
+        s.budget,
+        Ph.target,
+        'Set a monthly budget',
+        () => Navigator.pushNamed(context, AppRoutes.budgets)
+      ),
+      (s.reminders, Ph.alarm, 'Turn on reminders', _reminders),
     ];
 
     return Padding(
-      padding: const EdgeInsets.only(top: 14),
-      child: AerisCard(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Expanded(
-              child: Text('Finish setting up',
-                  style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.3)),
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: AerisColors.cardDecoration(context),
+        padding: const EdgeInsets.only(top: 16, bottom: 6),
+        child: Material(
+          type: MaterialType.transparency,
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 8, 6),
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Finish setting up',
+                            style: Ts.title.copyWith(color: tk.t1)),
+                        const SizedBox(height: 6),
+                        Row(children: [
+                          SizedBox(
+                            width: 96,
+                            child: RisingProgress(
+                                value: s.done / SetupStatus.total,
+                                rise: 4,
+                                stroke: 2,
+                                dot: 3),
+                          ),
+                          const SizedBox(width: 8),
+                          Text('${s.done} of ${SetupStatus.total}',
+                              style: Ts.label.copyWith(
+                                  fontWeight: FontWeight.w700, color: tk.t2)),
+                        ]),
+                      ]),
+                ),
+                TextButton(
+                    onPressed: _hide,
+                    style: TextButton.styleFrom(
+                        foregroundColor: tk.t2,
+                        minimumSize: const Size(48, 48)),
+                    child: const Text('Hide')),
+              ]),
             ),
-            Text('${s.done} of ${SetupStatus.total}',
-                style: TextStyle(
-                    fontSize: 12.5, fontWeight: FontWeight.w600, color: muted)),
-            TextButton(onPressed: _hide, child: const Text('Hide')),
+            for (final (done, icon, title, onTap) in steps)
+              InkWell(
+                onTap: done ? null : onTap,
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 52),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(children: [
+                    Icon(done ? PhFill.checkCircle : icon,
+                        size: 20, color: done ? tk.ok : tk.acc),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(title,
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight:
+                                  done ? FontWeight.w400 : FontWeight.w600,
+                              color: done ? tk.t2 : tk.t1)),
+                    ),
+                    if (!done) Icon(Ph.caretRight, size: 16, color: tk.t3),
+                  ]),
+                ),
+              ),
           ]),
-          Padding(
-            padding: const EdgeInsets.only(right: 8, bottom: 4),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LinearProgressIndicator(
-                  value: s.done / SetupStatus.total, minHeight: 5),
-            ),
-          ),
-          for (final (done, icon, title, sub, onTap) in steps)
-            ListTile(
-              contentPadding: const EdgeInsets.only(right: 4),
-              dense: true,
-              enabled: !done,
-              leading: Icon(done ? Icons.check_circle_rounded : icon,
-                  color: done ? AerisColors.moneyIn(context) : null),
-              title: Text(title,
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      decoration: done ? TextDecoration.lineThrough : null)),
-              subtitle: done ? null : Text(sub),
-              trailing: done ? null : const Icon(Icons.chevron_right_rounded),
-              onTap: done ? null : onTap,
-            ),
-        ]),
+        ),
       ),
     );
   }
@@ -1291,104 +1223,117 @@ class _BalancesCard extends ConsumerWidget {
     if (accounts.isEmpty && dues.isEmpty && owed.isEmpty) {
       return const SizedBox.shrink();
     }
-    final muted = AerisColors.muted(context);
+    final tk = context.tk;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    Widget row(IconData icon, String title, String sub, String value,
-            Color? valueColor) =>
-        Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: Row(children: [
-            Icon(icon, size: 20, color: muted),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w700)),
-                  Text(sub,
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: muted)),
-                ],
-              ),
-            ),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: valueColor)),
-          ]),
+    // "HDFC salary ••4521" → "HD"; "SBI ••8208" → "SBI".
+    String badge(String label) {
+      final w = label.trim().split(RegExp(r'\s+')).first.toUpperCase();
+      final letters = w.replaceAll(RegExp(r'[^A-Z]'), '');
+      if (letters.isEmpty) return '••';
+      return letters.length <= 3 ? letters : letters.substring(0, 2);
+    }
+
+    Widget row(Widget tile, String title, Widget sub, num value,
+            {Color? valueColor, bool decimals = true, VoidCallback? onTap}) =>
+        DsRow(
+          leading: tile,
+          title: title,
+          titleMaxLines: 1,
+          subWidget: sub,
+          minHeight: 60,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          onTap:
+              onTap ?? () => Navigator.pushNamed(context, AppRoutes.accounts),
+          trailing:
+              MoneyText(value, smallDecimals: decimals, color: valueColor),
         );
+    Widget subText(String s) => Text(s,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Ts.label.copyWith(fontWeight: FontWeight.w400, color: tk.t2));
+
+    final rows = <Widget>[
+      for (final a in accounts.take(3))
+        row(
+          BadgeTile(text: badge(a.label)),
+          a.label,
+          subText('as of ${asOfLabel(a.bankBalanceAt!)}'),
+          a.bankBalance!,
+          valueColor: low > 0 && a.bankBalance! < low ? tk.bad : null,
+        ),
+      for (final d in dues.take(2))
+        () {
+          final days = DateTime(d.dueDate.year, d.dueDate.month, d.dueDate.day)
+              .difference(today)
+              .inDays;
+          final when = days < 0
+              ? 'Overdue since ${shortDate(d.dueDate)}'
+              : days == 0
+                  ? 'Due today'
+                  : days == 1
+                      ? 'Due tomorrow'
+                      : 'Due ${shortDate(d.dueDate)}';
+          final urgent = days <= 2;
+          return row(
+            BadgeTile(
+                icon: Ph.creditCard,
+                tint: urgent && days < 0 ? tk.bad : tk.warn),
+            d.label,
+            Row(children: [
+              Icon(PhFill.clock, size: 13, color: days < 0 ? tk.bad : tk.warn),
+              const SizedBox(width: 4),
+              Flexible(
+                child: subText(d.minimum == null
+                    ? when
+                    : '$when · min ${formatRupees(d.minimum!)}'),
+              ),
+            ]),
+            d.total,
+            decimals: false,
+            valueColor: days < 0 ? tk.bad : null,
+          );
+        }(),
+      if (owed.isNotEmpty)
+        row(
+          owed.length == 1
+              ? InitialAvatar(owed.keys.single, color: const Color(0xFF5F9A4C))
+              : BadgeTile(icon: Ph.usersThree, tint: tk.ok),
+          'Owed to you',
+          subText(owed.length == 1
+              ? 'from ${owed.keys.single} · shared bills'
+              : 'from ${owed.length} people · shared bills'),
+          owedTotal,
+          decimals: false,
+          valueColor: tk.ok,
+          onTap: () => Navigator.pushNamed(context, AppRoutes.people),
+        ),
+    ];
 
     return Padding(
-      padding: const EdgeInsets.only(top: 14),
-      child: AerisCard(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        onTap: () => Navigator.pushNamed(context, AppRoutes.accounts),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Text('Balances',
-                style: TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3)),
-            const Spacer(),
-            if (accounts.isNotEmpty)
-              Text('From bank SMS',
-                  style: TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w600, color: muted)),
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: AerisColors.cardDecoration(context),
+        padding: const EdgeInsets.only(top: 16, bottom: 4),
+        child: Material(
+          type: MaterialType.transparency,
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SectionTitle('Balances',
+                note: accounts.isNotEmpty ? 'from bank SMS' : null,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4)),
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0)
+                Padding(
+                  padding: const EdgeInsets.only(left: 68),
+                  child: Container(height: 1, color: tk.hair),
+                ),
+              rows[i],
+            ],
           ]),
-          for (final a in accounts.take(3))
-            row(
-              Icons.account_balance_outlined,
-              a.label,
-              'as of ${asOfLabel(a.bankBalanceAt!)}',
-              formatRupees(a.bankBalance!, decimals: true),
-              low > 0 && a.bankBalance! < low ? AerisColors.danger(context) : null,
-            ),
-          for (final d in dues.take(2))
-            () {
-              final days = DateTime(d.dueDate.year, d.dueDate.month,
-                      d.dueDate.day)
-                  .difference(today)
-                  .inDays;
-              final when = days < 0
-                  ? 'overdue since ${shortDate(d.dueDate)}'
-                  : days == 0
-                      ? 'due today'
-                      : days == 1
-                          ? 'due tomorrow'
-                          : 'due ${shortDate(d.dueDate)} · in $days days';
-              return row(
-                Icons.credit_card_outlined,
-                d.label,
-                d.minimum == null
-                    ? when
-                    : '$when · min ${formatRupees(d.minimum!)}',
-                formatRupees(d.total, decimals: true),
-                days <= 2 ? AerisColors.danger(context) : null,
-              );
-            }(),
-          if (owed.isNotEmpty)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pushNamed(context, AppRoutes.people),
-              child: row(
-                Icons.call_split_rounded,
-                'Owed to you',
-                owed.length == 1
-                    ? 'from ${owed.keys.single} · shared bills'
-                    : 'from ${owed.length} people · shared bills',
-                formatRupees(owedTotal, decimals: true),
-                null,
-              ),
-            ),
-        ]),
+        ),
       ),
     );
   }
@@ -1435,23 +1380,15 @@ class _TopCategoriesState extends ConsumerState<_TopCategories> {
     final top3 = top.take(3).toList();
     if (top3.isEmpty) return const SizedBox.shrink();
     final spendTotal = top.fold<double>(0, (s, e) => s + e.value);
-    final muted = AerisColors.muted(context);
+    final tk = context.tk;
 
     return AerisCard(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+      padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Text('Where it went',
-              style: TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3)),
-          const Spacer(),
-          Text(analytics.label,
-              style: TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w600, color: muted)),
-        ]),
-        const SizedBox(height: 16),
+        SectionTitle('Where it went',
+            action: 'See all',
+            onAction: () => Navigator.pushNamed(context, AppRoutes.insights)),
+        const SizedBox(height: 6),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1473,36 +1410,51 @@ class _TopCategoriesState extends ConsumerState<_TopCategories> {
                           context, AppRoutes.transactions,
                           arguments: e.key),
                       child: Column(children: [
-                        BudgetRing(
-                          progress: _ready ? v : 0.0,
-                          size: 54,
-                          strokeWidth: 5,
+                        CatRing(
+                          value: _ready ? v : 0.0,
                           color: cat.color,
-                          warnOverflow: hasCap,
-                          center: Icon(cat.icon, size: 20, color: cat.color),
+                          over: hasCap && v > 1,
+                          center: CatTile.of(cat),
                         ),
-                        const SizedBox(height: 10),
-                        Text(cat.label.split(RegExp(r' [&/] ')).first,
+                        const SizedBox(height: 6),
+                        Text(cat.label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: muted)),
-                        const SizedBox(height: 2),
-                        Text(formatRupees(e.value, compact: true),
-                            maxLines: 1,
+                                color: tk.t1)),
+                        const SizedBox(height: 4),
+                        MoneyText(e.value,
+                            compact: true,
                             style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w800)),
+                                fontSize: 15,
+                                height: 18 / 15,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 4),
                         if (hasCap)
-                          Text('of ${formatRupees(cap, compact: true)}',
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (v > 1) ...[
+                              Icon(PhFill.warningCircle,
+                                  size: 12, color: tk.bad),
+                              const SizedBox(width: 3),
+                            ],
+                            Text(
+                                v > 1
+                                    ? 'Over'
+                                    : 'of ${formatRupees(cap, compact: true)}',
+                                maxLines: 1,
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: v > 1
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                    color: v > 1 ? tk.bad : tk.t2)),
+                          ])
+                        else
+                          Text('${(v * 100).round()}% of spend',
                               maxLines: 1,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: v >= 1
-                                      ? AerisColors.danger(context)
-                                      : muted)),
+                              style: TextStyle(fontSize: 11, color: tk.t2)),
                       ]),
                     ),
                   );
@@ -1520,11 +1472,18 @@ class _TopCategoriesState extends ConsumerState<_TopCategories> {
 // Several things used to compete for this spot as separate cards. Now only
 // the most urgent shows: over budget › budgets at risk this week › today's
 // check-in › the month-end forecast.
-class _AttentionSlot extends ConsumerWidget {
+class _AttentionSlot extends ConsumerStatefulWidget {
   const _AttentionSlot();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AttentionSlot> createState() => _AttentionSlotState();
+}
+
+class _AttentionSlotState extends ConsumerState<_AttentionSlot> {
+  int _index = 0;
+
+  @override
+  Widget build(BuildContext context) {
     // Over-budget is a calendar-month question, not the selected range.
     final analytics = ref.watch(monthAnalyticsProvider);
     final budgets = ref.watch(effectiveBudgetsProvider);
@@ -1532,32 +1491,79 @@ class _AttentionSlot extends ConsumerWidget {
     final hidden = ref.watch(gamificationProvider.select((g) => g.hiddenCards));
     final checkin = ref.watch(gamificationProvider.select(
         (g) => (loaded: g.loaded, done: g.checkedInOn(DateTime.now()))));
+    final tk = context.tk;
 
-    Widget? card;
-    if (analytics != null &&
-        _overBudget(budgets, analytics.byCategory).isNotEmpty) {
-      card = const _OverBudgetCard();
-    } else {
-      final showForecast =
-          insights != null && !hidden.contains(kHomeCardForecast);
-      final risky = insights?.budgetProjections
-              .where((p) =>
-                  p.alreadyOver ||
-                  (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))
-              .length ??
-          0;
-      if (showForecast && risky > 0) {
-        card = const _ForecastStrip();
-      } else if (checkin.loaded &&
-          !checkin.done &&
-          !hidden.contains(kHomeCardCheckin)) {
-        card = const _CheckinStrip();
-      } else if (showForecast) {
-        card = const _ForecastStrip();
-      }
+    // Everything that wants the user, most urgent first: over budget ›
+    // budgets at risk this week › today's check-in › the month forecast.
+    final showForecast =
+        insights != null && !hidden.contains(kHomeCardForecast);
+    final risky = insights?.budgetProjections
+            .where((p) =>
+                p.alreadyOver ||
+                (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))
+            .length ??
+        0;
+    final cards = <Widget>[
+      if (analytics != null &&
+          _overBudget(budgets, analytics.byCategory).isNotEmpty)
+        const _OverBudgetCard(),
+      if (showForecast && risky > 0) const _ForecastStrip(),
+      if (checkin.loaded && !checkin.done && !hidden.contains(kHomeCardCheckin))
+        const _CheckinStrip(),
+      if (showForecast && risky == 0) const _ForecastStrip(),
+    ];
+    if (cards.isEmpty) return const SizedBox.shrink();
+    final i = _index % cards.length;
+    void step(int by) {
+      HapticFeedback.selectionClick();
+      setState(() => _index = (i + by) % cards.length);
     }
-    if (card == null) return const SizedBox.shrink();
-    return Padding(padding: const EdgeInsets.only(top: 14), child: card);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 0, 8),
+          child: Row(children: [
+            const Expanded(child: Overline('Needs attention')),
+            // "1 of 3": tap (or swipe the card) for the next one.
+            if (cards.length > 1)
+              Semantics(
+                button: true,
+                label: 'Item ${i + 1} of ${cards.length}. Show next.',
+                excludeSemantics: true,
+                child: InkWell(
+                  onTap: () => step(1),
+                  borderRadius: BorderRadius.circular(Rad.chip),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text('${i + 1} of ${cards.length}',
+                          style: Ts.label.copyWith(color: tk.t2)),
+                      const SizedBox(width: 2),
+                      Icon(Ph.caretRight, size: 14, color: tk.t2),
+                    ]),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+        GestureDetector(
+          onHorizontalDragEnd: cards.length < 2
+              ? null
+              : (d) {
+                  final v = d.primaryVelocity ?? 0;
+                  if (v.abs() > 200) step(v < 0 ? 1 : cards.length - 1);
+                },
+          child: AnimatedSwitcher(
+            duration: reduceMotion(context) ? Duration.zero : Mo.standard,
+            switchInCurve: Mo.curve,
+            child: KeyedSubtree(key: ValueKey(i), child: cards[i]),
+          ),
+        ),
+      ]),
+    );
   }
 }
 
@@ -1576,91 +1582,26 @@ class _OverBudgetCard extends ConsumerWidget {
     final overBudget = _overBudget(budgets, byCategory);
     if (overBudget.isEmpty) return const SizedBox.shrink();
 
-    final danger = AerisColors.danger(context);
-    final dark = Theme.of(context).brightness == Brightness.dark;
-
-    return AerisCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-      color: dark ? const Color(0xFF2A1718) : const Color(0xFFFFF6F5),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.error_outline_rounded, size: 18, color: danger),
-          const SizedBox(width: 6),
-          Text(
-              overBudget.length == 1
-                  ? 'Over budget'
-                  : '${overBudget.length} budgets over',
-              style: TextStyle(
-                  fontSize: 14.5, fontWeight: FontWeight.w800, color: danger)),
-        ]),
-        const SizedBox(height: 10),
-        for (final b in overBudget.take(3)) _tile(context, b, byCategory),
-      ]),
-    );
-  }
-
-  Widget _tile(BuildContext context, Budget b, Map<String, double> byCategory) {
+    // The worst one leads; any others are named in the line below it.
+    final b = overBudget.first;
     final cat = Categories.byId(b.categoryId);
-    final spent = byCategory[b.categoryId] ?? 0;
-    final over = spent - b.monthlyCap;
-    final danger = AerisColors.danger(context);
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.pushNamed(context, AppRoutes.transactions,
-          arguments: b.categoryId),
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(children: [
-          _CategoryPlate(category: cat, size: 34),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(cat.label,
-                    style: const TextStyle(
-                        fontSize: 13.5, fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                Text(
-                    '${formatRupees(spent, compact: true)} of '
-                    '${formatRupees(b.monthlyCap, compact: true)}',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: AerisColors.muted(context))),
-              ],
-            ),
-          ),
-          Text('+${formatRupees(over, compact: true)}',
-              style: TextStyle(
-                  fontSize: 13.5, fontWeight: FontWeight.w800, color: danger)),
-          const SizedBox(width: 2),
-          Icon(Icons.chevron_right_rounded,
-              size: 18, color: AerisColors.muted(context)),
-        ]),
-      ),
-    );
-  }
-}
-
-/// Category icon on a soft tinted plate — the house style for categories.
-class _CategoryPlate extends StatelessWidget {
-  final ExpenseCategory category;
-  final double size;
-  const _CategoryPlate({required this.category, this.size = 40});
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-          color: category.color.withValues(alpha: dark ? 0.20 : 0.13),
-          borderRadius: BorderRadius.circular(size * 0.32)),
-      child: Icon(category.icon, size: size * 0.5, color: category.color),
+    final over = (byCategory[b.categoryId] ?? 0) - b.monthlyCap;
+    final now = DateTime.now();
+    final daysLeft = DateTime(now.year, now.month + 1, 0).day - now.day + 1;
+    final others = overBudget
+        .skip(1)
+        .map((x) => Categories.byId(x.categoryId).label)
+        .toList();
+    return Banner2(
+      tone: Tone.bad,
+      icon: PhFill.warningOctagon,
+      title: '${cat.label} is ${formatRupees(over)} over budget',
+      body: others.isEmpty
+          ? '$daysLeft day${daysLeft == 1 ? '' : 's'} to go this month.'
+          : '${others.join(', ')} ${others.length == 1 ? 'is' : 'are'} over '
+              'too · $daysLeft days to go.',
+      action: 'See budget',
+      onTap: () => Navigator.pushNamed(context, AppRoutes.budgets),
     );
   }
 }
@@ -1697,9 +1638,7 @@ class _CheckinStrip extends ConsumerWidget {
             color: AerisColors.accentSoft(context),
           ),
           child: Icon(
-            checkedIn
-                ? Icons.task_alt_rounded
-                : Icons.local_fire_department_rounded,
+            checkedIn ? Ph.checkCircle : Ph.flame,
             size: 21,
             color: accent,
           ),
@@ -1780,8 +1719,7 @@ class _ForecastStrip extends ConsumerWidget {
             p.alreadyOver || (p.willExceed && (p.daysUntilExceed ?? 99) <= 7))
         .length;
     final estimate = insights.monthEstimate.estimate;
-    final tone =
-        riskyCount > 0 ? AerisColors.warning : AerisColors.accent(context);
+    final tone = riskyCount > 0 ? context.tk.warn : context.tk.acc;
 
     return AerisCard(
       padding: const EdgeInsets.all(14),
@@ -1793,7 +1731,7 @@ class _ForecastStrip extends ConsumerWidget {
           decoration: BoxDecoration(
               color: tone.withValues(alpha: 0.13),
               borderRadius: BorderRadius.circular(13)),
-          child: Icon(Icons.insights_rounded, size: 21, color: tone),
+          child: Icon(Ph.chartLineUp, size: 22, color: tone),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1816,9 +1754,8 @@ class _ForecastStrip extends ConsumerWidget {
                   TextSpan(
                     text:
                         '$riskyCount budget${riskyCount == 1 ? '' : 's'} at risk',
-                    style: const TextStyle(
-                        color: AerisColors.warning,
-                        fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                        color: context.tk.warn, fontWeight: FontWeight.w700),
                   ),
                 ],
               ],
@@ -1826,128 +1763,103 @@ class _ForecastStrip extends ConsumerWidget {
           ),
         ),
         const SizedBox(width: 6),
-        Icon(Icons.chevron_right_rounded, color: AerisColors.muted(context)),
+        Icon(Ph.caretRight, size: 16, color: context.tk.t3),
       ]),
     );
   }
 }
 
-// ── Section header ────────────────────────────────────────────
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final String action;
-  final VoidCallback onAction;
-  const _SectionHeader(
-      {required this.title, required this.action, required this.onAction});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6, left: 2),
-      child: Row(children: [
-        Text(title,
-            style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.4)),
-        const Spacer(),
-        TextButton(
-          onPressed: onAction,
-          style: TextButton.styleFrom(
-            minimumSize: const Size(0, 36),
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-          ),
-          child: Text(action),
-        ),
-      ]),
-    );
-  }
-}
-
-// ── Recent activity section ───────────────────────────────────
+// ── Recent activity, grouped by day ───────────────────────────
 class _RecentActivitySection extends ConsumerWidget {
   const _RecentActivitySection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(amountHiddenProvider);
-    final recent = ref.watch(recentTransactionsProvider(5));
+    final recent = ref.watch(recentTransactionsProvider(6));
     return recent.when(
       data: (list) {
         if (list.isEmpty) return const _FirstRunCard();
+        final groups = <String, List<Transaction>>{};
+        for (final t in list) {
+          groups.putIfAbsent(_dayLabel(t.timestamp), () => []).add(t);
+        }
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _SectionHeader(
-            title: 'Recent',
-            action: 'See all',
-            onAction: () =>
-                Navigator.pushNamed(context, AppRoutes.transactions),
-          ),
-          AerisCard(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Column(
-              children: [
-                for (int i = 0; i < list.length; i++) ...[
-                  TransactionTile(txn: list[i]),
-                  if (i < list.length - 1)
-                    const Divider(height: 1, indent: 70, endIndent: 16),
-                ],
-              ],
-            ),
-          ),
+          SectionTitle('Recent',
+              action: 'See all',
+              padding: const EdgeInsets.only(left: 4),
+              onAction: () =>
+                  Navigator.pushNamed(context, AppRoutes.transactions)),
+          for (final g in groups.entries) ...[
+            DayHeader(g.key, total: _dayTotal(g.value)),
+            ListGroup(children: [
+              for (final t in g.value) TransactionTile(txn: t, showDate: false),
+            ]),
+            const SizedBox(height: 6),
+          ],
         ]);
       },
       loading: () => Column(
         children: List.generate(
             4,
             (_) => const SkeletonBox(
-                height: 56,
-                radius: 12,
+                height: 64,
+                radius: Rad.tile,
                 margin: EdgeInsets.symmetric(vertical: 4))),
       ),
-      error: (e, _) => AerisCard(
-        child: Text('Could not load your transactions.\n$e',
-            style: TextStyle(color: AerisColors.muted(context))),
+      error: (e, _) => const Banner2(
+        tone: Tone.bad,
+        icon: PhFill.cloudX,
+        title: "Couldn't load your transactions",
+        body: 'Pull down to try again.',
       ),
     );
   }
+
+  static String _dayLabel(DateTime d) {
+    final now = DateTime.now();
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = DateTime(now.year, now.month, now.day).difference(day).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    return shortDate(d);
+  }
+
+  /// Net for the day: spend shows as "−₹1,686"; a day of only money in
+  /// shows "+₹…". Own-account transfers and paybacks don't count.
+  static String _dayTotal(List<Transaction> ts) {
+    var net = 0.0;
+    for (final t in ts) {
+      if (t.isInternal) continue;
+      net += t.isCredit ? t.amount : -t.amount;
+    }
+    return signedMoney(net, credit: net > 0);
+  }
 }
 
-/// Shown instead of "Recent" until the first transaction exists: a new user
-/// gets the ways in, not an empty list.
+/// Shown instead of "Recent" until the first transaction exists.
 class _FirstRunCard extends StatelessWidget {
   const _FirstRunCard();
 
   @override
   Widget build(BuildContext context) {
-    final muted = AerisColors.muted(context);
+    final tk = context.tk;
     return AerisCard(
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+      padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
-          width: 46,
-          height: 46,
+          width: 48,
+          height: 48,
           decoration: BoxDecoration(
-              color: AerisColors.accentSoft(context),
-              borderRadius: BorderRadius.circular(15)),
-          child: Icon(Icons.receipt_long_rounded,
-              color: AerisColors.accent(context)),
+              color: tk.accSoft, borderRadius: BorderRadius.circular(14)),
+          child: Icon(Ph.receipt, size: 24, color: tk.acc),
         ),
-        const SizedBox(height: 14),
-        const Text('Log your first expense',
-            style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3)),
+        const SizedBox(height: 12),
+        Text('Log your first expense', style: Ts.title.copyWith(color: tk.t1)),
         const SizedBox(height: 4),
-        Text(
-            'Tap + to add one, hold + for voice and more, or bring in your '
-            'history from a bank statement.',
-            style: TextStyle(
-                fontSize: 13.5,
-                height: 1.45,
-                fontWeight: FontWeight.w500,
-                color: muted)),
-        const SizedBox(height: 16),
+        Text('Or just wait. New bank SMS will show up here on their own.',
+            style: Ts.bodyS.copyWith(color: tk.t2)),
+        const SizedBox(height: 12),
         Row(children: [
           Expanded(
             child: FilledButton(
@@ -1956,13 +1868,11 @@ class _FirstRunCard extends StatelessWidget {
               child: const Text('Add expense'),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
-            child: OutlinedButton(
-              onPressed: () =>
-                  Navigator.pushNamed(context, AppRoutes.importStatement),
-              child: const Text('Import'),
-            ),
+            child: TonalButton('Say it',
+                icon: Ph.microphone,
+                onPressed: () => Navigator.pushNamed(context, AppRoutes.voice)),
           ),
         ]),
       ]),

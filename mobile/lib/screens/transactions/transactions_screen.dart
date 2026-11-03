@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/routes.dart';
@@ -9,15 +8,21 @@ import '../../core/theme.dart';
 import '../../models/category.dart';
 import '../../models/loan.dart';
 import '../../models/transaction.dart';
+import '../../providers/accounts_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/budgets_provider.dart';
 import '../../providers/loans_provider.dart';
 import '../../providers/privacy_provider.dart';
 import '../../providers/transactions_provider.dart';
+import '../../services/export_service.dart';
 import '../../services/search_query.dart';
-import '../../utils/motion.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/ds.dart';
+import '../../widgets/skeleton.dart';
 import '../../widgets/transaction_tile.dart';
+import 'transaction_detail_screen.dart';
 import '../../widgets/txn_undo.dart';
+import '../loans/loans_screen.dart' show showAddLoanSheet;
 import '../subscriptions/subscriptions_screen.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../widgets/aeris_toast.dart';
@@ -28,7 +33,7 @@ part 'transactions_lent_subs.dart';
 // ── Sort options ─────────────────────────────────────────────
 enum _SortMode { recent, highest, lowest }
 
-// ── Transactions Screen with embedded Lent + Subs tabs ───────
+// ── Activity: Transactions · Lent · Subscriptions ────────────
 class TransactionsScreen extends ConsumerStatefulWidget {
   final TxnDirection? initialDir;
   final String? initialCategory;
@@ -42,14 +47,18 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   int _tab = 0; // 0=Transactions, 1=Lent, 2=Subs
+  /// Tablet list–detail: the transaction open in the right pane.
+  Transaction? _selected;
   String _query = '';
   Timer? _queryDebounce; // filter after typing pauses, not on every key
   TxnDirection? _filterDir;
   String? _filterCat;
+  String? _filterAcct;
   _SortMode _sort = _SortMode.recent;
   double? _minAmount;
   double? _maxAmount;
   DateTimeRange? _dateRange;
+  bool _exporting = false;
   final ScrollController _scroll = ScrollController();
   int _visible = 50;
   int _lastCount = 0;
@@ -59,6 +68,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     super.initState();
     _filterDir = widget.initialDir;
     _filterCat = widget.initialCategory;
+    _filterAcct = widget.initialAccount;
     _scroll.addListener(() {
       if (_scroll.hasClients &&
           _scroll.position.pixels >= _scroll.position.maxScrollExtent - 300 &&
@@ -84,424 +94,486 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     return !t.isBefore(s) && !t.isAfter(e);
   }
 
+  void _clearAll() => setState(() {
+        _sort = _SortMode.recent;
+        _minAmount = null;
+        _maxAmount = null;
+        _dateRange = null;
+        _filterDir = null;
+        _filterCat = null;
+        _filterAcct = null;
+      });
+
+  Future<void> _export() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final txns = ref.read(transactionsStreamProvider).valueOrNull ?? const [];
+    final budgets = ref.read(budgetsStreamProvider).valueOrNull ?? const [];
+    if (txns.isEmpty) {
+      messenger.showToast(
+          const SnackBar(content: Text('No transactions to export yet.')));
+      return;
+    }
+    setState(() => _exporting = true);
+    try {
+      await ExportService.instance.buildAndShare(txns: txns, budgets: budgets);
+    } catch (e) {
+      messenger.showToast(SnackBar(content: Text('Export failed: $e')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Removable chips for what's filtered beyond the quick row.
+  List<(String, VoidCallback)> _activeChips() => [
+        if (_filterCat != null)
+          (
+            Categories.byId(_filterCat!).label,
+            () => setState(() => _filterCat = null)
+          ),
+        if (_dateRange != null)
+          (
+            '${shortDate(_dateRange!.start)} – ${shortDate(_dateRange!.end)}',
+            () => setState(() => _dateRange = null)
+          ),
+        if (_minAmount != null || _maxAmount != null)
+          (
+            _minAmount != null && _maxAmount != null
+                ? '${formatRupees(_minAmount!, compact: true)}–${formatRupees(_maxAmount!, compact: true)}'
+                : _minAmount != null
+                    ? 'Above ${formatRupees(_minAmount!, compact: true)}'
+                    : 'Below ${formatRupees(_maxAmount!, compact: true)}',
+            () => setState(() {
+                  _minAmount = null;
+                  _maxAmount = null;
+                })
+          ),
+        if (_sort != _SortMode.recent)
+          (
+            _sort == _SortMode.highest ? 'Highest first' : 'Lowest first',
+            () => setState(() => _sort = _SortMode.recent)
+          ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     ref.watch(amountHiddenProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tk = context.tk;
+    final chips = _activeChips();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Activity',
-            style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5)),
-        actions: [
-          if (_tab == 0)
-            IconButton(
-              icon: const Icon(Icons.upload_file_outlined),
-              tooltip: 'Import statement',
-              onPressed: () =>
-                  Navigator.pushNamed(context, AppRoutes.importStatement),
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // ── Tab bar ─────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: _TabBar(
-              selected: _tab,
-              onTap: (i) => setState(() => _tab = i),
-              isDark: isDark,
-            ),
-          ),
-          // ── Tab content ──────────────────────────────────────
-          Expanded(
-            child: IndexedStack(
-              index: _tab,
-              children: [
-                _TransactionsTab(
-                  query: _query,
-                  filterDir: _filterDir,
-                  filterCat: _filterCat,
-                  sortMode: _sort,
-                  minAmount: _minAmount,
-                  maxAmount: _maxAmount,
-                  inRange: _inRange,
-                  visible: _visible,
-                  scroll: _scroll,
-                  onCountChange: (n) => _lastCount = n,
-                  onQueryChange: (q) {
-                    _queryDebounce?.cancel();
-                    _queryDebounce =
-                        Timer(const Duration(milliseconds: 200), () {
-                      if (mounted) setState(() => _query = q);
-                    });
-                  },
-                  onDirChange: (d) => setState(() => _filterDir = d),
-                  onCatChange: (c) => setState(() => _filterCat = c),
-                  onFilterTap: () => _showFilterSheet(),
-                  hasActiveFilter: _minAmount != null ||
-                      _maxAmount != null ||
-                      _dateRange != null ||
-                      _sort != _SortMode.recent,
+    final page = Scaffold(
+      body: SafeArea(
+        bottom: false,
+        // The large title collapses into a slim bar once the list scrolls
+        // (keyed by tab, so switching tabs starts expanded again).
+        child: CollapseOnScroll(
+          key: ValueKey(_tab),
+          builder: (context, collapsed) => Column(
+            children: [
+              CollapsingHeader(
+                title: 'Activity',
+                collapsed: collapsed,
+                actions: [
+                  if (_tab == 0) ...[
+                    IconButton(
+                      icon: Icon(Ph.downloadSimple, size: 20, color: tk.t2),
+                      tooltip: 'Import statement',
+                      onPressed: () => Navigator.pushNamed(
+                          context, AppRoutes.importStatement),
+                    ),
+                    const SizedBox(width: 4),
+                    _ExportPill(busy: _exporting, onTap: _export),
+                  ],
+                ],
+              ),
+              // ── Transactions · Lent · Subscriptions ─────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                child: DsSegmented(
+                  labels: const ['Transactions', 'Lent', 'Subscriptions'],
+                  index: _tab,
+                  height: 44,
+                  onChanged: (i) => setState(() => _tab = i),
                 ),
-                const _LentTab(),
-                const _SubsTab(),
-              ],
-            ),
+              ),
+              Expanded(
+                child: IndexedStack(
+                  index: _tab,
+                  children: [
+                    _TransactionsTab(
+                      query: _query,
+                      filterDir: _filterDir,
+                      filterCat: _filterCat,
+                      filterAcct: _filterAcct,
+                      sortMode: _sort,
+                      minAmount: _minAmount,
+                      maxAmount: _maxAmount,
+                      inRange: _inRange,
+                      visible: _visible,
+                      scroll: _scroll,
+                      onCountChange: (n) => _lastCount = n,
+                      onQueryChange: (q) {
+                        _queryDebounce?.cancel();
+                        _queryDebounce =
+                            Timer(const Duration(milliseconds: 200), () {
+                          if (mounted) setState(() => _query = q);
+                        });
+                      },
+                      onDirChange: (d) => setState(() => _filterDir = d),
+                      onCatChange: (c) => setState(() => _filterCat = c),
+                      onAcctChange: (a) => setState(() => _filterAcct = a),
+                      onFilterTap: _showFilterSheet,
+                      onClearAll: _clearAll,
+                      activeChips: chips,
+                      filterCount: chips.length,
+                    ),
+                    const _LentTab(),
+                    const _SubsTab(),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
+    // Tablets / unfolded foldables: list on the left, the picked transaction
+    // on the right.
+    return LayoutBuilder(builder: (context, box) {
+      if (box.maxWidth < 760) return page;
+      final tk = context.tk;
+      final sel = _selected;
+      return Row(children: [
+        SizedBox(
+          width: 420,
+          child: TxnOpener(
+            open: (t) => setState(() => _selected = t),
+            child: page,
+          ),
+        ),
+        Container(width: 1, color: tk.hair),
+        Expanded(
+          child: sel == null
+              ? const Scaffold(
+                  body: Center(
+                    child: EmptyState(
+                      icon: Ph.receipt,
+                      title: 'Pick a transaction',
+                      body: 'Its details, split and original SMS show here.',
+                    ),
+                  ),
+                )
+              : TransactionDetailScreen(
+                  key: ValueKey(sel.id),
+                  txn: sel,
+                  onClose: () => setState(() => _selected = null),
+                ),
+        ),
+      ]);
+    });
   }
 
   void _showFilterSheet() {
-    // snapshot current values to sheet-local state
+    // Snapshot the current values into sheet-local state.
     var sheetSort = _sort;
-    final minCtrl =
-        TextEditingController(text: inrToDisplayText(_minAmount));
-    final maxCtrl =
-        TextEditingController(text: inrToDisplayText(_maxAmount));
+    var sheetCat = _filterCat;
+    final minCtrl = TextEditingController(text: inrToDisplayText(_minAmount));
+    final maxCtrl = TextEditingController(text: inrToDisplayText(_maxAmount));
     var sheetRange = _dateRange;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final presets = <(String, DateTimeRange)>[
+      (
+        'This month',
+        DateTimeRange(start: DateTime(now.year, now.month), end: today)
+      ),
+      (
+        'Last month',
+        DateTimeRange(
+            start: DateTime(now.year, now.month - 1),
+            end: DateTime(now.year, now.month, 0))
+      ),
+      (
+        'Last 3 months',
+        DateTimeRange(start: DateTime(now.year, now.month - 2), end: today)
+      ),
+      ('This year', DateTimeRange(start: DateTime(now.year), end: today)),
+    ];
+    bool same(DateTimeRange? a, DateTimeRange b) =>
+        a != null &&
+        DateUtils.isSameDay(a.start, b.start) &&
+        DateUtils.isSameDay(a.end, b.end);
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? AerisColors.cardDark
-          : Colors.white,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      useSafeArea: true,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              20, 4, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Filter & sort',
-                    style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5)),
-                const SizedBox(height: 18),
-                Text('SORT BY',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
-                        color: AerisColors.ink(context))),
-                const SizedBox(height: 8),
-                _sortOption(ctx, sheetSort, _SortMode.recent, Icons.access_time,
-                    'Most recent', (v) => setSheet(() => sheetSort = v)),
-                const SizedBox(height: 6),
-                _sortOption(
-                    ctx,
-                    sheetSort,
-                    _SortMode.highest,
-                    Icons.arrow_downward,
-                    'Highest amount',
-                    (v) => setSheet(() => sheetSort = v)),
-                const SizedBox(height: 6),
-                _sortOption(
-                    ctx,
-                    sheetSort,
-                    _SortMode.lowest,
-                    Icons.arrow_upward,
-                    'Lowest amount',
-                    (v) => setSheet(() => sheetSort = v)),
-                const SizedBox(height: 20),
-                Text('AMOUNT RANGE (₹)',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
-                        color: AerisColors.ink(context))),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                    child: TextField(
-                      controller: minCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        hintText: 'Min',
-                        hintStyle: TextStyle(
-                            color: Theme.of(ctx).colorScheme.onSurfaceVariant),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                                color:
-                                    Theme.of(ctx).colorScheme.outlineVariant)),
-                        enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                                color:
-                                    Theme.of(ctx).colorScheme.outlineVariant)),
+        builder: (ctx, setSheet) {
+          final tk = ctx.tk;
+          final isPreset = presets.any((p) => same(sheetRange, p.$2));
+          final custom = sheetRange != null && !isPreset;
+          Widget label(String s) => Padding(
+                padding: const EdgeInsets.only(top: 14, bottom: 8),
+                child: Overline(s),
+              );
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                20, 0, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+            // The filters scroll; "Show results" stays pinned at the bottom.
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Expanded(
+                            child: Text('Filters',
+                                style: Ts.title.copyWith(color: tk.t1))),
+                        TextLink('Reset', onTap: () {
+                          Navigator.pop(ctx);
+                          _clearAll();
+                        }),
+                      ]),
+                      label('Date'),
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        DsChip('Any time',
+                            selected: sheetRange == null,
+                            showCheck: true,
+                            onTap: () => setSheet(() => sheetRange = null)),
+                        for (final p in presets)
+                          DsChip(p.$1,
+                              selected: same(sheetRange, p.$2),
+                              showCheck: true,
+                              onTap: () => setSheet(() => sheetRange = p.$2)),
+                        DsChip('Custom',
+                            selected: custom,
+                            showCheck: true,
+                            onTap: () => setSheet(() => sheetRange =
+                                DateTimeRange(
+                                    start:
+                                        today.subtract(const Duration(days: 6)),
+                                    end: today))),
+                      ]),
+                      if (custom) ...[
+                        const SizedBox(height: 10),
+                        Row(children: [
+                          Expanded(
+                            child: _DateField(
+                              label: 'From',
+                              value: sheetRange?.start,
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: ctx,
+                                  initialDate: sheetRange?.start ?? now,
+                                  firstDate: DateTime(now.year - 5),
+                                  lastDate: now,
+                                );
+                                if (picked != null) {
+                                  setSheet(() => sheetRange = DateTimeRange(
+                                        start: picked,
+                                        end: sheetRange?.end ?? now,
+                                      ));
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _DateField(
+                              label: 'To',
+                              value: sheetRange?.end,
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: ctx,
+                                  initialDate: sheetRange?.end ?? now,
+                                  firstDate: DateTime(now.year - 5),
+                                  lastDate: now,
+                                );
+                                if (picked != null) {
+                                  setSheet(() => sheetRange = DateTimeRange(
+                                        start: sheetRange?.start ?? picked,
+                                        end: picked,
+                                      ));
+                                }
+                              },
+                            ),
+                          ),
+                        ]),
+                      ],
+                      label('Amount'),
+                      Row(children: [
+                        Expanded(
+                          child: TextField(
+                            controller: minCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                                hintText: 'Min',
+                                prefixText: '${kCurrency.symbol} '),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: maxCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                                hintText: 'Max',
+                                prefixText: '${kCurrency.symbol} '),
+                          ),
+                        ),
+                      ]),
+                      label('Sort'),
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        for (final (m, l) in const [
+                          (_SortMode.recent, 'Most recent'),
+                          (_SortMode.highest, 'Highest amount'),
+                          (_SortMode.lowest, 'Lowest amount'),
+                        ])
+                          DsChip(l,
+                              selected: sheetSort == m,
+                              showCheck: true,
+                              onTap: () => setSheet(() => sheetSort = m)),
+                      ]),
+                      label('Categories'),
+                      GridView.count(
+                        crossAxisCount: 4,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio: 0.95,
+                        children: [
+                          for (final c in Categories.all)
+                            _CatPick(
+                              category: c,
+                              selected: sheetCat == c.id,
+                              onTap: () => setSheet(() =>
+                                  sheetCat = sheetCat == c.id ? null : c.id),
+                            ),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: maxCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        hintText: 'Max',
-                        hintStyle: TextStyle(
-                            color: Theme.of(ctx).colorScheme.onSurfaceVariant),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                                color:
-                                    Theme.of(ctx).colorScheme.outlineVariant)),
-                        enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                                color:
-                                    Theme.of(ctx).colorScheme.outlineVariant)),
-                      ),
-                    ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.only(top: 12),
+                decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: tk.hair))),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _sort = sheetSort;
+                        _filterCat = sheetCat;
+                        // Typed in display currency; amounts are INR.
+                        _minAmount = displayToInr(minCtrl.text);
+                        _maxAmount = displayToInr(maxCtrl.text);
+                        _dateRange = sheetRange;
+                      });
+                    },
+                    child: const Text('Show results'),
                   ),
-                ]),
-                const SizedBox(height: 20),
-                Text('DATE RANGE',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
-                        color: AerisColors.ink(context))),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                    child: _DateField(
-                      label: 'From',
-                      value: sheetRange?.start,
-                      onTap: () async {
-                        final now = DateTime.now();
-                        final picked = await showDatePicker(
-                          context: ctx,
-                          initialDate: sheetRange?.start ?? now,
-                          firstDate: DateTime(now.year - 5),
-                          lastDate: now,
-                        );
-                        if (picked != null) {
-                          setSheet(() {
-                            sheetRange = DateTimeRange(
-                              start: picked,
-                              end: sheetRange?.end ?? now,
-                            );
-                          });
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _DateField(
-                      label: 'To',
-                      value: sheetRange?.end,
-                      onTap: () async {
-                        final now = DateTime.now();
-                        final picked = await showDatePicker(
-                          context: ctx,
-                          initialDate: sheetRange?.end ?? now,
-                          firstDate: DateTime(now.year - 5),
-                          lastDate: now,
-                        );
-                        if (picked != null) {
-                          setSheet(() {
-                            sheetRange = DateTimeRange(
-                              start: sheetRange?.start ?? picked,
-                              end: picked,
-                            );
-                          });
-                        }
-                      },
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 28),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        setState(() {
-                          _sort = _SortMode.recent;
-                          _minAmount = null;
-                          _maxAmount = null;
-                          _dateRange = null;
-                          _filterDir = null;
-                        });
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: const Text('Reset',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        setState(() {
-                          _sort = sheetSort;
-                          // Typed in display currency; amounts are INR.
-                          _minAmount = displayToInr(minCtrl.text);
-                          _maxAmount = displayToInr(maxCtrl.text);
-                          _dateRange = sheetRange;
-                        });
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AerisColors.accent(context),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: const Text('Apply filters',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 15)),
-                    ),
-                  ),
-                ]),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _sortOption(
-    BuildContext ctx,
-    _SortMode current,
-    _SortMode value,
-    IconData icon,
-    String label,
-    void Function(_SortMode) onSelect,
-  ) {
-    final selected = current == value;
-    final isDark = Theme.of(ctx).brightness == Brightness.dark;
-    return GestureDetector(
-      onTap: () => onSelect(value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          color: selected
-              ? AerisColors.accent(context)
-                  .withValues(alpha: isDark ? 0.18 : 0.10)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected
-                ? AerisColors.accent(context).withValues(alpha: 0.60)
-                : Theme.of(ctx)
-                    .colorScheme
-                    .outlineVariant
-                    .withValues(alpha: 0.5),
-          ),
-        ),
-        child: Row(children: [
-          Icon(icon,
-              size: 18,
-              color: selected
-                  ? AerisColors.accent(context)
-                  : Theme.of(ctx).colorScheme.onSurfaceVariant),
-          const SizedBox(width: 12),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected
-                      ? AerisColors.ink(context)
-                      : Theme.of(ctx).colorScheme.onSurface)),
-          const Spacer(),
-          if (selected)
-            Icon(Icons.check_circle,
-                color: AerisColors.accent(context), size: 20),
-        ]),
+                ),
+              ),
+            ]),
+          );
+        },
       ),
     );
   }
 }
 
-// ── Top tab bar ───────────────────────────────────────────────
-class _TabBar extends StatelessWidget {
-  final int selected;
-  final ValueChanged<int> onTap;
-  final bool isDark;
-  const _TabBar(
-      {required this.selected, required this.onTap, required this.isDark});
+// ── "Export" outline pill ─────────────────────────────────────
+class _ExportPill extends StatelessWidget {
+  final bool busy;
+  final VoidCallback onTap;
+  const _ExportPill({required this.busy, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    // A quiet segmented control: the selected segment is a raised card, not
-    // a solid accent block — the accent stays reserved for actions.
-    return Container(
-      height: 42,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          _tab(context, 0, 'Transactions'),
-          _tab(context, 1, 'Lent'),
-          _tab(context, 2, 'Subscriptions'),
-        ],
-      ),
-    );
-  }
-
-  Widget _tab(BuildContext context, int idx, String label) {
-    final sel = selected == idx;
-    return Expanded(
-      child: Semantics(
-        button: true,
-        selected: sel,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => onTap(idx),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            decoration: sel
-                ? AerisColors.cardDecoration(context, radius: 11)
-                : const BoxDecoration(),
-            child: Center(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+    final tk = context.tk;
+    return Material(
+      color: tk.surface,
+      shape: StadiumBorder(
+          side: tk.isDark ? BorderSide(color: tk.hair) : BorderSide.none),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: busy ? null : onTap,
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.fromLTRB(12, 0, 14, 0),
+          decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20), boxShadow: tk.shadow),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            busy
+                ? const RisingLoader(width: 18)
+                : Icon(Ph.export, size: 18, color: tk.t1),
+            const SizedBox(width: 6),
+            Text('Export',
                 style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                  color: sel
-                      ? Theme.of(context).colorScheme.onSurface
-                      : AerisColors.muted(context),
-                ),
-              ),
-            ),
-          ),
+                    fontSize: 13, fontWeight: FontWeight.w600, color: tk.t1)),
+          ]),
         ),
       ),
     );
   }
 }
 
-// ── Date field for filter sheet ───────────────────────────────
+// ── Category cell in the filter sheet / category picker ───────
+class _CatPick extends StatelessWidget {
+  final ExpenseCategory category;
+  final bool selected;
+  final VoidCallback onTap;
+  const _CatPick(
+      {required this.category, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: category.label,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Rad.tile),
+        child: AnimatedContainer(
+          duration: Mo.standard,
+          curve: Mo.curve,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          decoration: BoxDecoration(
+            color: selected ? tk.accSoft : Colors.transparent,
+            borderRadius: BorderRadius.circular(Rad.tile),
+            border: Border.all(
+                color: selected ? tk.acc : Colors.transparent, width: 1.5),
+          ),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            CatTile.of(category, size: 36),
+            const SizedBox(height: 6),
+            Text(category.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? tk.acc : tk.t1)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Date field for the filter sheet ───────────────────────────
 class _DateField extends StatelessWidget {
   final String label;
   final DateTime? value;
@@ -511,51 +583,36 @@ class _DateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label,
-          style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      const SizedBox(height: 4),
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-          decoration: BoxDecoration(
-            border: Border.all(
-                color: Theme.of(context)
-                    .colorScheme
-                    .outlineVariant
-                    .withValues(alpha: 0.5)),
-            borderRadius: BorderRadius.circular(14),
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.04)
-                : Colors.black.withValues(alpha: 0.03),
-          ),
-          child: Row(children: [
-            Expanded(
-              child: Text(
-                value == null
-                    ? 'dd-mm-yyyy'
-                    : '${value!.day.toString().padLeft(2, '0')}-'
-                        '${value!.month.toString().padLeft(2, '0')}-'
-                        '${value!.year}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: value == null
-                      ? Theme.of(context).colorScheme.onSurfaceVariant
-                      : Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-            ),
-            Icon(Icons.calendar_month_outlined,
-                size: 17,
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
-          ]),
+    final tk = context.tk;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Rad.input),
+      child: Container(
+        height: 52,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: tk.field,
+          borderRadius: BorderRadius.circular(Rad.input),
+          border: Border.all(color: tk.hair),
         ),
+        child: Row(children: [
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontSize: 11, color: tk.t2)),
+                Text(value == null ? 'Pick a date' : shortDate(value!),
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: value == null ? tk.t3 : tk.t1)),
+              ],
+            ),
+          ),
+          Icon(Ph.calendarBlank, size: 18, color: tk.t2),
+        ]),
       ),
-    ]);
+    );
   }
 }

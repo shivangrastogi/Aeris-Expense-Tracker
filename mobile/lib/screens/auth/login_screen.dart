@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/routes.dart';
-import '../../core/theme.dart';
 import '../../widgets/brand_mark.dart';
 import '../../providers/auth_provider.dart';
 import 'auth_widgets.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../core/theme.dart';
+import '../../widgets/ds.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -69,7 +70,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               keyboardType: TextInputType.emailAddress,
               decoration: const InputDecoration(
                 labelText: 'Email',
-                prefixIcon: Icon(Icons.mail_outline),
+                prefixIcon: Icon(Ph.envelopeSimple),
               ),
             ),
           ],
@@ -103,7 +104,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme;
     return Scaffold(
       body: SafeArea(
         child: Form(
@@ -116,32 +116,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 8),
                       // ── Brand ──────────────────────────────────────
-                      const Row(
-                        children: [
-                          AerisBrandMark(size: 40),
-                          SizedBox(width: 12),
-                          Text('AERIS',
-                              style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.5)),
-                        ],
-                      ),
-                      const SizedBox(height: 32),
-                      const Text('Welcome back',
-                          style: TextStyle(
-                              fontSize: 27,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.8)),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Your password also unlocks your encrypted vault.',
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: c.onSurfaceVariant),
+                      const AerisBrandMark(size: 40),
+                      const SizedBox(height: 24),
+                      const AuthHeader(
+                        title: 'Log in',
+                        subtitle:
+                            'Your password also unlocks your encrypted data.',
                       ),
                       const SizedBox(height: 24),
 
@@ -156,7 +138,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       // ── Fields ─────────────────────────────────────
                       AuthField(
                         controller: _email,
-                        icon: Icons.mail_outline,
+                        icon: Ph.envelopeSimple,
                         hint: 'Email',
                         keyboardType: TextInputType.emailAddress,
                         validator: (v) => (v == null || !v.contains('@'))
@@ -166,7 +148,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 12),
                       AuthField(
                         controller: _pwd,
-                        icon: Icons.lock_outline,
+                        icon: Ph.lock,
                         hint: 'Password',
                         obscure: true,
                         validator: (v) => (v == null || v.length < 6)
@@ -185,16 +167,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                           child: Text('Forgot password?',
                               style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: AerisColors.ink(context))),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: context.tk.acc)),
                         ),
                       ),
 
                       if (_error != null) ...[
                         const SizedBox(height: 4),
-                        Text(_error!,
-                            style: TextStyle(color: c.error, fontSize: 13)),
+                        AuthError(_error!),
                       ],
 
                       const SizedBox(height: 18),

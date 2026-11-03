@@ -110,11 +110,13 @@ class ExportService {
       sh.getRangeByIndex(r, 4).setText(
           t.selfTransfer
               ? 'Own transfer'
-              : t.isSettlement
-                  ? 'Share paid back'
-                  : t.isRefund
-                      ? 'Refund'
-                      : (t.isCredit ? 'Income' : 'Expense'));
+              : t.isLoan
+                  ? t.linkKind!
+                  : t.isSettlement
+                      ? 'Share paid back'
+                      : t.isRefund
+                          ? 'Refund'
+                          : (t.isCredit ? 'Income' : 'Expense'));
       final amt = sh.getRangeByIndex(r, 5);
       amt.setNumber(t.amount);
       amt.numberFormat = _money;

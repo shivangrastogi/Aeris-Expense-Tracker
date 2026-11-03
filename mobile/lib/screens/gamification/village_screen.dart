@@ -11,6 +11,7 @@ import '../../providers/gamification_provider.dart';
 import '../../providers/village_provider.dart';
 import '../../widgets/aeris_toast.dart';
 import '../../widgets/town_painter.dart';
+import '../../widgets/ds.dart';
 
 /// Aeris Town — a night city that grows with your money habits.
 /// Rules live in models/town_catalog.dart; state in providers/village_provider.
@@ -197,7 +198,7 @@ class _VillageScreenState extends ConsumerState<VillageScreen> {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
           child: Column(children: [
             Row(children: [
-              _chipBtn(Icons.arrow_back, 'Back', () => Navigator.pop(context)),
+              _chipBtn(Ph.arrowLeft, 'Back', () => Navigator.pop(context)),
               const SizedBox(width: 8),
               _chip(Row(mainAxisSize: MainAxisSize.min, children: [
                 const Text('Aeris Town', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: Colors.white)),
@@ -206,15 +207,15 @@ class _VillageScreenState extends ConsumerState<VillageScreen> {
                     style: const TextStyle(fontSize: 12, color: AerisColors.arc, fontWeight: FontWeight.w700)),
               ])),
               const Spacer(),
-              _chipBtn(Icons.help_outline, 'How it works', _howItWorks),
+              _chipBtn(Ph.question, 'How it works', _howItWorks),
             ]),
             const SizedBox(height: 8),
             Row(children: [
-              _stat(Icons.bolt, AerisColors.amber, _fmt(g.available), 'Aura'),
+              _stat(Ph.lightning, AerisColors.amber, _fmt(g.available), 'Aura'),
               const SizedBox(width: 6),
-              _stat(Icons.diamond_outlined, AerisColors.arc, '${g.gems}', 'Gems'),
+              _stat(Ph.diamond, AerisColors.arc, '${g.gems}', 'Gems'),
               const SizedBox(width: 6),
-              _stat(Icons.engineering, v.freeBuilders(_now) > 0 ? AerisColors.mint : AerisColors.coral,
+              _stat(Ph.hardHat, v.freeBuilders(_now) > 0 ? AerisColors.mint : AerisColors.coral,
                   '${v.freeBuilders(_now)}/${v.builders}', 'Builders'),
             ]),
             const SizedBox(height: 8),
@@ -243,7 +244,7 @@ class _VillageScreenState extends ConsumerState<VillageScreen> {
                   _toast('+$got Aura collected');
                 }
               : null,
-          icon: const Icon(Icons.bolt),
+          icon: const Icon(Ph.lightning),
           label: Text(gain > 0
               ? 'Collect $gain Aura'
               : v.dailyIncome() > 0
@@ -260,7 +261,7 @@ class _VillageScreenState extends ConsumerState<VillageScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
         onPressed: _openShop,
-        icon: const Icon(Icons.add_business_outlined),
+        icon: const Icon(Ph.buildings),
         label: const Text('Build'),
       ),
     ]);
@@ -317,15 +318,15 @@ class _VillageScreenState extends ConsumerState<VillageScreen> {
           Text('How Aeris Town works',
               style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
           SizedBox(height: 14),
-          _Rule(Icons.bolt, 'Aura comes from real habits',
+          _Rule(Ph.lightning, 'Aura comes from real habits',
               'Daily check-ins, no-spend days, months under budget, finished goals and won challenges. Your level only grows from these.'),
-          _Rule(Icons.home_rounded, 'Producers make Aura every day',
+          _Rule(Ph.house, 'Producers make Aura every day',
               'Each holds up to one day of Aura. Visit daily and collect.'),
-          _Rule(Icons.wb_sunny_outlined, 'The town weathers your spending',
+          _Rule(Ph.sun, 'The town weathers your spending',
               'Checked in today: collections ×1.5. Over this month\'s budget: storm, collections halved.'),
-          _Rule(Icons.park, 'Decorations pay off',
+          _Rule(Ph.tree, 'Decorations pay off',
               'Each tree, fountain or statue adds +5% to everything you collect (max +50%).'),
-          _Rule(Icons.diamond_outlined, 'Gems are rare',
+          _Rule(Ph.diamond, 'Gems are rare',
               'Earned at 7/30/100-day streaks, months under budget, goals and challenges. Spend them to finish construction now.'),
         ]),
       ),
@@ -411,9 +412,9 @@ class _WeatherBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, color, text) = switch (weather) {
-      TownWeather.bright => (Icons.wb_sunny_outlined, AerisColors.mint, 'Checked in today · collections ×1.5'),
-      TownWeather.storm => (Icons.thunderstorm_outlined, AerisColors.coral, 'Over budget this month · collections halved'),
-      TownWeather.clear => (Icons.nights_stay_outlined, AerisColors.mutedDark, 'Check in today to boost collections ×1.5'),
+      TownWeather.bright => (Ph.sun, AerisColors.mint, 'Checked in today · collections ×1.5'),
+      TownWeather.storm => (Ph.cloudLightning, AerisColors.coral, 'Over budget this month · collections halved'),
+      TownWeather.clear => (Ph.moonStars, AerisColors.mutedDark, 'Check in today to boost collections ×1.5'),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -527,14 +528,14 @@ class _BuildingPanel extends ConsumerWidget {
           final err = notifier.rush(id);
           toast(err ?? 'Finished with $gems gems');
         },
-        icon: const Icon(Icons.diamond_outlined, size: 18),
+        icon: const Icon(Ph.diamond, size: 18),
         label: Text('Finish now · $gems'),
       );
     } else if (stored > 0) {
       primary = FilledButton.icon(
         style: FilledButton.styleFrom(backgroundColor: AerisColors.amber, foregroundColor: const Color(0xFF2A1A00)),
         onPressed: () => toast('+${notifier.collect(id)} Aura'),
-        icon: const Icon(Icons.bolt, size: 18),
+        icon: const Icon(Ph.lightning, size: 18),
         label: Text('Collect $stored'),
       );
     } else if (!maxed) {
@@ -547,7 +548,7 @@ class _BuildingPanel extends ConsumerWidget {
           final err = notifier.upgrade(id);
           toast(err ?? 'Upgrading to level ${b.lvl + 2}');
         },
-        icon: const Icon(Icons.upgrade, size: 18),
+        icon: const Icon(Ph.arrowFatUp, size: 18),
         label: Text('Upgrade · $cost'),
       );
     } else {
@@ -580,7 +581,7 @@ class _BuildingPanel extends ConsumerWidget {
           IconButton(
             tooltip: 'Close',
             onPressed: onClose,
-            icon: const Icon(Icons.close, color: AerisColors.mutedDark),
+            icon: const Icon(Ph.x, color: AerisColors.mutedDark),
           ),
         ]),
         const SizedBox(height: 12),
@@ -611,7 +612,7 @@ class _BuildingPanel extends ConsumerWidget {
                   toast('${def.name} removed');
                 }
               },
-              child: const Icon(Icons.delete_outline, size: 20),
+              child: const Icon(Ph.trash, size: 20),
             ),
           if (id != 'th') const SizedBox(width: 10),
           Expanded(child: SizedBox(height: 46, child: primary)),
@@ -640,7 +641,7 @@ class _ShopSheet extends ConsumerWidget {
           Row(children: [
             const Text('Build', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
             const Spacer(),
-            const Icon(Icons.bolt, size: 16, color: AerisColors.amber),
+            const Icon(Ph.lightning, size: 16, color: AerisColors.amber),
             const SizedBox(width: 4),
             Text('${g.available} Aura', style: const TextStyle(color: AerisColors.amber, fontWeight: FontWeight.w600)),
           ]),
@@ -710,7 +711,7 @@ class _ShopTile extends StatelessWidget {
               Text(sub, maxLines: 1, style: const TextStyle(color: AerisColors.mutedDark, fontSize: 10.5)),
               const SizedBox(height: 4),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(locked ? Icons.lock_outline : Icons.bolt,
+                Icon(locked ? Ph.lock : Ph.lightning,
                     size: 13, color: afford ? AerisColors.amber : AerisColors.coral),
                 const SizedBox(width: 2),
                 Text('${def.baseCost}',

@@ -13,6 +13,17 @@ Currency kCurrency = Currencies.byCode('INR');
 /// no flash of real values. Pass `raw: true` to bypass (rarely needed).
 bool kAmountsHidden = false;
 
+/// When true, income amounts (salary credits, monthly income) render masked
+/// even while other amounts are shown — they need a fingerprint to reveal.
+/// Driven by `incomeLockProvider`; set on app start from prefs.
+bool kIncomeMasked = false;
+
+/// [formatRupees] for an income figure: masked while the salary lock is on.
+String formatIncome(num n, {bool compact = false, bool decimals = false}) =>
+    kIncomeMasked
+        ? '${kCurrency.symbol}••••'
+        : formatRupees(n, compact: compact, decimals: decimals);
+
 String formatRupees(num n,
     {bool compact = false, bool decimals = false, bool raw = false}) {
   final c = kCurrency;

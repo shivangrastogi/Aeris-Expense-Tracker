@@ -8,6 +8,7 @@ import '../../providers/money_providers.dart';
 import '../../providers/privacy_provider.dart';
 import '../../services/reminder_scheduler.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/ds.dart';
 
 /// Month view of every bill — saved subscriptions and monthly payments AERIS
 /// spotted in your history — with what's due next. Reminders fire the day
@@ -63,45 +64,39 @@ class _BillCalendarState extends ConsumerState<BillCalendarScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bills & subscriptions'),
+        title: const Text('Bills'),
         actions: [
-          TextButton.icon(
-            icon: const Icon(Icons.edit_calendar_outlined, size: 18),
-            label: const Text('Subscriptions'),
-            onPressed: () =>
-                Navigator.pushNamed(context, AppRoutes.subscriptions),
-          ),
-          const SizedBox(width: 4),
+          TonalButton('Subscriptions',
+              icon: Ph.arrowsClockwise,
+              height: 40,
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.subscriptions)),
+          const SizedBox(width: 16),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
           AerisCard(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
             child: Column(children: [
               Row(children: [
                 IconButton(
                     tooltip: 'Previous month',
                     onPressed: () => _shift(-1),
-                    icon: const Icon(Icons.chevron_left_rounded)),
+                    icon: const Icon(Ph.caretLeft, size: 18)),
                 Expanded(
-                  child: Column(children: [
-                    Text('${_monthNames[_month.month]} ${_month.year}',
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w800)),
-                    Text(
-                        '${bills.length} bills · ${formatRupees(monthTotal)} / month',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: AerisColors.muted(context))),
-                  ]),
+                  child: Text('${_monthNames[_month.month]} ${_month.year}',
+                      style: Ts.rowTitle.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: context.tk.t1)),
                 ),
+                Text('${formatRupees(monthTotal)} this month',
+                    style: Ts.bodyS.copyWith(color: context.tk.t2)),
                 IconButton(
                     tooltip: 'Next month',
                     onPressed: () => _shift(1),
-                    icon: const Icon(Icons.chevron_right_rounded)),
+                    icon: const Icon(Ph.caretRight, size: 18)),
               ]),
               const SizedBox(height: 8),
               _Grid(
@@ -117,7 +112,7 @@ class _BillCalendarState extends ConsumerState<BillCalendarScreen> {
           if (bills.isEmpty)
             AerisCard(
               child: Column(children: [
-                Icon(Icons.event_available_outlined,
+                Icon(Ph.calendarCheck,
                     size: 40, color: AerisColors.muted(context)),
                 const SizedBox(height: 8),
                 const Text('No bills yet',
@@ -140,12 +135,13 @@ class _BillCalendarState extends ConsumerState<BillCalendarScreen> {
               ]),
             )
           else ...[
-            SectionLabel(shown != null
-                ? 'Due on ${_selectedDay!} ${_monthNames[_month.month].substring(0, 3)}'
-                : 'Coming up'),
-            AerisCard(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+              child: Overline(shown != null
+                  ? 'Due on ${_selectedDay!} ${_monthNames[_month.month].substring(0, 3)}'
+                  : 'Upcoming'),
+            ),
+            ListGroup(children: [
                 if (shown != null && shown.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(16),
@@ -153,11 +149,10 @@ class _BillCalendarState extends ConsumerState<BillCalendarScreen> {
                         style: TextStyle(color: AerisColors.muted(context))),
                   ),
                 for (final b in shown ?? upcoming) _BillRow(bill: b, now: now),
-              ]),
-            ),
+            ]),
             const SizedBox(height: 10),
             Row(children: [
-              Icon(Icons.notifications_active_outlined,
+              Icon(Ph.bellRinging,
                   size: 14, color: AerisColors.muted(context)),
               const SizedBox(width: 6),
               Expanded(
@@ -195,7 +190,6 @@ class _Grid extends StatelessWidget {
     final cells = lead + lastDay;
     final rows = (cells / 7).ceil();
     final accent = AerisColors.accent(context);
-    final muted = AerisColors.muted(context);
 
     return Column(children: [
       Row(children: [
@@ -230,14 +224,10 @@ class _Grid extends StatelessWidget {
                       height: 44,
                       margin: const EdgeInsets.all(2),
                       decoration: BoxDecoration(
-                        color: isSel
-                            ? accent
-                            : due.isNotEmpty
-                                ? AerisColors.accentSoft(context)
-                                : null,
+                        color: isSel ? context.tk.accSoft : null,
                         borderRadius: BorderRadius.circular(12),
-                        border: isToday && !isSel
-                            ? Border.all(color: accent, width: 1.5)
+                        border: isToday
+                            ? Border.all(color: context.tk.t1, width: 1.5)
                             : null,
                       ),
                       child: Column(
@@ -245,17 +235,13 @@ class _Grid extends StatelessWidget {
                         children: [
                           Text('$day',
                               style: TextStyle(
-                                  fontSize: 13.5,
+                                  fontSize: 14,
                                   fontWeight: due.isNotEmpty || isToday
-                                      ? FontWeight.w800
+                                      ? FontWeight.w700
                                       : FontWeight.w500,
                                   color: isSel
-                                      ? AerisColors.onAccent(context)
-                                      : due.isEmpty
-                                          ? muted
-                                          : Theme.of(context)
-                                              .colorScheme
-                                              .onSurface)),
+                                      ? accent
+                                      : context.tk.t1)),
                           if (due.isNotEmpty)
                             Row(
                               mainAxisSize: MainAxisSize.min,
@@ -268,9 +254,9 @@ class _Grid extends StatelessWidget {
                                         top: 3, left: 1, right: 1),
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: isSel
-                                          ? AerisColors.onAccent(context)
-                                          : Categories.byId(b.categoryId).color,
+                                      color: b.exactDue != null
+                                          ? context.tk.warn
+                                          : accent,
                                     ),
                                   ),
                               ],
@@ -294,6 +280,7 @@ class _BillRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final cat = Categories.byId(bill.categoryId);
     final due = bill.nextDue(now);
     final days = DateTime(due.year, due.month, due.day)
@@ -303,38 +290,28 @@ class _BillRow extends StatelessWidget {
         ? 'Due today'
         : days == 1
             ? 'Due tomorrow'
-            : 'In $days days · ${due.day}/${due.month}';
+            : 'Due ${shortDate(due)} · in $days days';
     final soon = days <= 1;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Row(children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: cat.color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(cat.icon, size: 20, color: cat.color),
+    final color = soon ? tk.warn : tk.t2;
+    return DsRow(
+      leading: CatTile.of(cat),
+      title: bill.name,
+      titleMaxLines: 1,
+      subWidget: Row(children: [
+        Icon(soon ? PhFill.clock : (bill.detected ? Ph.sparkle : Ph.calendarBlank),
+            size: 13, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(bill.detected ? '$when · spotted from history' : when,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Ts.label.copyWith(
+                  fontWeight: soon ? FontWeight.w700 : FontWeight.w400,
+                  color: color)),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(bill.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style:
-                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            Text(bill.detected ? '$when · spotted from history' : when,
-                style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: soon ? FontWeight.w700 : FontWeight.w500,
-                    color: soon ? AerisColors.warning : AerisColors.muted(context))),
-          ]),
-        ),
-        Text(formatRupees(bill.amount),
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
       ]),
+      trailing: MoneyText(bill.amount,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
     );
   }
 }

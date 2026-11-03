@@ -16,6 +16,14 @@ import 'utils/formatters.dart';
 // import below will be red — comment it out + use Firebase.initializeApp()
 // without options, but auth + Firestore will fail until you do.
 import 'firebase_options.dart';
+import 'services/widget_background.dart';
+
+/// Entry point for the headless engine that refreshes the home-screen
+/// widgets while the app is closed (BackgroundDart.kt). It must live in this
+/// file: a release build only keeps libraries reachable from main.dart, and
+/// the engine looks the function up here.
+@pragma('vm:entry-point')
+Future<void> widgetBackgroundMain() => runWidgetBackground();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,6 +80,8 @@ Future<void> main() async {
   try {
     final prefs = await SharedPreferences.getInstance();
     kAmountsHidden = prefs.getBool('amounts_hidden') ?? false;
+    // Salary lock: income starts hidden (no flash of the real figure).
+    kIncomeMasked = prefs.getBool('income_locked') ?? false;
     kInitialThemeMode = ThemeModeNotifier.parseThemeMode(
         prefs.getString('theme_mode') ?? 'dark');
     final code = prefs.getString('currency_code');

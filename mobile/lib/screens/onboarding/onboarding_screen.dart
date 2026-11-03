@@ -8,8 +8,12 @@ import '../../providers/auth_provider.dart';
 import '../../providers/setup_provider.dart';
 import '../../services/notification_intake.dart';
 import '../../services/sms_service.dart';
+import '../../widgets/sms_disclosure.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/ds.dart';
+import '../../providers/income_lock_provider.dart';
+import '../../services/app_lock_service.dart';
 
 /// One-time setup tour on first launch (gated by the `onboarded` pref).
 /// Each step does its job right here and reports what actually happened —
@@ -35,16 +39,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   _Result _sms = _Result.none;
   _Result _notif = _Result.none;
   _Result _reminders = _Result.none;
+  _Result _privacy = _Result.none;
+  bool _hideSalary = true;
+  bool _lockApp = true;
   bool _busy = false;
 
-  static const _count = 5;
+  static const _count = 6;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkPermissions();
-    final income = ref.read(userProfileProvider).valueOrNull?.monthlyIncome ?? 0;
+    final income =
+        ref.read(userProfileProvider).valueOrNull?.monthlyIncome ?? 0;
     if (income > 0) _income.text = inrToDisplayText(income);
   }
 
@@ -73,7 +81,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   }
 
   Future<void> _askSms() async {
-    final ok = await SmsService.instance.requestPermission();
+    final ok = await requestSmsWithDisclosure(context);
     if (mounted) setState(() => _sms = ok ? _Result.on : _Result.denied);
   }
 
@@ -82,11 +90,28 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     if (mounted) setState(() => _reminders = ok ? _Result.on : _Result.denied);
   }
 
+  // One fingerprint confirms both choices, right here.
+  Future<void> _confirmPrivacy() async {
+    final lockSvc = AppLockService.instance;
+    if (!await lockSvc.isAvailable()) {
+      if (mounted) setState(() => _privacy = _Result.denied);
+      return;
+    }
+    if (!await lockSvc.authenticate("Confirm it's you")) return;
+    await ref
+        .read(incomeLockProvider.notifier)
+        .setEnabled(_hideSalary, alreadyVerified: true);
+    await lockSvc.setEnabled(_lockApp);
+    if (mounted) setState(() => _privacy = _Result.on);
+  }
+
   Future<void> _saveIncome() async {
     final v = displayToInr(_income.text);
     final p = ref.read(userProfileProvider).valueOrNull;
     if (v == null || p == null || v == p.monthlyIncome) return;
-    await ref.read(authServiceProvider).saveProfile(p.copyWith(monthlyIncome: v));
+    await ref
+        .read(authServiceProvider)
+        .saveProfile(p.copyWith(monthlyIncome: v));
     ref.invalidate(userProfileProvider);
   }
 
@@ -113,16 +138,31 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tk = context.tk;
     final last = _page == _count - 1;
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                  onPressed: _finish, child: const Text('Skip for now')),
+            // Fixed header: step progress as rising segments, and Skip.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+              child: Row(children: [
+                SizedBox(
+                  width: 128,
+                  height: 12,
+                  child: CustomPaint(
+                    painter: _StepsPainter(_page, _count, tk.acc, tk.track),
+                  ),
+                ),
+                const Spacer(),
+                TextButton(
+                    onPressed: _finish,
+                    style: TextButton.styleFrom(
+                        foregroundColor: tk.t2,
+                        minimumSize: const Size(48, 48)),
+                    child: const Text('Skip for now')),
+              ]),
             ),
             Expanded(
               child: PageView(
@@ -130,14 +170,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                 onPageChanged: (i) => setState(() => _page = i),
                 children: [
                   _step(
-                    icon: Icons.lock_outline_rounded,
+                    index: 1,
+                    icon: Ph.lock,
                     title: 'Private by design',
                     body: 'AERIS tracks your money automatically. Everything '
                         'is read on your phone and end-to-end encrypted — '
                         'only you can see it.',
                   ),
                   _step(
-                    icon: Icons.sms_outlined,
+                    index: 2,
+                    illustration: const _SmsIllustration(),
+                    actionIcon: Ph.chatText,
+                    icon: Ph.chatText,
                     title: 'Read bank SMS',
                     body: 'Bank and card alerts become transactions on their '
                         'own. Personal messages are ignored. You can review '
@@ -150,7 +194,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                         'Settings → SMS auto-import.',
                   ),
                   _step(
-                    icon: Icons.notifications_active_outlined,
+                    index: 3,
+                    actionIcon: Ph.bellRinging,
+                    icon: Ph.bellRinging,
                     title: 'Catch UPI app payments',
                     body: 'Google Pay, PhonePe and Paytm often send no bank '
                         'SMS. Let AERIS read only those apps\' payment '
@@ -164,7 +210,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                     deniedText: '',
                   ),
                   _step(
-                    icon: Icons.payments_outlined,
+                    index: 4,
+                    icon: Ph.money,
                     title: 'Your monthly income',
                     body: 'Used for your savings rate and budget suggestions. '
                         'Optional — stays encrypted.',
@@ -182,7 +229,58 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                     ),
                   ),
                   _step(
-                    icon: Icons.alarm_on_outlined,
+                    index: 5,
+                    icon: Ph.lockSimple,
+                    title: 'Keep your salary private',
+                    body: 'Your salary shows as ₹•••• — even when other '
+                        'amounts are visible — until you unlock it with your '
+                        'fingerprint. Change it any time in Me → Edit profile.',
+                    child: AerisCard(
+                      padding: EdgeInsets.zero,
+                      child: Column(children: [
+                        SettingsRow(
+                          icon: Ph.eyeSlash,
+                          title: 'Hide my salary',
+                          sub: 'Fingerprint to see it',
+                          trailing: Switch(
+                              value: _hideSalary,
+                              onChanged: (v) => setState(() {
+                                    _hideSalary = v;
+                                    _privacy = _Result.none;
+                                  })),
+                        ),
+                        SettingsRow(
+                          icon: Ph.fingerprint,
+                          title: 'Lock AERIS with fingerprint',
+                          sub: 'When you come back to the app',
+                          trailing: Switch(
+                              value: _lockApp,
+                              onChanged: (v) => setState(() {
+                                    _lockApp = v;
+                                    _privacy = _Result.none;
+                                  })),
+                        ),
+                      ]),
+                    ),
+                    actionIcon: Ph.fingerprint,
+                    action:
+                        _privacy == _Result.on || (!_hideSalary && !_lockApp)
+                            ? null
+                            : 'Confirm with fingerprint',
+                    onAction: _confirmPrivacy,
+                    result: _privacy,
+                    onText: [
+                      if (_hideSalary) 'Salary hidden',
+                      if (_lockApp) 'app lock on',
+                    ].join(' · '),
+                    deniedText: 'No fingerprint or screen lock on this phone. '
+                        'Add one in phone settings, then turn on Hide salary '
+                        'in Me → Edit profile.',
+                  ),
+                  _step(
+                    index: 6,
+                    actionIcon: Ph.alarm,
+                    icon: Ph.alarm,
                     title: 'Stay on top',
                     body: 'Get a heads-up the day before bills and card dues, '
                         'when friends owe you, and a short weekly recap. '
@@ -198,28 +296,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                 ],
               ),
             ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 0; i < _count; i++)
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: _page == i ? 18 : 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: _page == i
-                          ? AerisColors.accent(context)
-                          : scheme.onSurfaceVariant.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-              ],
-            ),
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
               child: SizedBox(
                 width: double.infinity,
+                height: 48,
                 child: FilledButton(
                   onPressed: _busy ? null : _next,
                   child: Text(last ? 'Get started' : 'Continue'),
@@ -233,20 +314,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   }
 
   Widget _step({
+    required int index,
     required IconData icon,
     required String title,
     required String body,
     String? action,
+    IconData? actionIcon,
     VoidCallback? onAction,
     _Result result = _Result.none,
     String onText = '',
     String deniedText = '',
+    Widget? illustration,
     Widget? child,
   }) {
-    final accent = AerisColors.accent(context);
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final tk = context.tk;
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -254,49 +337,150 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: AerisColors.accentSoft(context),
+              color: tk.accSoft,
               borderRadius: BorderRadius.circular(18),
             ),
-            child: Icon(icon, color: accent, size: 32),
+            child: Icon(icon, color: tk.acc, size: 30),
           ),
           const SizedBox(height: 24),
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5)),
+          Overline('Step $index of $_count'),
+          const SizedBox(height: 8),
+          Text(title, style: Ts.headline.copyWith(color: tk.t1)),
           const SizedBox(height: 10),
-          Text(body, style: TextStyle(fontSize: 15, height: 1.45, color: muted)),
-          if (child != null) ...[const SizedBox(height: 20), child],
+          Text(body, style: Ts.body.copyWith(color: tk.t2)),
+          if (illustration != null) ...[
+            const SizedBox(height: 24),
+            illustration,
+          ],
+          if (child != null) ...[const SizedBox(height: 24), child],
           if (result == _Result.on) ...[
             const SizedBox(height: 20),
             Row(children: [
-              Icon(Icons.check_circle_rounded,
-                  color: AerisColors.moneyIn(context)),
+              Icon(PhFill.checkCircle, size: 20, color: tk.ok),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(onText,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: tk.t1)),
               ),
             ]),
           ] else if (result == _Result.denied && deniedText.isNotEmpty) ...[
             const SizedBox(height: 20),
-            Text(deniedText,
-                style: const TextStyle(
-                    color: AerisColors.warning, fontWeight: FontWeight.w600)),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(PhFill.warningCircle, size: 18, color: tk.warn),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(deniedText,
+                    style: TextStyle(
+                        fontSize: 13,
+                        height: 18 / 13,
+                        fontWeight: FontWeight.w600,
+                        color: tk.t1)),
+              ),
+            ]),
           ],
           if (action != null) ...[
-            const SizedBox(height: 20),
-            OutlinedButton(
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                onAction?.call();
-              },
-              child: Text(action),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: TonalButton(
+                action,
+                icon: actionIcon,
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  onAction?.call();
+                },
+              ),
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// The step progress: one short rising segment per step. Done steps and the
+/// current one are accent; the current one ends in the dot.
+class _StepsPainter extends CustomPainter {
+  final int page, count;
+  final Color acc, track;
+  _StepsPainter(this.page, this.count, this.acc, this.track);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const gap = 3.0;
+    final w = (size.width - gap * (count - 1)) / count;
+    final p = Paint()
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < count; i++) {
+      final x0 = i * (w + gap) + 1.5;
+      final y0 = size.height / 2;
+      final a = Offset(x0, y0);
+      final b = Offset(x0 + w - 3, y0);
+      canvas.drawLine(a, b, p..color = i <= page ? acc : track);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StepsPainter o) =>
+      o.page != page || o.acc != acc || o.track != track;
+}
+
+/// Step 2's picture: a bank SMS bubble becoming a transaction.
+class _SmsIllustration extends StatelessWidget {
+  const _SmsIllustration();
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AerisColors.cardDecoration(context),
+      child: Column(children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 300),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: tk.sunken,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: tk.hair),
+            ),
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(
+                    text: 'HDFC Bank',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, color: tk.t1)),
+                const TextSpan(text: ' · 2:07 PM\n'),
+                const TextSpan(
+                    text: 'Rs.486.00 debited from a/c **4521 to VPA '
+                        'swiggy@icici on 19-10-26. UPI Ref 429417.'),
+              ]),
+              style: TextStyle(fontSize: 12, height: 1.45, color: tk.t2),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Icon(Ph.arrowDown, size: 16, color: tk.t3),
+        ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(Rad.input),
+            border: Border.all(color: tk.hair2),
+          ),
+          alignment: Alignment.center,
+          child: Text('Becomes a transaction, automatically',
+              style: TextStyle(fontSize: 13, color: tk.t2)),
+        ),
+      ]),
     );
   }
 }

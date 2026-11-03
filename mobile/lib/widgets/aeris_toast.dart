@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/theme.dart';
+import 'ds.dart';
 
 /// The app's root navigator — its Overlay is where toasts are drawn, above
 /// every screen and the bottom nav.
@@ -159,16 +160,16 @@ class _ToastViewState extends State<_ToastView>
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final tk = context.tk;
     final mq = MediaQuery.of(context);
     // Above the bottom nav (and above the keyboard when it's open).
     final bottom = (mq.viewInsets.bottom > 0
             ? mq.viewInsets.bottom
             : mq.viewPadding.bottom) +
         104;
-    final bg = widget.bar.backgroundColor ??
-        (dark ? const Color(0xFF272B33) : AerisColors.inkLight);
-    final fg = dark ? AerisColors.inkDark : Colors.white;
+    // Inverse surface: light on Graphite, ink on Porcelain.
+    final bg = widget.bar.backgroundColor ?? tk.inv;
+    final fg = tk.onInv;
     final action = widget.bar.action;
 
     return Positioned(
@@ -189,37 +190,24 @@ class _ToastViewState extends State<_ToastView>
               child: Material(
                 color: Colors.transparent,
                 child: Container(
-                  constraints: const BoxConstraints(minHeight: 52),
-                  padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
+                  constraints: const BoxConstraints(minHeight: 56),
+                  padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                        color: Colors.white.withValues(alpha: dark ? 0.08 : 0.0)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: dark ? 0.40 : 0.22),
-                        blurRadius: 22,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+                    boxShadow: tk.shadowRaised,
                   ),
                   child: Row(children: [
-                    Container(
-                      width: 3,
-                      height: 22,
-                      margin: const EdgeInsets.only(right: 12),
-                      decoration: BoxDecoration(
-                        color: AerisColors.arc,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: Icon(PhFill.checkCircle, size: 20, color: fg),
                     ),
                     Expanded(
                       child: DefaultTextStyle(
                         style: TextStyle(
                             fontFamily: kFontFamily,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
                             height: 1.3,
                             color: fg),
                         child: widget.bar.content,
@@ -233,20 +221,19 @@ class _ToastViewState extends State<_ToastView>
                           widget.onDismiss(SnackBarClosedReason.action);
                         },
                         style: TextButton.styleFrom(
-                          foregroundColor:
-                              dark ? AerisColors.arc : const Color(0xFF9CC3EC),
+                          foregroundColor: tk.invAcc,
+                          minimumSize: const Size(48, 44),
                           textStyle: const TextStyle(
                               fontFamily: kFontFamily,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.4),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700),
                         ),
-                        child: Text(action.label.toUpperCase()),
+                        child: Text(action.label),
                       ),
                     IconButton(
                       tooltip: 'Dismiss',
                       visualDensity: VisualDensity.compact,
-                      icon: Icon(Icons.close_rounded,
+                      icon: Icon(Ph.x,
                           size: 18, color: fg.withValues(alpha: 0.7)),
                       onPressed: () =>
                           widget.onDismiss(SnackBarClosedReason.dismiss),

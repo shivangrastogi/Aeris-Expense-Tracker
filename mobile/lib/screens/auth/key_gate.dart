@@ -8,6 +8,9 @@ import '../../providers/insights_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../home/root_shell.dart';
 import '../splash_screen.dart';
+import '../../core/theme.dart';
+import '../../widgets/ds.dart';
+import 'auth_widgets.dart';
 
 /// Sits between auth and the app: ensures the end-to-end encryption vault is
 /// unlocked before any encrypted data is shown. On a fresh login/signup the
@@ -160,53 +163,68 @@ class _UnlockScreenState extends ConsumerState<_UnlockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme;
+    final tk = context.tk;
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.lock_outline, size: 56, color: c.primary),
-              const SizedBox(height: 16),
-              Text('Unlock your data',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      )),
-              const SizedBox(height: 6),
-              Text(
-                'Your transactions are end-to-end encrypted. Enter your '
-                'password to unlock them on this device.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: c.onSurfaceVariant),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 32),
+                      Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                            color: tk.accSoft,
+                            borderRadius: BorderRadius.circular(18)),
+                        child: Icon(Ph.lockKey, size: 30, color: tk.acc),
+                      ),
+                      const SizedBox(height: 20),
+                      const AuthHeader(
+                        title: 'Unlock your data',
+                        subtitle:
+                            'Your transactions are end-to-end encrypted. Enter '
+                            'your password to unlock them on this phone.',
+                      ),
+                      const SizedBox(height: 24),
+                      Text('Password',
+                          style: Ts.label.copyWith(color: tk.t2)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _pwd,
+                        obscureText: true,
+                        style: TextStyle(fontSize: 15, color: tk.t1),
+                        decoration: InputDecoration(
+                          hintText: 'Your password',
+                          errorText: _error == null ? null : ' ',
+                          errorStyle: const TextStyle(height: 0, fontSize: 0),
+                        ),
+                        onSubmitted: (_) => _unlock(),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 10),
+                        AuthError(_error!),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 24),
-              TextField(
-                controller: _pwd,
-                obscureText: true,
-                decoration: const InputDecoration(
-                    labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)),
-                onSubmitted: (_) => _unlock(),
+              AuthPrimaryButton(
+                label: 'Unlock',
+                busyLabel: 'Unlocking…',
+                busy: _busy,
+                onPressed: _unlock,
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!, style: TextStyle(color: c.error)),
-              ],
-              const SizedBox(height: 18),
-              ElevatedButton(
-                onPressed: _busy ? null : _unlock,
-                child: _busy
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Unlock'),
-              ),
+              const SizedBox(height: 8),
               TextButton(
                 onPressed: _busy ? null : _useRecovery,
+                style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
                 child: const Text('Forgot password? Use recovery key'),
               ),
             ],

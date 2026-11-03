@@ -1,10 +1,12 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import '../core/theme.dart';
+
 /// An animated circular progress ring with rounded caps and a center slot.
 ///
-/// As a *budget* ring ([warnOverflow], the default) the colour shifts from
-/// [color] toward red as it approaches/exceeds 100%. Rings that show a share
+/// As a *budget* ring ([warnOverflow], the default) it turns red (the
+/// design's danger token) once it goes over 100%. Rings that show a share
 /// (e.g. "biggest category = full ring") pass `warnOverflow: false` — a full
 /// share ring is not a warning.
 class BudgetRing extends StatelessWidget {
@@ -23,28 +25,25 @@ class BudgetRing extends StatelessWidget {
     this.strokeWidth = 12,
     this.color = const Color(0xFF2A6F66),
     this.center,
-    this.duration = const Duration(milliseconds: 900),
+    this.duration = Mo.fill,
     this.warnOverflow = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final track = Theme.of(context)
-        .colorScheme
-        .surfaceContainerHighest
-        .withValues(alpha: 0.6);
+    final tk = context.tk;
+    final track = tk.track;
     return SizedBox(
       width: size,
       height: size,
       child: TweenAnimationBuilder<double>(
         tween: Tween(begin: 0, end: progress.clamp(0.0, 1.0)),
         duration: duration,
-        curve: Curves.easeOutCubic,
+        curve: Mo.curve,
         builder: (_, v, __) {
-          // Blend toward red as a budget ring fills past 80%.
-          final over =
-              warnOverflow ? ((progress - 0.8) / 0.2).clamp(0.0, 1.0) : 0.0;
-          final ringColor = Color.lerp(color, const Color(0xFFBF433A), over)!;
+          // A budget ring turns red only once it is actually over the cap;
+          // near the limit it stays in its own hue (callers add the words).
+          final ringColor = warnOverflow && progress > 1 ? tk.bad : color;
           return CustomPaint(
             painter: _RingPainter(
               progress: v,
@@ -85,11 +84,7 @@ class _RingPainter extends CustomPainter {
     canvas.drawCircle(center, radius, trackPaint);
 
     final progPaint = Paint()
-      ..shader = SweepGradient(
-        startAngle: -math.pi / 2,
-        endAngle: 3 * math.pi / 2,
-        colors: [color.withValues(alpha: 0.65), color],
-      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;

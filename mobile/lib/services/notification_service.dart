@@ -1,3 +1,5 @@
+import 'dart:ui' show Color;
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
@@ -24,10 +26,12 @@ class NotificationService {
     } catch (_) {/* falls back to UTC */}
     await _plugin.initialize(
       const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        // The monochrome AERIS mark — a full-colour launcher icon shows up
+        // as a blank blob in the status bar.
+        android: AndroidInitializationSettings('@drawable/ic_stat_aeris'),
       ),
       onDidReceiveNotificationResponse: (r) {
-        final route = r.payload;
+        final route = _routeOf(r);
         if (route != null && route.isNotEmpty) onTapRoute?.call(route);
       },
     );
@@ -41,19 +45,33 @@ class NotificationService {
     return await android?.requestNotificationsPermission() ?? true;
   }
 
-  NotificationDetails get _details => const NotificationDetails(
+  NotificationDetails get _details => _detailsFor(const []);
+
+  /// [actions] become buttons on the notification; each opens its route
+  /// (the action id carries it: "go:<route>").
+  NotificationDetails _detailsFor(List<NotifAction> actions) =>
+      NotificationDetails(
         android: AndroidNotificationDetails(
           'aeris_alerts',
           'AERIS reminders',
           channelDescription: 'Budget, bill and weekly summary reminders',
           importance: Importance.high,
           priority: Priority.high,
+          icon: '@drawable/ic_stat_aeris',
+          // Brand steel blue, so notifications match the app.
+          color: const Color(0xFF4F86C6),
+          actions: [
+            for (final (label, route) in actions)
+              AndroidNotificationAction('go:$route', label,
+                  showsUserInterface: true, cancelNotification: true),
+          ],
         ),
       );
 
-  Future<void> showNow(int id, String title, String body) async {
+  Future<void> showNow(int id, String title, String body,
+      {String? route, List<NotifAction> actions = const []}) async {
     await init();
-    await _plugin.show(id, title, body, _details);
+    await _plugin.show(id, title, body, _detailsFor(actions), payload: route);
   }
 
   Future<void> scheduleWeeklySummary({int weekday = DateTime.sunday, int hour = 19}) async {
@@ -110,8 +128,8 @@ class NotificationService {
 
   /// One-shot reminder at [when]. [route] (an AppRoutes name) opens when the
   /// notification is tapped — see [onTapRoute] / [launchRoute].
-  Future<void> scheduleOnce(
-      int id, String title, String body, DateTime when, {String? route}) async {
+  Future<void> scheduleOnce(int id, String title, String body, DateTime when,
+      {String? route, List<NotifAction> actions = const []}) async {
     await init();
     final at = tz.TZDateTime.from(when, tz.local);
     if (!at.isAfter(tz.TZDateTime.now(tz.local))) return;
@@ -120,7 +138,7 @@ class NotificationService {
       title,
       body,
       at,
-      _details,
+      _detailsFor(actions),
       payload: route,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
@@ -138,7 +156,8 @@ class NotificationService {
     await init();
     final d = await _plugin.getNotificationAppLaunchDetails();
     if (d?.didNotificationLaunchApp != true) return null;
-    return d!.notificationResponse?.payload;
+    final r = d!.notificationResponse;
+    return r == null ? null : _routeOf(r);
   }
 
   tz.TZDateTime _nextWeekday(int weekday, int hour) {
@@ -163,4 +182,14 @@ class NotificationService {
     if (!d.isAfter(now)) d = tz.TZDateTime(tz.local, now.year, now.month + 1, day, hour);
     return d;
   }
+}
+
+/// A button on a notification: (label, route it opens).
+typedef NotifAction = (String, String);
+
+/// Where a tap goes: the pressed button's route, else the notification's.
+String? _routeOf(NotificationResponse r) {
+  final a = r.actionId;
+  if (a != null && a.startsWith('go:')) return a.substring(3);
+  return r.payload;
 }

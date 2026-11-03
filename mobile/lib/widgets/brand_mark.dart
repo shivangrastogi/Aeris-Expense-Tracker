@@ -30,3 +30,52 @@ class AerisBrandMark extends StatelessWidget {
         ),
       );
 }
+
+/// The bare "A" mark as vector strokes (the design's splash glyph): two legs,
+/// a rising crossbar and its dot. No tile behind it — callers place it.
+class AerisMarkGlyph extends StatelessWidget {
+  final double size;
+  final Color color;
+  final double stroke;
+  const AerisMarkGlyph({
+    super.key,
+    this.size = 104,
+    this.color = const Color(0xFF6E9EE0),
+    this.stroke = 3,
+  });
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        size: Size.square(size),
+        painter: _MarkPainter(color, stroke),
+      );
+}
+
+class _MarkPainter extends CustomPainter {
+  final Color color;
+  final double stroke;
+  _MarkPainter(this.color, this.stroke);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 40; // the mark is drawn on a 40-unit grid
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke * s
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(
+        Path()
+          ..moveTo(9 * s, 32 * s)
+          ..lineTo(20 * s, 8 * s)
+          ..lineTo(31 * s, 32 * s),
+        p);
+    canvas.drawLine(Offset(12.6 * s, 25 * s), Offset(24.5 * s, 19.6 * s), p);
+    canvas.drawCircle(
+        Offset(28.6 * s, 17.8 * s), 2.4 * s, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_MarkPainter o) => o.color != color || o.stroke != stroke;
+}

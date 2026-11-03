@@ -13,6 +13,7 @@ import '../../utils/formatters.dart';
 import '../../widgets/discard_guard.dart';
 import '../../widgets/field_editor.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 /// "Lent" tab — money given to (or borrowed from) friends, tracked until
 /// it comes back. Each entry is Pending until marked settled.
@@ -37,58 +38,64 @@ class LoansScreen extends ConsumerWidget {
 
   Widget _screen(BuildContext context, WidgetRef ref,
       AsyncValue<List<Loan>> loansAsync, LoanTotals totals) {
+    final tk = context.tk;
     return Scaffold(
-      appBar: embedded ? null : AppBar(title: const Text('Lent & borrowed')),
+      appBar: embedded ? null : AppBar(title: const Text('Lent and borrowed')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showAddLoanSheet(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Add'),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Rad.button)),
+        icon: const Icon(PhBold.plus, size: 20),
+        label: const Text('Add',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
       ),
       body: loansAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        loading: () => const Center(child: RisingLoader()),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Banner2(
+                tone: Tone.bad,
+                icon: PhFill.cloudX,
+                title: "Couldn't load lent and borrowed",
+                body: '$e'),
+          ),
+        ),
         data: (loans) {
           final pending = loans.where((l) => !l.isSettled).toList();
           final settled = loans.where((l) => l.isSettled).toList();
+          final lentPending = pending.where((l) => !l.borrowed).length;
+          final borrowedPending = pending.where((l) => l.borrowed).length;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 96),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 96),
             children: [
-              _summaryCard(context, totals),
+              _summaryCard(context, totals, lentPending, borrowedPending),
               const SizedBox(height: 16),
               if (loans.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 60),
-                  child: Column(
-                    children: [
-                      Icon(Icons.handshake_outlined,
-                          size: 56,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant
-                              .withValues(alpha: 0.4)),
-                      const SizedBox(height: 12),
-                      Text('Nothing tracked yet',
-                          style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Gave money to a friend? Add it here and\nmark it when you get it back.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 13,
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ),
+                const EmptyState(
+                  icon: Ph.handshake,
+                  title: 'Nothing tracked yet',
+                  body: 'Gave money to a friend? Add it here and mark it when '
+                      'you get it back.',
                 ),
               if (pending.isNotEmpty) ...[
-                _sectionTitle(context, 'Pending · ${pending.length}'),
-                for (final l in pending) _loanTile(context, ref, l),
+                _sectionTitle('Pending'),
+                ListGroup(children: [
+                  for (final l in pending) _loanTile(context, ref, l),
+                ]),
               ],
               if (settled.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _sectionTitle('Settled'),
+                ListGroup(children: [
+                  for (final l in settled) _loanTile(context, ref, l),
+                ]),
+              ],
+              if (loans.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                _sectionTitle(context, 'Settled · ${settled.length}'),
-                for (final l in settled) _loanTile(context, ref, l),
+                Text('Tap an entry to record a part payment or edit it.',
+                    style: Ts.label.copyWith(
+                        fontWeight: FontWeight.w400, color: tk.t3)),
               ],
             ],
           );
@@ -97,124 +104,94 @@ class LoansScreen extends ConsumerWidget {
     );
   }
 
-  Widget _summaryCard(BuildContext context, LoanTotals t) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+  Widget _summaryCard(
+      BuildContext context, LoanTotals t, int lentPending, int borrowedPending) {
+    final tk = context.tk;
+    Widget half(String label, double v, Color c, String sub) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Ts.bodyS.copyWith(color: tk.t2)),
+              MoneyText(v, color: c, smallSymbol: false, style: Ts.amountL),
+              Text(sub,
+                  style: Ts.label
+                      .copyWith(fontWeight: FontWeight.w400, color: tk.t2)),
+            ],
+          ),
+        );
+    return AerisCard(
+      padding: const EdgeInsets.all(16),
+      child: IntrinsicHeight(
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Owed to you',
-                      style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 2),
-                  Text(formatRupees(t.owedToYou),
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: AerisColors.moneyIn(context))),
-                ],
-              ),
-            ),
+            half('You lent', t.owedToYou, t.owedToYou > 0 ? tk.ok : tk.t1,
+                lentPending == 0 ? 'All clear' : '$lentPending pending'),
             Container(
                 width: 1,
-                height: 36,
-                color: Theme.of(context).dividerColor.withValues(alpha: 0.4)),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('You owe',
-                      style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 2),
-                  Text(formatRupees(t.youOwe),
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: AerisColors.moneyOut(context))),
-                ],
-              ),
-            ),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                color: tk.hair),
+            half('You borrowed', t.youOwe, tk.t1,
+                borrowedPending == 0 ? 'All clear' : '$borrowedPending pending'),
           ],
         ),
       ),
     );
   }
 
-  Widget _sectionTitle(BuildContext context, String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+  Widget _sectionTitle(String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Overline(text),
       );
 
   Widget _loanTile(BuildContext context, WidgetRef ref, Loan l) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = l.borrowed
-        ? AerisColors.moneyOut(context)
-        : AerisColors.moneyIn(context);
-    final initial = l.person.isEmpty ? '?' : l.person[0].toUpperCase();
-    final when = '${l.createdAt.day}/${l.createdAt.month}/${l.createdAt.year}';
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        onTap: () => showLoanDetailSheet(context, ref, l),
-        leading: CircleAvatar(
-          backgroundColor: color.withValues(alpha: 0.18),
-          child: Text(initial,
-              style: TextStyle(color: color, fontWeight: FontWeight.w800)),
-        ),
-        title: Text(l.person,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              decoration: l.isSettled ? TextDecoration.lineThrough : null,
-            )),
-        subtitle: Text(
-          [
-            l.borrowed ? 'You borrowed' : 'You lent',
-            when,
-            if (l.note.isNotEmpty) l.note,
-          ].join(' · '),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12),
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(formatRupees(l.amount),
-                style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: l.isSettled ? scheme.onSurfaceVariant : color)),
-            const SizedBox(height: 2),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: l.isSettled
-                    ? AerisColors.moneyIn(context).withValues(alpha: 0.15)
-                    : AerisColors.warning.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                l.isSettled ? 'Received' : 'Pending',
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: l.isSettled
-                        ? AerisColors.moneyIn(context)
-                        : const Color(0xFF8E5E1A)),
-              ),
+    final tk = context.tk;
+    final when = shortDate(l.settledAt ?? l.createdAt);
+    final what = l.note.isNotEmpty
+        ? l.note
+        : (l.borrowed ? 'You borrowed' : 'You lent');
+    // Settled rows stay plain (never struck through) — a check marks them.
+    return DsRow(
+      onTap: () => showLoanDetailSheet(context, ref, l),
+      leading: InitialAvatar(l.person),
+      title: l.person.isEmpty ? '?' : l.person,
+      titleMaxLines: 1,
+      sub: l.isSettled ? '$what · settled $when' : '$what · $when',
+      trailing: l.isSettled
+          ? Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(PhBold.check, size: 14, color: tk.ok),
+              const SizedBox(width: 6),
+              MoneyText(l.amount,
+                  color: tk.t2,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w600)),
+            ])
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                MoneyText(l.amount - l.paid,
+                    color: l.borrowed ? tk.t1 : tk.ok,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w700)),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _saveLoan(
+                      ref,
+                      l.copyWith(paid: l.amount, settledAt: DateTime.now()),
+                      ScaffoldMessenger.of(context)),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    child: Text('Mark settled',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: tk.acc)),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -360,7 +337,7 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
                 ),
                 IconButton(
                   tooltip: 'Close',
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(Ph.x),
                   // maybePop → goes through the discard guard.
                   onPressed: () => Navigator.maybePop(context),
                 ),
@@ -372,11 +349,11 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
                 ButtonSegment(
                     value: false,
                     label: Text('I gave money'),
-                    icon: Icon(Icons.north_east, size: 16)),
+                    icon: Icon(Ph.arrowUpRight, size: 16)),
                 ButtonSegment(
                     value: true,
                     label: Text('I borrowed'),
-                    icon: Icon(Icons.south_west, size: 16)),
+                    icon: Icon(Ph.arrowDownLeft, size: 16)),
               ],
               selected: {_borrowed},
               onSelectionChanged: (s) => setState(() => _borrowed = s.first),
@@ -389,7 +366,7 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
               textInputAction: TextInputAction.next,
               decoration: InputDecoration(
                 labelText: "Friend's name",
-                prefixIcon: const Icon(Icons.person_outline),
+                prefixIcon: const Icon(Ph.user),
                 errorText:
                     _tried && _person.text.trim().isEmpty ? 'Who is it?' : null,
               ),
@@ -404,7 +381,7 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
               decoration: InputDecoration(
                 labelText: 'Amount',
                 prefixText: '${kCurrency.symbol.trim()} ',
-                prefixIcon: const Icon(Icons.payments_outlined),
+                prefixIcon: const Icon(Ph.money),
                 errorText: _tried && _amountValue == null
                     ? 'Enter an amount greater than 0'
                     : null,
@@ -419,7 +396,7 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
               decoration: const InputDecoration(
                 labelText: 'Note (optional)',
                 hintText: 'e.g. movie tickets, trip',
-                prefixIcon: Icon(Icons.notes),
+                prefixIcon: Icon(Ph.note),
               ),
             ),
             const SizedBox(height: 16),
@@ -491,7 +468,7 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
     final v = await editTextField(context,
         title: "Friend's name",
         initial: _l.person,
-        icon: Icons.person_outline,
+        icon: Ph.user,
         maxLength: 60,
         required: true,
         capitalization: TextCapitalization.words);
@@ -512,7 +489,7 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
         title: 'Note',
         initial: _l.note,
         hint: 'e.g. movie tickets, trip',
-        icon: Icons.notes_rounded,
+        icon: Ph.note,
         multiline: true);
     if (v == null || v == _l.note) return;
     await _update(_l.copyWith(note: v));
@@ -527,14 +504,14 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (final (borrowed, label, icon) in const [
-              (false, 'I gave money', Icons.north_east),
-              (true, 'I borrowed', Icons.south_west),
+              (false, 'I gave money', Ph.arrowUpRight),
+              (true, 'I borrowed', Ph.arrowDownLeft),
             ])
               ListTile(
                 leading: Icon(icon),
                 title: Text(label),
                 trailing: borrowed == _l.borrowed
-                    ? Icon(Icons.check_rounded,
+                    ? Icon(Ph.check,
                         color: Theme.of(context).colorScheme.primary)
                     : null,
                 onTap: () => Navigator.pop(s, borrowed),
@@ -570,7 +547,7 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-        trailing: const Icon(Icons.edit, size: 18),
+        trailing: const Icon(Ph.pencilSimple, size: 18),
         onTap: onTap,
       );
 
@@ -630,7 +607,7 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
                         value: (l.paid / l.amount).clamp(0.0, 1.0),
                         minHeight: 6,
                         backgroundColor: scheme.surfaceContainerHighest,
-                        color: AerisColors.seed,
+                        color: context.tk.acc,
                       ),
                     ),
                   ],
@@ -639,7 +616,7 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
             const Divider(height: 16),
             if (!l.isSettled) ...[
               _action(
-                Icons.check,
+                Ph.check,
                 AerisColors.moneyIn(context),
                 l.borrowed ? 'Mark as paid back' : 'Mark as received',
                 subtitle: 'Moves it to Settled',
@@ -653,15 +630,15 @@ class _LoanDetailSheetState extends State<_LoanDetailSheet> {
                           : 'Marked as received ✓')));
                 },
               ),
-              _action(Icons.add_card, AerisColors.seed,
+              _action(Ph.creditCard, context.tk.acc,
                   'Record partial repayment', _recordPartial),
             ] else
-              _action(Icons.undo, AerisColors.warning, 'Mark as pending again',
+              _action(Ph.arrowCounterClockwise, context.tk.warn, 'Mark as pending again',
                   () async {
                 Navigator.pop(context);
                 await widget.onSave(l.copyWith(paid: 0, settledAt: null));
               }),
-            _action(Icons.delete_outline, scheme.error, 'Delete', () async {
+            _action(Ph.trash, scheme.error, 'Delete', () async {
               Navigator.pop(context);
               await widget.onDelete();
             }),

@@ -17,7 +17,7 @@ class AerisSpentWidgetProvider : HomeWidgetProvider() {
         widgetData: SharedPreferences
     ) {
         val m = WidgetData.read(widgetData)
-        WidgetData.scheduleMidnight(context)
+        WidgetData.keepFresh(context)
         appWidgetIds.forEach { id ->
             val views = RemoteViews(context.packageName, R.layout.aeris_spent_widget).apply {
                 setTextViewText(R.id.widget_spent_amount, if (m.hasData) m.money(m.spent) else "—")

@@ -1,3 +1,4 @@
+import '../../widgets/sms_disclosure.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,7 @@ import '../../utils/formatters.dart';
 import '../../widgets/text_input_dialog.dart';
 import '../../widgets/aeris_toast.dart';
 import '../../widgets/privacy_shield.dart';
+import '../../widgets/ds.dart';
 import 'about_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -134,8 +136,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       setState(() {
         _smsGranted = g;
         _notifAccess = notif;
-        _autoConfirm =
-            prefs.getBool(SmsImportService.autoConfirmKey) ?? true;
+        _autoConfirm = prefs.getBool(SmsImportService.autoConfirmKey) ?? true;
         for (final (key, _, _) in ReminderScheduler.kinds) {
           _kindOn[key] = prefs.getBool(key) ?? true;
         }
@@ -154,9 +155,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       final raw = await promptText(
         context,
         title: 'Custom range',
-        initial: _backfillPresets.contains(_backfillDays)
-            ? null
-            : '$_backfillDays',
+        initial:
+            _backfillPresets.contains(_backfillDays) ? null : '$_backfillDays',
         hint: 'Number of days, e.g. 45',
         helper: 'Backfill imports bank SMS from this many days back '
             '(1–$_backfillMax).',
@@ -187,7 +187,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       await _refresh();
       return;
     }
-    final granted = await SmsService.instance.requestPermission();
+    final granted = await requestSmsWithDisclosure(context);
     if (granted) {
       await _wireLiveSms();
       messenger.showToast(const SnackBar(
@@ -222,15 +222,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
 
   Future<void> _allowBackground() async {
     final messenger = ScaffoldMessenger.of(context);
-    final status = await Permission.ignoreBatteryOptimizations.request();
-    if (mounted) setState(() => _bgAllowed = status.isGranted);
-    if (!status.isGranted) {
-      messenger.showToast(const SnackBar(
-        content:
-            Text('On Realme/Xiaomi also turn on "Auto-launch" / set battery to '
-                '"Unrestricted" in app settings.'),
-      ));
-    }
+    // Play restricts the direct "ignore battery optimisation" prompt, so open
+    // the app's settings page and let the user choose "Unrestricted".
+    messenger.showToast(const SnackBar(
+      duration: Duration(seconds: 6),
+      content: Text('Open Battery → set to "Unrestricted". On Realme/Xiaomi '
+          'also turn on "Auto-launch".'),
+    ));
+    await openAppSettings();
+    final granted = await Permission.ignoreBatteryOptimizations.isGranted;
+    if (mounted) setState(() => _bgAllowed = granted);
   }
 
   Future<void> _toggleAppLock(bool v) async {
@@ -379,327 +380,200 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         trim: false,
       );
 
+  static const _kindIcons = <String, IconData>{
+    'notif_daily': Ph.moon,
+    'notif_recap': Ph.calendar,
+    'notif_bills': Ph.creditCard,
+    'notif_shares': Ph.handCoins,
+    'notif_report': Ph.exam,
+  };
+
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
     final currency = ref.watch(currencyProvider);
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final scheme = Theme.of(context).colorScheme;
-    final cardBg = dark ? AerisColors.cardDark : Colors.white;
-    final divColor = scheme.onSurface.withValues(alpha: 0.07);
+    final low = ref.watch(lowBalanceLimitProvider);
     final blocked =
         ref.watch(blockedSendersProvider).valueOrNull ?? const <String>{};
+    final kindsOn =
+        ReminderScheduler.kinds.where((k) => _kindOn[k.$1] ?? true).length;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
-          // ── Account ─────────────────────────────────────────────────────────
-          _group(context, 'Account', cardBg, divColor, [
-            _chevronRow(
-              Icons.manage_accounts_outlined,
-              'Account & security',
-              'Password, recovery key, sign out, delete account',
-              scheme,
-              () => Navigator.pushNamed(context, AppRoutes.account),
+          _group('Account', [
+            SettingsRow(
+              icon: Ph.shieldCheck,
+              title: 'Account and security',
+              sub: 'Password, recovery key, delete account',
+              onTap: () => Navigator.pushNamed(context, AppRoutes.account),
             ),
           ]),
-
-          // ── Appearance ──────────────────────────────────────────────────────
-          _group(context, 'Appearance', cardBg, divColor, [
+          _group('Appearance', [
             _ThemePicker(
               current: themeMode,
               onChanged: (m) => ref.read(themeModeProvider.notifier).setMode(m),
             ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.currency_rupee,
-              'Currency',
-              '${currency.name} '
-                  '(${currency.symbol.trim().isEmpty ? currency.code : currency.symbol.trim()})',
-              scheme,
-              () => _showCurrencySheet(context),
+            SettingsRow(
+              icon: Ph.currencyInr,
+              title: 'Currency',
+              trailing: _value(
+                  '${currency.symbol.trim().isEmpty ? currency.code : currency.symbol.trim()} ${currency.name}'),
+              onTap: () => _showCurrencySheet(context),
             ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.dashboard_customize_outlined,
-              'Customize Home',
-              'Choose cards and accent colour',
-              scheme,
-              () => Navigator.pushNamed(context, AppRoutes.customizeHome),
+            SettingsRow(
+              icon: Ph.layout,
+              title: 'Customize Home',
+              onTap: () =>
+                  Navigator.pushNamed(context, AppRoutes.customizeHome),
             ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.category_outlined,
-              'Categories & learning',
-              'Your own categories, learned rules',
-              scheme,
-              () => Navigator.pushNamed(context, AppRoutes.categories),
+            SettingsRow(
+              icon: Ph.tag,
+              title: 'Categories and learning',
+              onTap: () => Navigator.pushNamed(context, AppRoutes.categories),
             ),
           ]),
-
-          // ── SMS auto-import ─────────────────────────────────────────────────
-          _group(context, 'SMS auto-import', cardBg, divColor, [
-            _toggleRow(
-              Icons.sms_outlined,
-              'Read bank SMS automatically',
-              'Parsed on-device, encrypted',
-              _smsGranted,
-              _toggleSms,
-              scheme,
+          _group('SMS auto-import', [
+            SettingsRow(
+              icon: Ph.chatText,
+              title: 'Read bank SMS automatically',
+              sub: 'Parsed on this phone, encrypted',
+              trailing: _switch(_smsGranted, _toggleSms),
+              onTap: () => _toggleSms(!_smsGranted),
             ),
-            _divider(divColor),
-            _toggleRow(
-              Icons.task_alt_rounded,
-              'Auto-confirm confident imports',
-              'Only doubtful ones wait in Review',
-              _autoConfirm,
-              _setAutoConfirm,
-              scheme,
+            SettingsRow(
+              icon: Ph.checkCircle,
+              title: 'Auto-confirm confident imports',
+              sub: 'Only doubtful ones wait in Review',
+              trailing: _switch(_autoConfirm, _setAutoConfirm),
+              onTap: () => _setAutoConfirm(!_autoConfirm),
             ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.date_range_outlined,
-              'Backfill range',
-              'How far back to import past SMS',
-              scheme,
-              null,
-              trailing: DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
-                  value: _backfillPresets.contains(_backfillDays)
-                      ? _backfillDays
-                      : _customRange,
-                  borderRadius: BorderRadius.circular(14),
-                  style: TextStyle(
-                      fontFamily: kFontFamily,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface),
-                  onChanged: _busy ? null : _setBackfillRange,
-                  items: [
-                    for (final d in _backfillPresets)
-                      DropdownMenuItem(value: d, child: Text(_rangeLabel(d))),
-                    DropdownMenuItem(
-                      value: _customRange,
-                      child: Text(_backfillPresets.contains(_backfillDays)
-                          ? 'Custom…'
-                          : 'Custom (${_rangeLabel(_backfillDays)})'),
-                    ),
-                  ],
-                ),
-              ),
+            SettingsRow(
+              icon: Ph.clockCounterClockwise,
+              title: 'Backfill range',
+              trailing: _value(_rangeLabel(_backfillDays)),
+              onTap: _busy ? null : _pickBackfillRange,
             ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.history,
-              'Backfill last ${_rangeLabel(_backfillDays)}',
-              _busy ? 'Scanning inbox…' : 'Re-scan inbox → import',
-              scheme,
-              _busy ? null : _backfill,
-              trailing: _busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : null,
+            _ActionRow(
+              icon: Ph.arrowsClockwise,
+              title: 'Backfill last ${_rangeLabel(_backfillDays)}',
+              sub: _busy ? 'Scanning your inbox…' : 'Re-scan inbox and import',
+              action: 'Re-scan',
+              actionIcon: PhBold.arrowRight,
+              busy: _busy,
+              onTap: _busy ? null : _backfill,
             ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.notifications_active_outlined,
-              'Read UPI app notifications',
-              _notifAccess
-                  ? 'On — catches Google Pay / PhonePe / Paytm payments'
+            SettingsRow(
+              icon: Ph.bellRinging,
+              title: 'Read UPI app notifications',
+              sub: _notifAccess
+                  ? 'On · catches Google Pay, PhonePe and Paytm'
                   : 'For payments that send no bank SMS',
-              scheme,
-              _toggleNotifAccess,
-              trailing: _notifAccess
-                  ? Icon(Icons.check_circle_rounded,
-                      color: AerisColors.moneyIn(context), size: 20)
-                  : null,
+              trailing: _switch(_notifAccess, (_) => _toggleNotifAccess()),
+              onTap: _toggleNotifAccess,
             ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.savings_outlined,
-              'Low-balance alert',
-              'When a bank SMS shows a balance below',
-              scheme,
-              null,
-              trailing: DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
-                  value: _lowBalancePresets
-                          .contains(ref.watch(lowBalanceLimitProvider))
-                      ? ref.watch(lowBalanceLimitProvider)
-                      : 0,
-                  borderRadius: BorderRadius.circular(14),
-                  style: TextStyle(
-                      fontFamily: kFontFamily,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface),
-                  onChanged: _setLowBalance,
-                  items: [
-                    for (final r in _lowBalancePresets)
-                      DropdownMenuItem(
-                          value: r,
-                          child: Text(r == 0 ? 'Off' : formatRupees(r))),
-                  ],
-                ),
-              ),
+            SettingsRow(
+              icon: Ph.warningCircle,
+              title: 'Low-balance alert',
+              trailing: _value(low == 0 ? 'Off' : formatRupees(low)),
+              onTap: _pickLowBalance,
             ),
-            if (_smsGranted) ...[
-              _divider(divColor),
-              _chevronRow(
-                Icons.battery_saver_outlined,
-                'Allow background activity',
-                _bgAllowed
-                    ? 'Allowed — reads SMS when app is closed'
-                    : 'Keep SMS receiver alive when closed',
-                scheme,
-                _allowBackground,
-                trailing: _bgAllowed
-                    ? Icon(Icons.check_circle_rounded,
-                        color: AerisColors.moneyIn(context), size: 20)
-                    : null,
+            if (_smsGranted)
+              SettingsRow(
+                icon: Ph.batteryCharging,
+                title: 'Allow background activity',
+                sub: 'Needed to import new SMS while closed',
+                trailing: _switch(_bgAllowed, (_) => _allowBackground()),
+                onTap: _bgAllowed ? null : _allowBackground,
               ),
-            ],
           ]),
-
-          // ── Notifications ───────────────────────────────────────────────────
-          _group(context, 'Notifications', cardBg, divColor, [
-            _toggleRow(
-              Icons.notifications_outlined,
-              'Smart reminders',
-              _reminders
-                  ? 'Choose which ones below'
-                  : 'Bills, card dues, money owed, weekly recap',
-              _reminders,
-              _toggleReminders,
-              scheme,
+          _group('Notifications', [
+            SettingsRow(
+              icon: Ph.bell,
+              title: 'Smart reminders',
+              sub: _reminders ? '$kindsOn kinds on' : 'All reminders off',
+              trailing: _switch(_reminders, _toggleReminders),
+              onTap: () => _toggleReminders(!_reminders),
             ),
             if (_reminders)
-              for (final (key, title, hint) in ReminderScheduler.kinds) ...[
-                _divider(divColor),
-                _toggleRow(
-                  Icons.subdirectory_arrow_right_rounded,
-                  title,
-                  hint,
-                  _kindOn[key] ?? true,
-                  (v) => _setKind(key, v),
-                  scheme,
-                ),
-              ],
-          ]),
-
-          // ── Security & data ─────────────────────────────────────────────────
-          _group(context, 'Security & data', cardBg, divColor, [
-            _toggleRow(
-              Icons.fingerprint,
-              'App lock',
-              'Biometric / PIN over the app',
-              _appLock,
-              _toggleAppLock,
-              scheme,
-            ),
-            _divider(divColor),
-            _toggleRow(
-              Icons.visibility_off_outlined,
-              'Hide in recent apps',
-              'Cover balances when you switch apps',
-              ref.watch(recentsPrivacyProvider),
-              (v) => ref.read(recentsPrivacyProvider.notifier).set(v),
-              scheme,
-            ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.enhanced_encryption_outlined,
-              'Encrypted backup',
-              'Passphrase-protected export',
-              scheme,
-              _backup,
-            ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.restore_page_outlined,
-              'Restore from backup',
-              'Import from an AERIS backup file',
-              scheme,
-              _restore,
-            ),
-            if (blocked.isNotEmpty) ...[
-              _divider(divColor),
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                child: Text('Blocked senders',
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: scheme.onSurface.withValues(alpha: 0.45))),
-              ),
-              for (final s in blocked) ...[
-                _divider(divColor),
+              for (final (key, title, hint) in ReminderScheduler.kinds)
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Row(children: [
-                    const Icon(Icons.block, color: AerisColors.warning, size: 18),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        child: Text(s,
-                            style: const TextStyle(
-                                fontSize: 13.5, fontWeight: FontWeight.w600))),
-                    TextButton(
-                      onPressed: () async {
-                        final uid = ref.read(currentUserIdProvider);
-                        if (uid != null) {
-                          await ref
-                              .read(firestoreServiceProvider)
-                              .unblockSender(uid, s);
-                        }
-                      },
-                      child: const Text('Unblock'),
-                    ),
-                  ]),
+                  padding: const EdgeInsets.only(left: 28),
+                  child: SettingsRow(
+                    icon: _kindIcons[key] ?? Ph.bell,
+                    title: title,
+                    sub: hint,
+                    trailing:
+                        _switch(_kindOn[key] ?? true, (v) => _setKind(key, v)),
+                    onTap: () => _setKind(key, !(_kindOn[key] ?? true)),
+                  ),
                 ),
-              ],
-            ],
           ]),
-
-          // ── Export ──────────────────────────────────────────────────────────
-          _group(context, 'Export', cardBg, divColor, [
-            _chevronRow(
-              Icons.table_view_outlined,
-              'Export to Excel',
-              'Styled .xlsx — summary, categories, trend, merchants',
-              scheme,
-              _exporting ? null : _export,
-              trailing: _exporting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.ios_share_rounded, size: 18),
+          _group('Security and data', [
+            SettingsRow(
+              icon: Ph.fingerprint,
+              title: 'App lock',
+              sub: 'Fingerprint or PIN',
+              trailing: _switch(_appLock, _toggleAppLock),
+              onTap: () => _toggleAppLock(!_appLock),
+            ),
+            SettingsRow(
+              icon: Ph.eyeSlash,
+              title: 'Hide in recent apps',
+              sub: 'Blurs AERIS in the app switcher',
+              trailing: _switch(ref.watch(recentsPrivacyProvider),
+                  (v) => ref.read(recentsPrivacyProvider.notifier).set(v)),
+              onTap: () => ref
+                  .read(recentsPrivacyProvider.notifier)
+                  .set(!ref.read(recentsPrivacyProvider)),
+            ),
+            SettingsRow(
+              icon: Ph.cloudCheck,
+              title: 'Encrypted backup',
+              sub: 'Passphrase-protected export',
+              onTap: _backup,
+            ),
+            SettingsRow(
+              icon: Ph.cloudArrowDown,
+              title: 'Restore from backup',
+              onTap: _restore,
+            ),
+            SettingsRow(
+              icon: Ph.prohibit,
+              title: 'Blocked senders',
+              trailing: _value('${blocked.length}'),
+              onTap: () => _showBlockedSheet(context),
             ),
           ]),
-
-          // ── About ───────────────────────────────────────────────────────────
-          _group(context, 'About', cardBg, divColor, [
-            _chevronRow(
-              Icons.info_outline_rounded,
-              'About AERIS',
-              'Version $kAppVersion · feedback',
-              scheme,
-              () => Navigator.pushNamed(context, AppRoutes.about),
+          _group('Export', [
+            _ActionRow(
+              icon: Ph.fileXls,
+              title: 'Export to Excel',
+              sub: _exporting
+                  ? 'Preparing file…'
+                  : 'All transactions, budgets and goals',
+              action: 'Share',
+              actionIcon: PhBold.shareNetwork,
+              busy: _exporting,
+              onTap: _exporting ? null : _export,
             ),
-            _divider(divColor),
-            _chevronRow(
-              Icons.privacy_tip_outlined,
-              'Privacy policy',
-              'What AERIS reads, stores and never does',
-              scheme,
-              () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
+          ]),
+          _group('About', [
+            SettingsRow(
+              icon: Ph.info,
+              title: 'About AERIS',
+              sub: 'Version $kAppVersion',
+              onTap: () => Navigator.pushNamed(context, AppRoutes.about),
+            ),
+            SettingsRow(
+              icon: Ph.lockKey,
+              title: 'Privacy policy',
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const PrivacyPolicyScreen())),
             ),
           ]),
         ],
@@ -707,214 +581,250 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
-  // ── Group container ──────────────────────────────────────────────────────────
+  // ── Building blocks ─────────────────────────────────────────────────────────
 
-  Widget _group(BuildContext context, String title, Color cardBg,
-      Color divColor, List<Widget> children) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-            child: Text(title.toUpperCase(),
-                style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.06,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.48))),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: divColor),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2)),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Column(children: children),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _divider(Color c) => Container(
-      height: 1, color: c, margin: const EdgeInsets.symmetric(horizontal: 14));
-
-  Widget _toggleRow(
-    IconData icon,
-    String label,
-    String sub,
-    bool value,
-    Future<void> Function(bool) onChanged,
-    ColorScheme scheme,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      child: Row(
-        children: [
-          Icon(icon, size: 21, color: scheme.onSurface.withValues(alpha: 0.6)),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w700)),
-                Text(sub,
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurface.withValues(alpha: 0.5))),
-              ],
-            ),
-          ),
-          _Toggle(on: value, onChanged: onChanged),
-        ],
-      ),
-    );
-  }
-
-  Widget _chevronRow(
-    IconData icon,
-    String label,
-    String sub,
-    ColorScheme scheme,
-    VoidCallback? onTap, {
-    Widget? trailing,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        child: Row(
+  Widget _group(String title, List<Widget> rows) => Padding(
+        padding: const EdgeInsets.only(bottom: 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon,
-                size: 21, color: scheme.onSurface.withValues(alpha: 0.6)),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w700)),
-                  Text(sub,
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: scheme.onSurface.withValues(alpha: 0.5))),
-                ],
-              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+              child: Overline(title),
             ),
-            trailing ??
-                Icon(Icons.chevron_right_rounded,
-                    size: 18, color: scheme.onSurface.withValues(alpha: 0.35)),
+            ListGroup(inset: 64, children: rows),
           ],
         ),
+      );
+
+  /// A trailing value + chevron ("90 days ›").
+  Widget _value(String v) {
+    final tk = context.tk;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 140),
+        child: Text(v,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w600, color: tk.t2)),
       ),
+      const SizedBox(width: 6),
+      Icon(Ph.caretRight, size: 16, color: tk.t3),
+    ]);
+  }
+
+  Widget _switch(bool v, Future<void> Function(bool) onChanged) => Switch(
+        value: v,
+        onChanged: (x) => onChanged(x),
+      );
+
+  /// A radio-list sheet ("Backfill range", "Low-balance alert").
+  Future<T?> _pickFrom<T>(
+      String title, List<(T, String, String?)> opts, bool Function(T) isOn) {
+    return showDsSheet<T>(
+      context,
+      title: title,
+      builder: (ctx) {
+        final tk = ctx.tk;
+        return ListGroup(inset: 16, children: [
+          for (final (v, label, sub) in opts)
+            DsRow(
+              minHeight: 52,
+              title: label,
+              sub: sub,
+              trailing: Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border:
+                      Border.all(color: isOn(v) ? tk.acc : tk.hair2, width: 2),
+                ),
+                child: isOn(v)
+                    ? Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                            shape: BoxShape.circle, color: tk.acc))
+                    : null,
+              ),
+              onTap: () => Navigator.pop(ctx, v),
+            ),
+        ]);
+      },
+    );
+  }
+
+  Future<void> _pickBackfillRange() async {
+    final isPreset = _backfillPresets.contains(_backfillDays);
+    final picked = await _pickFrom<int>(
+        'Backfill range',
+        [
+          for (final d in _backfillPresets)
+            (d, _rangeLabel(d), d == 90 ? 'Recommended' : null),
+          (
+            _customRange,
+            'Custom…',
+            isPreset ? null : _rangeLabel(_backfillDays)
+          ),
+        ],
+        (v) => v == _customRange ? !isPreset : v == _backfillDays);
+    if (!mounted) return;
+    await _setBackfillRange(picked);
+  }
+
+  Future<void> _pickLowBalance() async {
+    final cur = ref.read(lowBalanceLimitProvider);
+    final picked = await _pickFrom<int>(
+        'Low-balance alert',
+        [
+          for (final r in _lowBalancePresets)
+            (r, r == 0 ? 'Off' : formatRupees(r), null),
+        ],
+        (v) => v == cur);
+    if (!mounted) return;
+    await _setLowBalance(picked);
+  }
+
+  void _showBlockedSheet(BuildContext context) {
+    showDsSheet<void>(
+      context,
+      title: 'Blocked senders',
+      builder: (ctx) => Consumer(builder: (ctx, ref2, _) {
+        final tk = ctx.tk;
+        final list =
+            (ref2.watch(blockedSendersProvider).valueOrNull ?? const <String>{})
+                .toList();
+        if (list.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+                'No blocked senders. Block one from any imported '
+                'transaction to stop its SMS being read.',
+                style: Ts.bodyS.copyWith(color: tk.t2)),
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('SMS from these senders is ignored.',
+                  style: Ts.bodyS.copyWith(color: tk.t2)),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                child: ListGroup(inset: 64, children: [
+                  for (final s in list)
+                    SettingsRow(
+                      icon: Ph.prohibit,
+                      title: s,
+                      trailing: TextButton(
+                        onPressed: () async {
+                          final uid = ref.read(currentUserIdProvider);
+                          if (uid != null) {
+                            await ref
+                                .read(firestoreServiceProvider)
+                                .unblockSender(uid, s);
+                          }
+                        },
+                        child: const Text('Unblock'),
+                      ),
+                    ),
+                ]),
+              ),
+            ),
+          ],
+        );
+      }),
     );
   }
 
   void _showCurrencySheet(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final bg = dark ? AerisColors.cardDark : Colors.white;
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: bg,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    final selected = ref.read(currencyProvider).code;
+    showDsSheet<void>(
+      context,
+      title: 'Currency',
+      subtitle: 'Amounts are stored once and shown in your chosen currency. '
+          'Indian grouping (lakh/crore) is used for ₹.',
+      scrollControlled: true,
       builder: (ctx) {
-        final scheme = Theme.of(ctx).colorScheme;
-        final selected = ref.read(currencyProvider).code;
-        return SafeArea(
-          top: false,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
-            shrinkWrap: true,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
-                child: Text(
-                  'Amounts are stored once and shown in your chosen '
-                  'currency. Indian grouping (lakh/crore) is used for ₹.',
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: scheme.onSurface.withValues(alpha: 0.6)),
-                ),
+        final tk = ctx.tk;
+        return SingleChildScrollView(
+          child: ListGroup(inset: 64, children: [
+            for (final c in Currencies.all)
+              DsRow(
+                minHeight: 56,
+                leading: SizedBox(
+                    width: 40,
+                    child: Center(
+                        child: Text(c.flag,
+                            style: const TextStyle(fontSize: 24)))),
+                title: c.name,
+                sub: '${c.code} · '
+                    '${c.symbol.trim().isEmpty ? c.code : c.symbol.trim()}',
+                trailing: c.code == selected
+                    ? Icon(PhFill.checkCircle, color: tk.acc, size: 22)
+                    : null,
+                onTap: () {
+                  ref.read(currencyProvider.notifier).setCurrency(c.code);
+                  Navigator.pop(ctx);
+                },
               ),
-              for (final c in Currencies.all)
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () {
-                    ref.read(currencyProvider.notifier).setCurrency(c.code);
-                    Navigator.pop(ctx);
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 2),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 13),
-                    decoration: BoxDecoration(
-                      color: c.code == selected
-                          ? AerisColors.accent(context).withValues(alpha: 0.12)
-                          : null,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Text(c.flag, style: const TextStyle(fontSize: 24)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(c.name,
-                                  style: const TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w800)),
-                              Text(
-                                '${c.code} · '
-                                '${c.symbol.trim().isEmpty ? c.code : c.symbol.trim()}',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: scheme.onSurface
-                                        .withValues(alpha: 0.5)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (c.code == selected)
-                          Icon(Icons.check_circle_rounded,
-                              color: AerisColors.accent(context), size: 22),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          ]),
         );
       },
     );
   }
 }
 
-// ── Theme picker (segmented pill) ─────────────────────────────────────────────
+/// A row with an inline action ("Re-scan →", "Share") that shows the rising
+/// loader while it works.
+class _ActionRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String sub;
+  final String action;
+  final IconData actionIcon;
+  final bool busy;
+  final VoidCallback? onTap;
+  const _ActionRow({
+    required this.icon,
+    required this.title,
+    required this.sub,
+    required this.action,
+    required this.actionIcon,
+    required this.busy,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return SettingsRow(
+      icon: icon,
+      title: title,
+      sub: sub,
+      onTap: onTap,
+      trailing: busy
+          ? const RisingLoader()
+          : Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(action,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: tk.acc)),
+              const SizedBox(width: 4),
+              Icon(actionIcon, size: 14, color: tk.acc),
+            ]),
+    );
+  }
+}
+
+// ── Theme picker (segmented control) ─────────────────────────────────────────
 
 class _ThemePicker extends StatelessWidget {
   final ThemeMode current;
@@ -922,124 +832,33 @@ class _ThemePicker extends StatelessWidget {
 
   const _ThemePicker({required this.current, required this.onChanged});
 
+  static const _modes = [ThemeMode.light, ThemeMode.dark, ThemeMode.system];
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    const modes = [
-      (ThemeMode.light, 'Light', Icons.light_mode_rounded),
-      (ThemeMode.dark, 'Dark', Icons.dark_mode_rounded),
-      (ThemeMode.system, 'System', Icons.contrast_rounded),
-    ];
-
+    final tk = context.tk;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Theme',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 9),
-          Container(
-            height: 52,
-            decoration: BoxDecoration(
-              color: scheme.onSurface.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: modes.map((m) {
-                final active = current == m.$1;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => onChanged(m.$1),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.all(4),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: active ? AerisColors.accent(context) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: active
-                            ? [
-                                BoxShadow(
-                                    color:
-                                        AerisColors.accent(context).withValues(alpha: 0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2))
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(m.$3,
-                              size: 15,
-                              color: active
-                                  ? AerisColors.onAccent(context)
-                                  : scheme.onSurface.withValues(alpha: 0.6)),
-                          const SizedBox(width: 5),
-                          Text(m.$2,
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: active
-                                      ? AerisColors.onAccent(context)
-                                      : scheme.onSurface
-                                          .withValues(alpha: 0.7))),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Custom toggle switch ───────────────────────────────────────────────────────
-
-class _Toggle extends StatelessWidget {
-  final bool on;
-  final Future<void> Function(bool) onChanged;
-
-  const _Toggle({required this.on, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: () => onChanged(!on),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 46,
-        height: 28,
-        decoration: BoxDecoration(
-          color:
-              on ? AerisColors.accent(context) : scheme.onSurface.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(99),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+              color: tk.press, borderRadius: BorderRadius.circular(10)),
+          child: Icon(Ph.circleHalf, size: 18, color: tk.t2),
         ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 200),
-          alignment: on ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.all(3),
-            width: 22,
-            height: 22,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black26, blurRadius: 4, offset: Offset(0, 1))
-              ],
-            ),
+        const SizedBox(width: 12),
+        Text('Theme', style: Ts.rowTitle.copyWith(color: tk.t1)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: DsSegmented(
+            height: 38,
+            labels: const ['Light', 'Dark', 'System'],
+            index: _modes.indexOf(current).clamp(0, 2),
+            onChanged: (i) => onChanged(_modes[i]),
           ),
         ),
-      ),
+      ]),
     );
   }
 }

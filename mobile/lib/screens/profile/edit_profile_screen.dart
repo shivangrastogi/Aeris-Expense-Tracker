@@ -9,6 +9,10 @@ import '../../providers/auth_provider.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/discard_guard.dart';
+import '../../widgets/ds.dart';
+import '../../services/app_lock_service.dart';
+import '../../providers/income_lock_provider.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
@@ -24,6 +28,21 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   Uint8List? _photo;
   bool _photoRemoved = false;
 
+  // The screen opens behind the phone's lock (see verifyForProfile).
+  late final IncomeLockController _lockCtl;
+  bool? _deviceLock; // null while checking
+  bool _verifying = false;
+
+  // What was loaded, so leaving with unsaved edits asks first.
+  late final String _name0, _phone0, _income0;
+  late final Uint8List? _photo0;
+
+  bool get _dirty =>
+      _name.text != _name0 ||
+      _phone.text != _phone0 ||
+      _income.text != _income0 ||
+      !identical(_photo, _photo0);
+
   @override
   void initState() {
     super.initState();
@@ -35,10 +54,47 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           p.monthlyIncome > 0 ? inrToDisplayText(p.monthlyIncome) : '';
       _photo = p.photoBytes;
     }
+    _name0 = _name.text;
+    _phone0 = _phone.text;
+    _income0 = _income.text;
+    _photo0 = _photo;
+    for (final c in [_phone, _income]) {
+      c.addListener(() => setState(() {}));
+    }
+    _lockCtl = ref.read(incomeLockProvider.notifier);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _verify());
+  }
+
+  Future<void> _verify() async {
+    if (_verifying) return;
+    setState(() => _verifying = true);
+    final has = await AppLockService.instance.isAvailable();
+    if (has) await _lockCtl.verifyForProfile();
+    if (mounted) {
+      setState(() {
+        _deviceLock = has;
+        _verifying = false;
+      });
+    }
+  }
+
+  // Salary on/off. Opening Profile already checked it's you, so no second
+  // prompt here.
+  Future<void> _setHideSalary(bool on) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await _lockCtl.setEnabled(on, alreadyVerified: true);
+    if (!ok || !mounted) return;
+    messenger.showToast(SnackBar(
+        content: Text(on
+            ? 'Salary hidden across the app. Unlock it with your fingerprint or PIN.'
+            : 'Salary will always show.')));
   }
 
   @override
   void dispose() {
+    // Leaving Profile ends the unlocked visit (after this frame: providers
+    // can't change while the tree is being torn down).
+    Future.microtask(_lockCtl.relock);
     _name.dispose();
     _phone.dispose();
     _income.dispose();
@@ -78,7 +134,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
+              leading: const Icon(Ph.images),
               title: const Text('Choose from gallery'),
               onTap: () {
                 Navigator.pop(context);
@@ -86,7 +142,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
+              leading: const Icon(Ph.camera),
               title: const Text('Take a photo'),
               onTap: () {
                 Navigator.pop(context);
@@ -95,9 +151,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             ),
             if (_photo != null)
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: AerisColors.debit),
-                title: const Text('Remove photo',
-                    style: TextStyle(color: AerisColors.debit)),
+                leading: Icon(Ph.trash, color: context.tk.bad),
+                title: Text('Remove photo',
+                    style: TextStyle(color: context.tk.bad)),
                 onTap: () {
                   Navigator.pop(context);
                   setState(() {
@@ -141,135 +197,155 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = dark ? AerisColors.cardDark : Colors.white;
+    final cardBg = context.tk.surface;
 
     final initials = _initials(_name.text.isNotEmpty ? _name.text : 'A');
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Edit profile')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 32),
-        children: [
-          // ── Avatar circle with camera badge ──────────────────
-          const SizedBox(height: 12),
-          Center(
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                GestureDetector(
-                  onTap: _photoSheet,
-                  child: Container(
-                    width: 86,
-                    height: 86,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient:
-                          _photo == null ? AerisColors.heroGradient : null,
-                      color: _photo != null ? Colors.transparent : null,
-                    ),
-                    child: _photo != null
-                        ? ClipOval(
-                            child: Image.memory(_photo!, fit: BoxFit.cover))
-                        : Align(
-                            alignment: Alignment.center,
-                            child: Text(initials,
-                                style: const TextStyle(
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white)),
-                          ),
-                  ),
-                ),
-                Positioned(
-                  right: -2,
-                  bottom: -2,
-                  child: GestureDetector(
+    final lock = ref.watch(incomeLockProvider);
+    if (!(_deviceLock == false || (_deviceLock == true && lock.revealed))) {
+      return _LockedProfile(busy: _verifying, onUnlock: _verify);
+    }
+    final hasLock = _deviceLock == true;
+
+    return DiscardGuard(
+      dirty: _dirty && !_busy,
+      title: 'Discard changes?',
+      message: "Your profile edits haven't been saved.",
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Edit profile')),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 32),
+          children: [
+            // ── Avatar circle with camera badge ──────────────────
+            const SizedBox(height: 12),
+            Center(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  GestureDetector(
                     onTap: _photoSheet,
                     child: Container(
-                      width: 30,
-                      height: 30,
+                      width: 86,
+                      height: 86,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: AerisColors.accent(context),
-                        border: Border.all(color: scheme.surface, width: 3),
+                        color: _photo == null
+                            ? const Color(0xFF8A7ED3).withValues(alpha: 0.22)
+                            : Colors.transparent,
                       ),
-                      child: Icon(Icons.camera_alt,
-                          size: 15, color: AerisColors.onAccent(context)),
+                      child: _photo != null
+                          ? ClipOval(
+                              child: Image.memory(_photo!, fit: BoxFit.cover))
+                          : Align(
+                              alignment: Alignment.center,
+                              child: Text(initials,
+                                  style: TextStyle(
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.w700,
+                                      color: context.tk.t1)),
+                            ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // ── Fields ───────────────────────────────────────────
-          _Field(
-            label: 'Full name',
-            icon: Icons.person_outline,
-            controller: _name,
-            cardBg: cardBg,
-            scheme: scheme,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 14),
-          _Field(
-            label: 'Phone',
-            icon: Icons.phone_outlined,
-            controller: _phone,
-            cardBg: cardBg,
-            scheme: scheme,
-            keyboardType: TextInputType.phone,
-          ),
-          const SizedBox(height: 14),
-          _Field(
-            label: 'Monthly income',
-            icon: Icons.payments_outlined,
-            prefix: kCurrency.symbol.trim(),
-            controller: _income,
-            cardBg: cardBg,
-            scheme: scheme,
-            keyboardType: TextInputType.number,
-          ),
-          const SizedBox(height: 22),
-
-          // ── Save button ──────────────────────────────────────
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _busy ? null : _save,
-              style: FilledButton.styleFrom(
-                backgroundColor: AerisColors.accent(context),
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                textStyle:
-                    const TextStyle(fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w800),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15)),
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: GestureDetector(
+                      onTap: _photoSheet,
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AerisColors.accent(context),
+                          border: Border.all(color: context.tk.bg, width: 3),
+                        ),
+                        child: Icon(Ph.camera,
+                            size: 15, color: AerisColors.onAccent(context)),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              child: _busy
-                  ? SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AerisColors.onAccent(context)))
-                  : const Text('Save changes'),
             ),
-          ),
+            const SizedBox(height: 24),
 
-          // ── Remove photo ─────────────────────────────────────
-          if (_photo != null) ...[
-            const SizedBox(height: 14),
-            TextButton(
-              onPressed: () => setState(() {
-                _photo = null;
-                _photoRemoved = true;
-              }),
-              child: Text('Remove photo',
-                  style: TextStyle(color: AerisColors.danger(context), fontSize: 13.5)),
+            // ── Fields ───────────────────────────────────────────
+            _Field(
+              label: 'Full name',
+              icon: Ph.user,
+              controller: _name,
+              cardBg: cardBg,
+              scheme: scheme,
+              onChanged: (_) => setState(() {}),
             ),
+            const SizedBox(height: 14),
+            _Field(
+              label: 'Phone',
+              icon: Ph.phone,
+              controller: _phone,
+              cardBg: cardBg,
+              scheme: scheme,
+              keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 14),
+            _Field(
+              label: 'Monthly income',
+              icon: Ph.money,
+              prefix: kCurrency.symbol.trim(),
+              controller: _income,
+              cardBg: cardBg,
+              scheme: scheme,
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 10),
+            // Salary privacy lives next to the salary itself.
+            AerisCard(
+              padding: EdgeInsets.zero,
+              child: SettingsRow(
+                icon: lock.enabled ? Ph.eyeSlash : Ph.eye,
+                title: 'Hide salary',
+                sub: !hasLock
+                    ? 'Set a screen lock on your phone to use this'
+                    : lock.enabled
+                        ? 'Shows as ₹•••• · fingerprint or PIN to see it'
+                        : 'Salary shows like any other amount',
+                trailing: Switch(
+                  value: lock.enabled,
+                  onChanged: hasLock ? _setHideSalary : null,
+                ),
+                onTap: hasLock ? () => _setHideSalary(!lock.enabled) : null,
+              ),
+            ),
+            const SizedBox(height: 22),
+
+            // ── Save button ──────────────────────────────────────
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _busy ? null : _save,
+                style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52)),
+                child: _busy
+                    ? RisingLoader(color: context.tk.onAcc)
+                    : const Text('Save'),
+              ),
+            ),
+
+            // ── Remove photo ─────────────────────────────────────
+            if (_photo != null) ...[
+              const SizedBox(height: 14),
+              TextButton(
+                onPressed: () => setState(() {
+                  _photo = null;
+                  _photoRemoved = true;
+                }),
+                child: Text('Remove photo',
+                    style: TextStyle(
+                        color: AerisColors.danger(context), fontSize: 13.5)),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -405,6 +481,61 @@ class _FieldState extends State<_Field> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Locked: shown until the phone's lock confirms it's you ───────────────────
+
+class _LockedProfile extends StatelessWidget {
+  final bool busy;
+  final VoidCallback onUnlock;
+  const _LockedProfile({required this.busy, required this.onUnlock});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Edit profile')),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 48),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                  color: tk.accSoft, borderRadius: BorderRadius.circular(22)),
+              child: Icon(Ph.lockSimple, size: 34, color: tk.acc),
+            ),
+            const SizedBox(height: 16),
+            Text('Profile is locked',
+                textAlign: TextAlign.center,
+                style: Ts.title.copyWith(color: tk.t1)),
+            const SizedBox(height: 6),
+            Text(
+                'Your salary and phone number are here. Unlock with your '
+                'fingerprint, face or phone PIN.',
+                textAlign: TextAlign.center,
+                style: Ts.bodyS.copyWith(color: tk.t2)),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: 220,
+              child: FilledButton.icon(
+                onPressed: busy ? null : onUnlock,
+                style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52)),
+                icon: busy
+                    ? const SizedBox.shrink()
+                    : const Icon(Ph.fingerprint, size: 20),
+                label: busy
+                    ? RisingLoader(color: tk.t2)
+                    : const Text('Unlock'),
+              ),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }

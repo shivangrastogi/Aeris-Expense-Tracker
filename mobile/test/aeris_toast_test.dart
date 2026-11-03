@@ -1,3 +1,4 @@
+import 'package:aeris_expense/core/ph_icons.dart';
 import 'package:aeris_expense/widgets/aeris_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,7 +31,7 @@ void main() {
     final c = _messenger.showToast(_bar('Saved', onUndo: () {}));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Saved'), findsOneWidget);
-    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+    expect(find.byIcon(PhosphorIconsRegular.x), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 5));
     await tester.pump(const Duration(milliseconds: 300));
@@ -42,7 +43,7 @@ void main() {
     await _pump(tester);
     final c = _messenger.showToast(_bar('Deleted'));
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.tap(find.byIcon(PhosphorIconsRegular.x));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('Deleted'), findsNothing);
     expect(await c.closed, SnackBarClosedReason.dismiss);
@@ -53,7 +54,7 @@ void main() {
     var undone = false;
     final c = _messenger.showToast(_bar('Deleted', onUndo: () => undone = true));
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text('UNDO'));
+    await tester.tap(find.text('Undo'));
     await tester.pump(const Duration(milliseconds: 200));
     expect(undone, isTrue);
     expect(find.text('Deleted'), findsNothing);

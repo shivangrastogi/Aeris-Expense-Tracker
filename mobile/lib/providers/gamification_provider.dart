@@ -84,21 +84,28 @@ class GamificationState {
     return 0; // a full day was missed — streak lapsed
   }
 
-  /// Check-in state for the current Sunday→Saturday week, mapped to real
-  /// calendar days. Index 0 = Sunday … 6 = Saturday. A day is `true` only if it
-  /// was actually checked in — so completed days light up and *today stays empty
-  /// until the user checks in*, with future days simply not yet reachable.
-  List<bool> weekCheckins([DateTime? ref]) {
+  /// The last seven calendar days, oldest first — today is always the last
+  /// one. A rolling window, not a Sunday→Saturday week: when a new week
+  /// starts the earlier check-ins stay in view instead of every dot wiping
+  /// back to empty as if the streak had restarted.
+  static List<DateTime> recentDays([DateTime? ref]) {
     final now = ref ?? DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final sunday = today.subtract(Duration(days: today.weekday % 7));
+    // Calendar arithmetic (not 24 h steps), so DST shifts can't skip a day.
     return [
-      for (var i = 0; i < 7; i++) checkedInOn(sunday.add(Duration(days: i))),
+      for (var i = 6; i >= 0; i--)
+        DateTime(today.year, today.month, today.day - i),
     ];
   }
 
-  /// Index (0=Sun … 6=Sat) of today within [weekCheckins].
-  int get todayWeekIndex => DateTime.now().weekday % 7;
+  /// Whether each of [recentDays] was checked in. Today stays empty until
+  /// the user checks in.
+  List<bool> recentCheckins([DateTime? ref]) =>
+      [for (final d in recentDays(ref)) checkedInOn(d)];
+
+  /// "M", "T"… for a day in [recentDays].
+  static String dayLetter(DateTime d) =>
+      const ['M', 'T', 'W', 'T', 'F', 'S', 'S'][d.weekday - 1];
 
   GamificationState copyWith({
     int? earned,

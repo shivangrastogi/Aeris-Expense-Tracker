@@ -22,9 +22,9 @@ final loanTotalsProvider = Provider<LoanTotals>((ref) {
     if (l.isSettled) continue;
     pending++;
     if (l.borrowed) {
-      youOwe += l.amount;
+      youOwe += l.outstanding;
     } else {
-      owedToYou += l.amount;
+      owedToYou += l.outstanding;
     }
   }
   return (owedToYou: owedToYou, youOwe: youOwe, pendingCount: pending);

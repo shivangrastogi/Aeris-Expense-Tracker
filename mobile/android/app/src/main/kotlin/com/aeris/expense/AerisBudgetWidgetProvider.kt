@@ -21,7 +21,7 @@ class AerisBudgetWidgetProvider : HomeWidgetProvider() {
         widgetData: SharedPreferences
     ) {
         val m = WidgetData.read(widgetData)
-        WidgetData.scheduleMidnight(context)
+        WidgetData.keepFresh(context)
         appWidgetIds.forEach { id ->
             val views = RemoteViews(context.packageName, R.layout.aeris_budget_widget).apply {
                 val over = m.left < 0

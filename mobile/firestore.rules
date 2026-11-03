@@ -1,14 +1,59 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Each signed-in user can read/write only their own document tree.
-    // The explicit /users/{uid} match covers the profile doc itself; the
-    // nested recursive match covers transactions, budgets, goals,
-    // processed_sms, blocked_senders, security/keys, etc.
+
+    // ── Helpers ────────────────────────────────────────────────
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    // A document may not carry a huge number of fields.
+    function fewKeys(d) {
+      return d.keys().size() <= 40;
+    }
+    // Encrypted payload ("enc") must be a string under [max] characters.
+    // (Everything the app stores is one encrypted blob, so this caps the
+    // size of every document without knowing its shape.)
+    function encOk(d, max) {
+      return !('enc' in d) || (d.enc is string && d.enc.size() <= max);
+    }
+    function blobOk(d, field, max) {
+      return !(field in d) || (d[field] is string && d[field].size() <= max);
+    }
+
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-      match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+      // Profile document (name, encrypted income + encrypted photo).
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+          && fewKeys(request.resource.data)
+          && blobOk(request.resource.data, 'photoEnc', 400000)
+          && blobOk(request.resource.data, 'incomeEnc', 4000);
+      allow delete: if isOwner(uid);
+
+      // Receipt photos: one compressed, encrypted JPEG per transaction.
+      // (Firestore's hard limit is 1 MiB per document.)
+      match /receipts/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+            && fewKeys(request.resource.data)
+            && encOk(request.resource.data, 800000);
+      }
+
+      // Everything else (transactions, budgets, goals, loans, subscriptions,
+      // split_groups, categories, processed_sms, blocked_senders, usage,
+      // meta, security/keys …): small encrypted records.
+      match /{coll}/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+            && fewKeys(request.resource.data)
+            && encOk(request.resource.data, 100000);
+      }
+
+      // Any deeper nesting under a user: owner only, same limits.
+      match /{coll}/{id}/{rest=**} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+            && fewKeys(request.resource.data)
+            && encOk(request.resource.data, 100000);
       }
     }
   }

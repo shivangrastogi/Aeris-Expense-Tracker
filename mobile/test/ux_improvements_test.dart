@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:aeris_expense/core/ph_icons.dart';
 import 'package:aeris_expense/models/category.dart';
 import 'package:aeris_expense/models/custom_category.dart';
 import 'package:aeris_expense/models/transaction.dart';
@@ -42,7 +43,7 @@ void main() {
       const c = ExpenseCategory(
           id: 'c_gym',
           label: 'Gym',
-          icon: Icons.fitness_center_rounded,
+          icon: PhosphorIconsRegular.barbell,
           color: Color(0xFF2FA287));
       final back = CustomCategories.fromMap('c_gym', CustomCategories.toMap(c));
       expect(back.icon, c.icon);

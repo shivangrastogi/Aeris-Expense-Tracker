@@ -1,3 +1,4 @@
+import 'package:aeris_expense/core/ph_icons.dart';
 import 'package:aeris_expense/services/sync_outbox.dart';
 import 'package:aeris_expense/widgets/sync_status.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -94,7 +95,7 @@ void main() {
       box.debugSetStats(
           count: 5000, bytes: SyncOutbox.limitBytes + 10, online: false);
       await tester.pump();
-      expect(find.byIcon(Icons.lock_rounded), findsOneWidget);
+      expect(find.byIcon(PhosphorIconsRegular.lock), findsOneWidget);
       expect(find.text('Connect to the internet'), findsOneWidget);
       expect(find.text('Refresh'), findsOneWidget);
       await tester.tap(find.text('App button'), warnIfMissed: false);
@@ -103,7 +104,7 @@ void main() {
       // Once the backlog drains the lock lifts by itself.
       box.debugSetStats(count: 0, bytes: 0, online: true);
       await tester.pump();
-      expect(find.byIcon(Icons.lock_rounded), findsNothing);
+      expect(find.byIcon(PhosphorIconsRegular.lock), findsNothing);
       await tester.tap(find.text('App button'));
       expect(taps, 1);
     });

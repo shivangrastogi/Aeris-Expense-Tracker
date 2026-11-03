@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import '../../widgets/ds.dart';
 
-/// Shared chrome for the login & signup screens so both match the new GUI
-/// exactly (segmented tab, fields, primary button, footer).
+/// Shared chrome for the login & signup screens (AERIS Onboarding Flow):
+/// a segmented Log in / Sign up switch, labelled 56 dp fields, a 48 dp
+/// primary button with the rising-line loader, and the encryption footer.
 
 // ── Log in / Sign up segmented control ───────────────────────────────────────
 class AuthTabs extends StatelessWidget {
@@ -19,56 +21,11 @@ class AuthTabs extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: c.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.onSurface.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        children: [
-          _tab(context, 'Log in', isLogin, isLogin ? null : onLoginTap),
-          _tab(context, 'Sign up', !isLogin, !isLogin ? null : onSignupTap),
-        ],
-      ),
-    );
-  }
-
-  Widget _tab(
-      BuildContext context, String label, bool active, VoidCallback? onTap) {
-    final c = Theme.of(context).colorScheme;
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 11),
-          decoration: BoxDecoration(
-            color: active
-                ? AerisColors.accent(context).withValues(alpha: 0.22)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            border: active
-                ? Border.all(color: AerisColors.accent(context).withValues(alpha: 0.45))
-                : null,
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: active ? c.onSurface : c.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => DsSegmented(
+        labels: const ['Log in', 'Sign up'],
+        index: isLogin ? 0 : 1,
+        onChanged: (i) => (i == 0 ? onLoginTap : onSignupTap)?.call(),
+      );
 }
 
 /// What's wrong with a NEW password, or null if it's fine. (Login accepts
@@ -83,17 +40,25 @@ String? passwordProblem(String? v) {
   return null;
 }
 
-// ── Icon + input field ───────────────────────────────────────────────────────
+// ── Labelled input field ─────────────────────────────────────────────────────
 class AuthField extends StatefulWidget {
   final TextEditingController controller;
+
+  /// Kept for callers; the design labels fields instead of icon-prefixing.
   final IconData icon;
+
+  /// The label shown above the field.
   final String hint;
+
+  /// Placeholder inside the field (optional).
+  final String? placeholder;
 
   /// A password: hidden, with a show/hide eye.
   final bool obscure;
   final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
   final String? Function(String?)? validator;
+  final ValueChanged<String>? onChanged;
 
   /// Shown under the field (e.g. password rules).
   final String? helper;
@@ -103,10 +68,12 @@ class AuthField extends StatefulWidget {
     required this.controller,
     required this.icon,
     required this.hint,
+    this.placeholder,
     this.obscure = false,
     this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
     this.validator,
+    this.onChanged,
     this.helper,
   });
 
@@ -119,52 +86,98 @@ class _AuthFieldState extends State<AuthField> {
 
   @override
   Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme;
-    return TextFormField(
-      controller: widget.controller,
-      obscureText: widget.obscure && _hidden,
-      keyboardType: widget.keyboardType,
-      textCapitalization: widget.textCapitalization,
-      validator: widget.validator,
-      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-      decoration: InputDecoration(
-        hintText: widget.hint,
-        helperText: widget.helper,
-        helperMaxLines: 2,
-        prefixIcon: Icon(widget.icon, size: 20, color: c.onSurfaceVariant),
-        suffixIcon: widget.obscure
-            ? IconButton(
-                tooltip: _hidden ? 'Show password' : 'Hide password',
-                icon: Icon(
-                    _hidden
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    size: 20,
-                    color: c.onSurfaceVariant),
-                onPressed: () => setState(() => _hidden = !_hidden),
-              )
-            : null,
-        filled: true,
-        fillColor: c.surfaceContainerHighest.withValues(alpha: 0.45),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: c.onSurface.withValues(alpha: 0.10)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: AerisColors.accent(context), width: 1.4),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: c.error.withValues(alpha: 0.7)),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: c.error),
+    final tk = context.tk;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(widget.hint, style: Ts.label.copyWith(color: tk.t2)),
+      ),
+      TextFormField(
+        controller: widget.controller,
+        obscureText: widget.obscure && _hidden,
+        keyboardType: widget.keyboardType,
+        textCapitalization: widget.textCapitalization,
+        validator: widget.validator,
+        onChanged: widget.onChanged,
+        style: TextStyle(fontSize: 15, color: tk.t1),
+        decoration: InputDecoration(
+          hintText: widget.placeholder,
+          helperText: widget.helper,
+          helperMaxLines: 2,
+          errorMaxLines: 2,
+          suffixIcon: widget.obscure
+              ? IconButton(
+                  tooltip: _hidden ? 'Show password' : 'Hide password',
+                  icon: Icon(_hidden ? Ph.eye : Ph.eyeSlash,
+                      size: 20, color: tk.t2),
+                  onPressed: () => setState(() => _hidden = !_hidden),
+                )
+              : null,
         ),
       ),
+    ]);
+  }
+}
+
+/// Live password rules: 8+ characters, a letter, a number. Each turns into a
+/// green check as it's met (icon + word, never colour alone).
+class AuthPasswordRules extends StatelessWidget {
+  final String value;
+  const AuthPasswordRules(this.value, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final rules = [
+      ('8+ characters', value.length >= 8),
+      ('A letter', RegExp(r'[A-Za-z]').hasMatch(value)),
+      ('A number', RegExp(r'\d').hasMatch(value)),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final (label, ok) in rules)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(children: [
+              Icon(ok ? PhFill.checkCircle : Ph.circle,
+                  size: 16, color: ok ? tk.ok : tk.t3),
+              const SizedBox(width: 8),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: ok ? tk.t1 : tk.t2)),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
+
+/// A soft accent note with an icon ("Next you'll get a Recovery Key…").
+class AuthNote extends StatelessWidget {
+  final IconData icon;
+  final InlineSpan text;
+  const AuthNote({super.key, required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: tk.accSoft,
+        borderRadius: BorderRadius.circular(Rad.input),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, size: 20, color: tk.acc),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text.rich(text,
+              style: TextStyle(fontSize: 13, height: 1.45, color: tk.t1)),
+        ),
+      ]),
     );
   }
 }
@@ -174,7 +187,7 @@ class AuthPrimaryButton extends StatelessWidget {
   final String label;
   final String? busyLabel;
   final bool busy;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const AuthPrimaryButton({
     super.key,
@@ -186,31 +199,22 @@ class AuthPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return SizedBox(
       width: double.infinity,
+      height: 48,
       child: FilledButton(
         onPressed: busy ? null : onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: AerisColors.accent(context),
-          foregroundColor: AerisColors.onAccent(context),
-          disabledBackgroundColor: AerisColors.accent(context).withValues(alpha: 0.6),
-          disabledForegroundColor: AerisColors.onAccent(context),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          textStyle:
-              const TextStyle(fontFamily: kFontFamily, fontSize: 15.5, fontWeight: FontWeight.w800),
-        ),
+        style: busy
+            ? FilledButton.styleFrom(
+                disabledBackgroundColor: tk.acc,
+                disabledForegroundColor: tk.onAcc)
+            : null,
         child: busy
             ? Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.5, color: Colors.white),
-                  ),
+                  RisingLoader(color: tk.onAcc),
                   const SizedBox(width: 10),
                   Text(busyLabel ?? label),
                 ],
@@ -227,21 +231,76 @@ class AuthFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme;
-    final color = c.onSurface.withValues(alpha: 0.4);
+    final tk = context.tk;
     return Center(
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.lock_outline, size: 15, color: color),
-          const SizedBox(width: 7),
-          Text(
-            'End-to-end encrypted · your data stays yours',
-            style: TextStyle(
-                fontSize: 11.5, fontWeight: FontWeight.w600, color: color),
+          Icon(Ph.lockSimple, size: 14, color: tk.t2),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              'End-to-end encrypted · your data stays yours',
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: tk.t2),
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+/// The auth page frame: back arrow, 28/700 title, a sub-line.
+class AuthHeader extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final VoidCallback? onBack;
+  const AuthHeader(
+      {super.key, required this.title, required this.subtitle, this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (onBack != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: IconButton(
+            onPressed: onBack,
+            tooltip: 'Back',
+            icon: Icon(Ph.arrowLeft, size: 22, color: tk.t1),
+          ),
+        ),
+      Text(title,
+          style: TextStyle(
+              fontSize: 28,
+              height: 34 / 28,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+              color: tk.t1)),
+      const SizedBox(height: 6),
+      Text(subtitle, style: Ts.bodyS.copyWith(color: tk.t2)),
+    ]);
+  }
+}
+
+/// A form-level error: red icon + words (never colour alone).
+class AuthError extends StatelessWidget {
+  final String text;
+  const AuthError(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(PhFill.warningCircle, size: 16, color: tk.bad),
+      const SizedBox(width: 6),
+      Expanded(
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600, color: tk.bad)),
+      ),
+    ]);
   }
 }

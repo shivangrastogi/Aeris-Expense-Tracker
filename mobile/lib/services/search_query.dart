@@ -52,6 +52,8 @@ class SearchQuery {
       t.merchant ?? '',
       t.note ?? '',
       Categories.byId(t.categoryId).label,
+      // "scanned" finds every entry read from a photo.
+      if (t.scanGenerated) 'scanned',
     ].join(' ').toLowerCase();
     final amt = t.amount.toString();
     for (final w in words) {

@@ -28,10 +28,15 @@ import 'package:aeris_expense/providers/budgets_provider.dart';
 import 'package:aeris_expense/providers/goals_provider.dart';
 import 'package:aeris_expense/providers/loans_provider.dart';
 import 'package:aeris_expense/providers/prefs_data_provider.dart';
+import 'package:aeris_expense/providers/privacy_provider.dart';
 import 'package:aeris_expense/providers/split_provider.dart';
 import 'package:aeris_expense/providers/subscriptions_provider.dart';
 import 'package:aeris_expense/providers/transactions_provider.dart';
-import 'package:aeris_expense/screens/home/root_shell.dart';import 'package:aeris_expense/widgets/aeris_toast.dart';
+import 'package:aeris_expense/core/ph_icons.dart';
+import 'package:aeris_expense/screens/home/root_shell.dart';
+import 'package:aeris_expense/screens/transactions/add_transaction_screen.dart';
+import 'package:aeris_expense/screens/transactions/transaction_detail_screen.dart';
+import 'package:aeris_expense/widgets/aeris_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -294,6 +299,17 @@ Future<void> _shot(WidgetTester tester, String name) async {
       matchesGoldenFile(Uri.file('$_outDir/$name.png')));
 }
 
+/// Flutter's own system channels speak JSON, not the standard codec.
+const _jsonChannels = {
+  'flutter/platform',
+  'flutter/textinput',
+  'flutter/navigation',
+  'flutter/keyevent',
+  'flutter/mousecursor',
+  'flutter/spellcheck',
+  'flutter/scribe',
+};
+
 void main() {
   setUpAll(() async {
     await _family('PlusJakartaSans', [
@@ -301,11 +317,17 @@ void main() {
         'assets/google_fonts/PlusJakartaSans-$w.ttf',
     ]);
     await _family('MaterialIcons', [_materialIcons]);
+    // Phosphor icons (package fonts are addressed as packages/<pkg>/<family>).
+    final ph = '${Platform.environment['LOCALAPPDATA']}/Pub/Cache/hosted/pub.dev/phosphor_flutter-2.1.0/lib/fonts';
+    for (final (fam, file) in [('Regular', 'Phosphor'), ('Fill', 'Phosphor-Fill'), ('Bold', 'Phosphor-Bold')]) {
+      await _family('packages/phosphor_flutter/Phosphor$fam', ['$ph/$file.ttf']);
+    }
     // Every platform channel answers "null" instead of throwing.
     TestDefaultBinaryMessengerBinding
             .instance.defaultBinaryMessenger.allMessagesHandler =
-        (channel, handler, message) async =>
-            const StandardMethodCodec().encodeSuccessEnvelope(null);
+        (channel, handler, message) async => _jsonChannels.contains(channel)
+            ? const JSONMethodCodec().encodeSuccessEnvelope(null)
+            : const StandardMethodCodec().encodeSuccessEnvelope(null);
   });
 
   setUp(() {
@@ -363,7 +385,7 @@ void main() {
     testWidgets('radial menu $tag', (tester) async {
       await phone(tester);
       await _app(tester, mode: mode);
-      await tester.longPress(find.byIcon(Icons.add_rounded));
+      await tester.longPress(find.byIcon(PhosphorIconsBold.plus).last);
       await _settle(tester);
       await _shot(tester, 'radial_$tag');
     });
@@ -392,6 +414,140 @@ void main() {
       await tester.tap(find.text(sub).first);
       await _settle(tester);
       await _shot(tester, 'activity_${sub.toLowerCase()}_light');
+    });
+  }
+
+  // Tablet · landscape (1280 × 800 dp): rail, two-column Home, list–detail.
+  Future<void> tablet(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280 * 2.0, 800 * 2.0);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.reset);
+  }
+
+  testWidgets('tablet home', (tester) async {
+    await tablet(tester);
+    await _app(tester, mode: ThemeMode.dark);
+    await _shot(tester, 'tablet_home_dark');
+  });
+
+  testWidgets('tablet activity detail', (tester) async {
+    await tablet(tester);
+    await _app(tester, mode: ThemeMode.light);
+    await tester.tap(find.text('Activity').first);
+    await _settle(tester);
+    await tester.tap(find.textContaining('Food ·').first);
+    await _settle(tester);
+    await _shot(tester, 'tablet_activity_light');
+  });
+
+  testWidgets('tablet me', (tester) async {
+    await tablet(tester);
+    await _app(tester, mode: ThemeMode.dark);
+    await tester.tap(find.text('Me').first);
+    await _settle(tester);
+    await _shot(tester, 'tablet_me_dark');
+  });
+
+  testWidgets('tablet insights', (tester) async {
+    await tablet(tester);
+    await _app(tester, mode: ThemeMode.light);
+    await tester.tap(find.text('Insights').first);
+    await _settle(tester);
+    await _shot(tester, 'tablet_insights_light');
+  });
+
+  // The payback row ("Rahul · Payback · time · Google Pay") must read as
+  // plain text — never struck through.
+  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('activity payback row ${mode.name}', (tester) async {
+      await phone(tester);
+      await _app(tester, mode: mode);
+      await tester.tap(find.text('Activity').first);
+      await _settle(tester);
+      final payback = find.textContaining('Payback ·');
+      // The list builds lazily: scroll until the row exists, then bring it
+      // up to mid-screen.
+      final list = find.byType(Scrollable).last;
+      for (var i = 0; i < 40 && payback.evaluate().isEmpty; i++) {
+        await tester.drag(list, const Offset(0, -300));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.drag(list, const Offset(0, -150));
+      await _settle(tester);
+      expect(payback, findsWidgets);
+      // visitChildren walks the span itself and every descendant.
+      bool struck(InlineSpan s) {
+        var hit = false;
+        s.visitChildren((c) {
+          hit = c.style?.decoration?.contains(TextDecoration.lineThrough) ??
+              false;
+          return !hit;
+        });
+        return hit;
+      }
+
+      final struckTexts = tester
+          .widgetList<RichText>(find.byType(RichText))
+          .where((r) => struck(r.text))
+          .map((r) => r.text.toPlainText())
+          .toList();
+      expect(struckTexts, isEmpty, reason: 'struck-through text on Activity');
+      await _shot(tester, 'activity_payback_${mode.name}');
+    });
+  }
+
+  // Hide amounts, scroll Activity (day headers get built masked), show them
+  // again: no day total may stay masked.
+  testWidgets('activity unhide day totals', (tester) async {
+    await phone(tester);
+    await _app(tester, mode: ThemeMode.light);
+    await tester.tap(find.text('Activity').first);
+    await _settle(tester);
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(RootShell)));
+    Future<void> toggle() async {
+      await container.read(amountHiddenProvider.notifier).toggle();
+      await _settle(tester);
+    }
+
+    final list = find.byType(Scrollable).last;
+    await toggle(); // hide
+    for (var i = 0; i < 6; i++) {
+      await tester.drag(list, const Offset(0, -400));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await toggle(); // show
+    final masked = find.textContaining('••••');
+    for (var i = 0; i < 12; i++) {
+      expect(masked, findsNothing, reason: 'masked amount after unhide');
+      await tester.drag(list, const Offset(0, 300));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  });
+
+  // Money in from a friend: the edit form's "Loan paid back" lists the
+  // loans they owe, and a linked repayment shows what's left.
+  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('loan payback ${mode.name}', (tester) async {
+      await phone(tester);
+      await _app(tester, mode: mode);
+      final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+      final credit = _t(500, DateTime.now(), 'transfer', 'Rahul Kumar',
+          credit: true, vpa: 'rahul.k@okaxis');
+      nav.push(MaterialPageRoute(
+          builder: (_) => AddTransactionScreen(existing: credit)));
+      await _settle(tester);
+      await tester.tap(find.text('Loan paid back'));
+      await _settle(tester);
+      await _shot(tester, 'loan_pick_${mode.name}');
+      nav.pop();
+      nav.push(MaterialPageRoute(
+          builder: (_) => TransactionDetailScreen(
+              txn: credit.copyWith(
+                  settles: '${Transaction.loanRepay}l1',
+                  settlesMember: 'Rahul'))));
+      await _settle(tester);
+      await _shot(tester, 'loan_linked_${mode.name}');
     });
   }
 

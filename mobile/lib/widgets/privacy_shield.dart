@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/theme.dart';
+import 'ds.dart';
 
 /// "Hide in recent apps" — on by default. When the app leaves the
 /// foreground, balances are covered so they don't show in the recent-apps
@@ -88,7 +89,7 @@ class _PrivacyShieldState extends ConsumerState<PrivacyShield>
                 child: Container(
                   color: AerisColors.bgDark.withValues(alpha: 0.72),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.lock_rounded,
+                  child: const Icon(Ph.lock,
                       size: 48, color: AerisColors.arc),
                 ),
               ),

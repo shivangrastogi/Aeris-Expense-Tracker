@@ -15,6 +15,7 @@ import '../../utils/formatters.dart';
 import '../../widgets/aeris_toast.dart';
 import '../../widgets/text_input_dialog.dart';
 import '../transactions/transaction_detail_screen.dart';
+import '../../widgets/ds.dart';
 
 /// "Shared bills": who owes you what, your groups (and their auto-split
 /// rules), and every bill you've split.
@@ -26,88 +27,136 @@ class SharedScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(amountHiddenProvider);
+    final tk = context.tk;
     final owed = ref.watch(owedToYouProvider);
     final open = ref.watch(openSharesProvider);
     final groups = ref.watch(splitGroupsProvider).valueOrNull ?? const [];
     final bills = ref.watch(sharedBillsProvider);
     final total = owed.values.fold<double>(0, (s, v) => s + v);
-    final muted = AerisColors.muted(context);
+
+    // "Rent · 3 Oct" — the latest bill each person still owes on.
+    String why(String person) {
+      final mine = [
+        for (final s in open)
+          if (s.share.name == person) s
+      ]..sort((a, b) => b.bill.timestamp.compareTo(a.bill.timestamp));
+      if (mine.isEmpty) return 'shared bills';
+      final b = mine.first.bill;
+      final what = b.merchant ?? Categories.byId(b.categoryId).label;
+      return mine.length == 1
+          ? '$what · ${shortDate(b.timestamp)}'
+          : '$what + ${mine.length - 1} more';
+    }
 
     return Scaffold(
       appBar: embedded ? null : AppBar(title: const Text('Shared bills')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
-          AerisCard(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('OWED TO YOU', style: hudLabel(context)),
-              const SizedBox(height: 4),
-              Text(formatRupees(total, decimals: true),
-                  style: const TextStyle(
-                      fontSize: 28, fontWeight: FontWeight.w800)),
-              if (owed.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                      bills.isEmpty
-                          ? 'Paid a bill for others — rent, electricity, a '
-                              'dinner? Open it and tap "Split this bill".'
-                          : 'Everyone has paid you back.',
-                      style: TextStyle(color: muted, fontSize: 13)),
-                ),
-              for (final e in owed.entries)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Row(children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: AerisColors.accentSoft(context),
-                      child: Text(e.key[0].toUpperCase(),
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: AerisColors.accent(context))),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(e.key,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                    Text(formatRupees(e.value, decimals: true),
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                    TextButton(
-                      onPressed: () => remind(e.key, [
-                        for (final s in open)
-                          if (s.share.name == e.key) s
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: AerisColors.cardDecoration(context),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 8, 12),
+                      child: Row(children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Owed to you',
+                                  style: Ts.bodyS.copyWith(color: tk.t2)),
+                              MoneyText(total,
+                                  color: total > 0 ? tk.ok : tk.t1,
+                                  smallSymbol: false,
+                                  style: Ts.amountL),
+                            ],
+                          ),
+                        ),
                       ]),
-                      child: const Text('Remind'),
                     ),
+                    if (owed.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Text(
+                            bills.isEmpty
+                                ? 'Paid a bill for others — rent, electricity, a '
+                                    'dinner? Open it and tap "Split this bill".'
+                                : 'Everyone has paid you back.',
+                            style: Ts.bodyS.copyWith(color: tk.t2)),
+                      ),
+                    for (final e in owed.entries) ...[
+                      Container(height: 1, color: tk.hair),
+                      DsRow(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+                        leading: InitialAvatar(e.key),
+                        title: e.key,
+                        titleMaxLines: 1,
+                        sub: why(e.key),
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          MoneyText(e.value,
+                              style: const TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w700)),
+                          const SizedBox(width: 10),
+                          _RemindButton(
+                            onTap: () => remind(e.key, [
+                              for (final s in open)
+                                if (s.share.name == e.key) s
+                            ]),
+                          ),
+                        ]),
+                      ),
+                    ],
                   ]),
-                ),
-            ]),
+            ),
           ),
-          const SizedBox(height: 22),
-          const SectionLabel('Groups'),
+          const SizedBox(height: 20),
+          Row(children: [
+            const Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Overline('Groups'),
+              ),
+            ),
+            InkWell(
+              onTap: () => _newGroup(context, ref),
+              borderRadius: BorderRadius.circular(Rad.chip),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Ph.plus, size: 15, color: tk.acc),
+                  const SizedBox(width: 4),
+                  Text('New group',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: tk.acc)),
+                ]),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 4),
           if (groups.isEmpty)
-            Text('Groups are made when you split a bill — or add one here.',
-                style: TextStyle(color: muted, fontSize: 13)),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8),
+              child: Text(
+                  'Groups are made when you split a bill — or add one here.',
+                  style: Ts.bodyS.copyWith(color: tk.t2)),
+            ),
           for (final g in groups) _GroupCard(group: g),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => _newGroup(context, ref),
-              icon: const Icon(Icons.group_add_outlined),
-              label: const Text('New group'),
-            ),
-          ),
           if (bills.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            const SectionLabel('Shared bills'),
-            AerisCard(
-              padding: EdgeInsets.zero,
-              child: Column(children: [
-                for (final b in bills.take(40)) _BillRow(bill: b),
-              ]),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+              child: Overline('Shared bills'),
             ),
+            ListGroup(children: [
+              for (final b in bills.take(40)) _BillRow(bill: b),
+            ]),
           ],
         ],
       ),
@@ -147,31 +196,63 @@ Future<void> remind(String person, List<OpenShare> shares) async {
   ].join('\n'));
 }
 
+/// The tonal "Remind" pill: 34 dp, accent-soft.
+class _RemindButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _RemindButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Material(
+      color: tk.accSoft,
+      borderRadius: BorderRadius.circular(Rad.chip),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Rad.chip),
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          alignment: Alignment.center,
+          child: Text('Remind',
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: tk.acc)),
+        ),
+      ),
+    );
+  }
+}
+
 class _BillRow extends StatelessWidget {
   final Transaction bill;
   const _BillRow({required this.bill});
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final split = bill.split!;
     final paid = split.shares.where((s) => s.settled).length;
-    final muted = AerisColors.muted(context);
-    return ListTile(
+    final cat = Categories.byId(bill.categoryId);
+    return DsRow(
       onTap: () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => TransactionDetailScreen(txn: bill))),
-      leading: Icon(Categories.byId(bill.categoryId).icon,
-          color: Categories.byId(bill.categoryId).color),
-      title: Text(bill.merchant ?? Categories.byId(bill.categoryId).label),
-      subtitle: Text(
-          '${shortDate(bill.timestamp)} · your share '
-          '${formatRupees(bill.spendAmount)} · $paid of ${split.shares.length} paid back',
-          style: TextStyle(color: muted)),
-      trailing: split.settled
-          ? Icon(Icons.check_circle_rounded, color: AerisColors.moneyIn(context))
-          : Text(formatRupees(split.outstanding),
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: AerisColors.warning)),
+      leading: CatTile.of(cat),
+      title: bill.merchant ?? cat.label,
+      sub: '${shortDate(bill.timestamp)} · ${formatRupees(bill.amount)}',
+      trailing: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('your share ${formatRupees(bill.spendAmount)}',
+              style: Ts.rowTitle.copyWith(color: tk.t1)),
+          const SizedBox(height: 3),
+          split.settled
+              ? const StatusPill('Settled',
+                  icon: PhFill.checkCircle, tone: Tone.ok, small: true)
+              : StatusPill('$paid of ${split.shares.length} paid back',
+                  icon: PhFill.clock, tone: Tone.warn, small: true),
+        ],
+      ),
     );
   }
 }
@@ -182,29 +263,66 @@ class _GroupCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final muted = AerisColors.muted(context);
+    final tk = context.tk;
+    final names = ['You', ...group.members.map((m) => m.name)];
+    final shown = names.take(3).toList();
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: AerisCard(
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
         onTap: () => showGroupEditor(context, ref, group),
         child: Row(children: [
-          const Icon(Icons.groups_2_outlined),
+          // Overlapping initials.
+          SizedBox(
+            width: 28.0 + 20 * (shown.length - 1),
+            height: 32,
+            child: Stack(children: [
+              for (var i = 0; i < shown.length; i++)
+                Positioned(
+                  left: i * 20.0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: tk.surface, width: 2)),
+                    child: InitialAvatar(shown[i], size: 28),
+                  ),
+                ),
+            ]),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(group.name,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              Text(group.name, style: Ts.rowTitle.copyWith(color: tk.t1)),
               Text(
                   group.members.isEmpty
                       ? 'No one added yet'
                       : 'You, ${group.members.map((m) => m.name).join(', ')}',
-                  style: TextStyle(color: muted, fontSize: 12.5)),
-              if (group.autoPayees.isNotEmpty)
-                Text('Auto-splits: ${group.autoPayees.join(', ')}',
-                    style: TextStyle(color: muted, fontSize: 12)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Ts.label
+                      .copyWith(fontWeight: FontWeight.w400, color: tk.t2)),
+              const SizedBox(height: 2),
+              Row(children: [
+                Icon(Ph.lightning,
+                    size: 12,
+                    color: group.autoPayees.isNotEmpty ? tk.acc : tk.t3),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                      group.autoPayees.isNotEmpty
+                          ? 'Auto-splits: payments to ${group.autoPayees.join(', ')}'
+                          : 'No auto-splits',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: group.autoPayees.isNotEmpty ? tk.acc : tk.t3)),
+                ),
+              ]),
             ]),
           ),
-          const Icon(Icons.chevron_right_rounded),
+          Icon(Ph.caretRight, size: 16, color: tk.t3),
         ]),
       ),
     );
@@ -278,7 +396,7 @@ class _GroupEditorState extends ConsumerState<_GroupEditor> {
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: AerisColors.danger(context),
-                  foregroundColor: Colors.white),
+                  foregroundColor: context.tk.isDark ? const Color(0xFF1A0F0E) : Colors.white),
               onPressed: () => Navigator.pop(d, true),
               child: const Text('Delete')),
         ],
@@ -302,14 +420,11 @@ class _GroupEditorState extends ConsumerState<_GroupEditor> {
             Row(children: [
               Expanded(
                 child: Text(_g.name,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                    style: Ts.title.copyWith(color: context.tk.t1)),
               ),
               IconButton(
                 tooltip: 'Rename',
-                icon: const Icon(Icons.edit_outlined),
+                icon: const Icon(Ph.pencilSimple),
                 onPressed: () async {
                   final n = await promptText(context,
                       title: 'Rename group',
@@ -345,12 +460,12 @@ class _GroupEditorState extends ConsumerState<_GroupEditor> {
                   decoration: const InputDecoration(
                       isDense: true,
                       hintText: 'Add a person',
-                      prefixIcon: Icon(Icons.person_add_alt_1_outlined)),
+                      prefixIcon: Icon(Ph.userPlus)),
                 ),
               ),
               const SizedBox(width: 8),
               IconButton.filledTonal(
-                  tooltip: 'Add', onPressed: _addPerson, icon: const Icon(Icons.add)),
+                  tooltip: 'Add', onPressed: _addPerson, icon: const Icon(Ph.plus)),
             ]),
             if (_g.autoPayees.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -371,7 +486,7 @@ class _GroupEditorState extends ConsumerState<_GroupEditor> {
             const SizedBox(height: 16),
             TextButton.icon(
               onPressed: _delete,
-              icon: Icon(Icons.delete_outline, color: AerisColors.danger(context)),
+              icon: Icon(Ph.trash, color: AerisColors.danger(context)),
               label: Text('Delete group',
                   style: TextStyle(color: AerisColors.danger(context))),
             ),
@@ -386,14 +501,7 @@ class _GroupEditorState extends ConsumerState<_GroupEditor> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(children: [
-        CircleAvatar(
-          radius: 15,
-          backgroundColor: AerisColors.accentSoft(context),
-          child: Text(name[0].toUpperCase(),
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: AerisColors.accent(context))),
-        ),
+        InitialAvatar(name, size: 32),
         const SizedBox(width: 10),
         Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w600))),
         DropdownButtonHideUnderline(
@@ -414,7 +522,7 @@ class _GroupEditorState extends ConsumerState<_GroupEditor> {
         if (onRemove != null)
           IconButton(
               tooltip: 'Remove $name',
-              icon: const Icon(Icons.close_rounded, size: 20),
+              icon: const Icon(Ph.x, size: 20),
               onPressed: onRemove)
         else
           const SizedBox(width: 48),

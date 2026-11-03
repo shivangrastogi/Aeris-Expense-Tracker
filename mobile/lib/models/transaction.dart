@@ -34,11 +34,15 @@ class Transaction {
   /// A shared bill the user paid: who owes what (see [spendAmount]).
   final SplitInfo? split;
 
-  /// On a payback: the shared bill ([id]) whose share this settles…
+  /// On a payback: the shared bill ([id]) whose share this settles — or a
+  /// loan, as [loanStart] + its id on the money that started it and
+  /// [loanRepay] + its id on each repayment…
   final String? settles;
 
-  /// …and whose share it is (the [SplitShare.name]).
+  /// …and whose share it is (the [SplitShare.name]), or who the loan is with.
   final String? settlesMember;
+
+  static const loanStart = 'lend:', loanRepay = 'loan:';
 
   const Transaction({
     required this.id,
@@ -74,17 +78,37 @@ class Transaction {
   /// Counts as spending in totals (a transfer between your own accounts
   /// doesn't). Use these — not [isDebit]/[isCredit] — for any aggregate, and
   /// sum [spendAmount], not [amount].
-  bool get isSpend => isDebit && !selfTransfer;
+  bool get isSpend => isDebit && !isInternal;
 
   /// Counts as income or refund in totals (see [isRefund] to tell them apart).
   /// A friend paying back their share of a bill is neither.
   bool get isIncoming => isCredit && !selfTransfer && !isSettlement;
 
-  /// A friend paying back their share of a bill the user paid.
+  /// Linked to a share of a shared bill or to a loan — see [settles].
   bool get isSettlement => settles != null;
 
+  /// Money lent out or borrowed in, tracked as a loan.
+  bool get startsLoan => settles?.startsWith(loanStart) ?? false;
+
+  /// Money that pays back a loan, either way.
+  bool get repaysLoan => settles?.startsWith(loanRepay) ?? false;
+
+  bool get isLoan => startsLoan || repaysLoan;
+  String? get loanId => isLoan ? settles!.substring(loanStart.length) : null;
+
+  /// What a linked entry is, named in place of its category; null if none.
+  String? get linkKind => selfTransfer
+      ? 'Transfer'
+      : startsLoan
+          ? (isDebit ? 'Lent' : 'Borrowed')
+          : repaysLoan && isDebit
+              ? 'Repaid'
+              : isSettlement
+                  ? 'Payback'
+                  : null;
+
   /// Moves money that is neither spend nor income (own-account transfer,
-  /// share payback) — skip it in every total.
+  /// share payback, loan) — skip it in every total.
   bool get isInternal => selfTransfer || isSettlement;
 
   /// What this adds to the user's spending: their own share of a split bill,
@@ -98,6 +122,15 @@ class Transaction {
   /// Came from a payment screenshot: the image is its receipt and there is
   /// no SMS behind it.
   bool get fromScreenshot => hasReceipt && smsBody == null;
+
+  /// [smsSender] of an entry read from a photo (payment screen, bill or a
+  /// handwritten note). Its [smsBody] is text AERIS wrote in the style of a
+  /// bank SMS, kept instead of the image — never a message from a bank.
+  static const scanSender = 'AERIS-SCAN';
+
+  /// [smsBody] was generated from a scanned photo, not received from a bank.
+  bool get scanGenerated =>
+      source != TxnSource.sms && smsSender == scanSender;
 
   Map<String, dynamic> toMap() => {
         'amount': amount,

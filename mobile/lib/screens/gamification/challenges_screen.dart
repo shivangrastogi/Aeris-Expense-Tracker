@@ -9,6 +9,7 @@ import '../../providers/gamification_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/ds.dart';
 
 class ChallengesScreen extends ConsumerWidget {
   /// Body-only (no Scaffold/AppBar/FAB) so it can be embedded in the Quests tab.
@@ -50,7 +51,7 @@ class ChallengesScreen extends ConsumerWidget {
         const SizedBox(height: 4),
         OutlinedButton.icon(
           onPressed: () => _newChallenge(context, ctrl),
-          icon: const Icon(Icons.add, size: 18),
+          icon: const Icon(Ph.plus, size: 18),
           label: const Text('New challenge'),
         ),
       ]);
@@ -60,7 +61,7 @@ class ChallengesScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Challenges')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _newChallenge(context, ctrl),
-        icon: const Icon(Icons.add),
+        icon: const Icon(Ph.plus),
         label: const Text('New challenge'),
       ),
       body: items.isEmpty
@@ -158,7 +159,7 @@ class ChallengesScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.auto_awesome, size: 16),
+                  const Icon(Ph.sparkle, size: 16),
                   const SizedBox(width: 6),
                   Text('Reward: ${reward()} Aura',
                       style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -216,10 +217,10 @@ class _ChallengeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (Color color, IconData icon) = switch (status.state) {
-      ChallengeState.won => (AerisColors.moneyIn(context), Icons.emoji_events),
-      ChallengeState.failed => (AerisColors.danger(context), Icons.heart_broken),
-      ChallengeState.active => (AerisColors.info, Icons.bolt),
-      ChallengeState.upcoming => (AerisColors.warning, Icons.schedule),
+      ChallengeState.won => (AerisColors.moneyIn(context), Ph.trophy),
+      ChallengeState.failed => (AerisColors.danger(context), Ph.heartBreak),
+      ChallengeState.active => (context.tk.acc, Ph.lightning),
+      ChallengeState.upcoming => (context.tk.warn, Ph.clock),
     };
     return Card(
       child: Padding(
@@ -234,14 +235,14 @@ class _ChallengeCard extends StatelessWidget {
                   child: Text(challenge.title,
                       style: const TextStyle(fontWeight: FontWeight.w700))),
               Row(children: [
-                const Icon(Icons.auto_awesome, size: 14),
+                const Icon(Ph.sparkle, size: 14),
                 const SizedBox(width: 2),
                 Text('${challenge.reward}',
                     style: const TextStyle(fontWeight: FontWeight.w700)),
               ]),
               IconButton(
                   visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.close, size: 18),
+                  icon: const Icon(Ph.x, size: 18),
                   onPressed: onDelete),
             ]),
             if (status.state == ChallengeState.active) ...[

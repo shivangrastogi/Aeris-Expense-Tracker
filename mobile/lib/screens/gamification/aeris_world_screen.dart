@@ -13,6 +13,7 @@ import 'bosses_screen.dart';
 import 'challenges_screen.dart';
 import 'customize_dashboard_screen.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 class AerisWorldScreen extends ConsumerStatefulWidget {
   const AerisWorldScreen({super.key});
@@ -24,8 +25,8 @@ class _AerisWorldScreenState extends ConsumerState<AerisWorldScreen> {
   int _section = 0;
 
   static const _tabs = [
-    (Icons.face_retouching_natural_rounded, 'Avatars'),
-    (Icons.flag_rounded, 'Quests'),
+    (Ph.smiley, 'Avatars'),
+    (Ph.flag, 'Quests'),
   ];
 
   @override
@@ -142,8 +143,7 @@ class _VillageHero extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final v = ref.watch(villageProvider);
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = dark ? AerisColors.cardDark : Colors.white;
+    final cardBg = context.tk.surface;
     return GestureDetector(
       onTap: () => Navigator.pushNamed(context, AppRoutes.village),
       child: Container(
@@ -194,7 +194,7 @@ class _VillageHero extends ConsumerWidget {
                       ),
                       child:
                           const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.fullscreen, size: 14, color: Colors.white),
+                        Icon(Ph.cornersOut, size: 14, color: Colors.white),
                         SizedBox(width: 4),
                         Text('Full screen',
                             style: TextStyle(
@@ -245,7 +245,7 @@ class _VillageHero extends ConsumerWidget {
                             fontWeight: FontWeight.w800,
                             fontSize: 13.5)),
                     const SizedBox(width: 4),
-                    Icon(Icons.arrow_forward, size: 16, color: AerisColors.onAccent(context)),
+                    Icon(Ph.arrowRight, size: 16, color: AerisColors.onAccent(context)),
                   ]),
                 ),
               ]),
@@ -268,7 +268,7 @@ class _QuestsSection extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 40),
       children: [
         Row(children: [
-          Icon(Icons.flag_rounded, size: 18, color: AerisColors.accent(context)),
+          Icon(Ph.flag, size: 18, color: AerisColors.accent(context)),
           const SizedBox(width: 7),
           const Text('Challenges',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
@@ -277,7 +277,7 @@ class _QuestsSection extends StatelessWidget {
         const ChallengesScreen(embed: true),
         const SizedBox(height: 24),
         Row(children: [
-          Icon(Icons.sports_kabaddi_rounded,
+          Icon(Ph.sword,
               size: 18, color: AerisColors.danger(context)),
           const SizedBox(width: 7),
           const Text('Boss battles',
@@ -344,7 +344,7 @@ class _Header extends StatelessWidget {
                 children: [
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_rounded,
+                    icon: const Icon(Ph.arrowLeft,
                         color: Colors.white),
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.2),
@@ -363,7 +363,7 @@ class _Header extends StatelessWidget {
                   const Spacer(),
                   IconButton(
                     onPressed: onCustomize,
-                    icon: const Icon(Icons.tune_rounded, color: Colors.white),
+                    icon: const Icon(Ph.slidersHorizontal, color: Colors.white),
                     tooltip: 'Customize',
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.2),
@@ -380,7 +380,7 @@ class _Header extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(99)),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.bolt,
+                      const Icon(Ph.lightning,
                           size: 16, color: Color(0xFFFFE0B2)),
                       const SizedBox(width: 4),
                       Text('${g.available}',
@@ -494,13 +494,13 @@ class _AvatarSection extends ConsumerWidget {
                     fontWeight: FontWeight.w700,
                     color: scheme.onSurface.withValues(alpha: 0.6))),
             const Spacer(),
-            const Icon(Icons.bolt, size: 15, color: Color(0xFFA9711C)),
+            Icon(Ph.lightning, size: 15, color: context.tk.warn),
             const SizedBox(width: 3),
             Text('${g.available} to spend',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFFA9711C))),
+                    color: context.tk.warn)),
           ],
         ),
         const SizedBox(height: 12),
@@ -536,8 +536,7 @@ class _AvatarCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = dark ? AerisColors.cardDark : Colors.white;
+    final cardBg = context.tk.surface;
     final owned = skin.cost == 0 || g.unlocked.contains(skin.id);
     final equipped = g.selected == skin.id;
     final canAfford = g.available >= skin.cost;
@@ -574,7 +573,7 @@ class _AvatarCard extends StatelessWidget {
                   height: 22,
                   decoration:
                       BoxDecoration(color: r.color, shape: BoxShape.circle),
-                  child: const Icon(Icons.check, size: 15, color: Colors.white),
+                  child: const Icon(Ph.check, size: 15, color: Colors.white),
                 ),
             ],
           ),
@@ -674,16 +673,16 @@ class _AvatarCard extends StatelessWidget {
     // locked
     return _filledBtn(
       bg: canAfford
-          ? const Color(0xFFA9711C).withValues(alpha: 0.14)
+          ? context.tk.warn.withValues(alpha: 0.14)
           : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
       fg: canAfford
-          ? const Color(0xFFA9711C)
+          ? context.tk.warn
           : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
       label: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(canAfford ? Icons.bolt : Icons.lock,
+        Icon(canAfford ? Ph.lightning : Ph.lock,
             size: 14,
             color: canAfford
-                ? const Color(0xFFA9711C)
+                ? context.tk.warn
                 : Theme.of(context)
                     .colorScheme
                     .onSurface
@@ -694,7 +693,7 @@ class _AvatarCard extends StatelessWidget {
                 fontSize: 12.5,
                 fontWeight: FontWeight.w800,
                 color: canAfford
-                    ? const Color(0xFFA9711C)
+                    ? context.tk.warn
                     : Theme.of(context)
                         .colorScheme
                         .onSurface
@@ -766,13 +765,13 @@ class _AvatarCard extends StatelessWidget {
                       color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
               const SizedBox(height: 14),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const Icon(Icons.bolt, size: 20, color: Color(0xFFA9711C)),
+                Icon(Ph.lightning, size: 20, color: context.tk.warn),
                 const SizedBox(width: 4),
                 Text('${skin.cost} Aura',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFFA9711C))),
+                        color: context.tk.warn)),
               ]),
               const SizedBox(height: 16),
               Row(children: [

@@ -13,15 +13,21 @@ import '../../models/insight.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/insights_provider.dart';
 import '../../providers/privacy_provider.dart';
+import '../../providers/income_lock_provider.dart';
 import '../../providers/money_providers.dart';
 import '../../utils/formatters.dart';
 import '../../utils/motion.dart';
-import '../../widgets/mascot/aeris_mascot.dart';
+import '../../widgets/income_text.dart';
+import '../../widgets/ds.dart';
 import '../gamification/future_self_screen.dart';
 
 part 'analytics_charts.dart';
 part 'analytics_ai.dart';
 // ─── Shell ─────────────────────────────────────────────────────────────────
+//
+// Insights: large title with the range picker and Ask Aeris, the Charts /
+// Tips / Future segmented control, then a row of shortcuts into the money
+// tools (budgets, goals, net worth, report card, wrapped).
 
 class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
@@ -37,99 +43,148 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     ref.watch(amountHiddenProvider);
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Insights',
-                      style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5)),
-                  const SizedBox(height: 10),
-                  _SegPill(
-                      value: _tab, onChange: (i) => setState(() => _tab = i)),
+        bottom: false,
+        // Large title → slim bar once the tab scrolls (reset per tab).
+        child: CollapseOnScroll(
+          key: ValueKey(_tab),
+          builder: (context, collapsed) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              CollapsingHeader(
+                title: 'Insights',
+                collapsed: collapsed,
+                largeSize: 24,
+                actions: [
+                  const _RangePillBtn(),
+                  const SizedBox(width: 8),
+                  RoundIconButton(
+                    icon: Ph.sparkle,
+                    tooltip: 'Ask Aeris',
+                    onTap: () =>
+                        Navigator.pushNamed(context, AppRoutes.assistant),
+                  ),
                 ],
               ),
-            ),
-            Expanded(
-              child: IndexedStack(
-                index: _tab,
-                children: const [
-                  _ChartsTab(),
-                  _AITab(),
-                  FutureSelfScreen(embed: true),
-                ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: DsSegmented(
+                  labels: const ['Charts', 'Tips', 'Future'],
+                  index: _tab,
+                  height: 44,
+                  onChanged: (i) => setState(() => _tab = i),
+                ),
               ),
-            ),
-          ],
+              Expanded(
+                child: IndexedStack(
+                  index: _tab,
+                  children: const [
+                    _ChartsTab(),
+                    _AITab(),
+                    FutureSelfScreen(embed: true),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ─── Segmented pill ────────────────────────────────────────────────────────
+// ─── Shortcuts into the money tools ────────────────────────────────────────
 
-class _SegPill extends StatelessWidget {
-  final int value;
-  final ValueChanged<int> onChange;
-  const _SegPill({required this.value, required this.onChange});
+class _Shortcuts extends StatelessWidget {
+  const _Shortcuts();
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      height: 42,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(14),
+    final tk = context.tk;
+    final items = <(IconData, String, String)>[
+      (Ph.target, 'Budgets', AppRoutes.budgets),
+      (Ph.flagPennant, 'Goals', AppRoutes.goals),
+      (Ph.scales, 'Net worth', AppRoutes.netWorth),
+      (Ph.presentationChart, 'Report card', AppRoutes.reportCard),
+      (Ph.confetti, 'Wrapped', AppRoutes.wrapped),
+    ];
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final (icon, label, route) = items[i];
+          return Material(
+            color: tk.surface,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Rad.chip),
+                side: tk.isDark ? BorderSide(color: tk.hair) : BorderSide.none),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(Rad.chip),
+              onTap: () => Navigator.pushNamed(context, route),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 0, 14, 0),
+                decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(Rad.chip),
+                    boxShadow: tk.shadow),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(icon, size: 16, color: tk.acc),
+                  const SizedBox(width: 6),
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: tk.t1)),
+                ]),
+              ),
+            ),
+          );
+        },
       ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _pill(context, 0, Icons.bar_chart_rounded, 'Charts'),
-        _pill(context, 1, Icons.lightbulb_outline_rounded, 'Tips'),
-        _pill(context, 2, Icons.savings_outlined, 'Future'),
-      ]),
     );
   }
+}
 
-  Widget _pill(BuildContext context, int idx, IconData icon, String label) {
-    final active = value == idx;
-    final scheme = Theme.of(context).colorScheme;
-    final fg = active ? scheme.onSurface : scheme.onSurfaceVariant;
-    return Expanded(
-      child: Semantics(
-        button: true,
-        selected: active,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => onChange(idx),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            alignment: Alignment.center,
-            decoration: active
-                ? AerisColors.cardDecoration(context, radius: 11)
-                : const BoxDecoration(),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon,
-                    size: 16, color: active ? AerisColors.accent(context) : fg),
-                const SizedBox(width: 5),
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                        color: fg)),
-              ],
-            ),
+// ─── Shared card shell ─────────────────────────────────────────────────────
+
+/// A design card: radius 20, padding 16, title 18/600 with an optional note.
+class _InsightCard extends StatelessWidget {
+  final String title;
+  final String? note;
+  final Widget child;
+  static const padding = EdgeInsets.all(16);
+  const _InsightCard({
+    required this.title,
+    required this.child,
+    this.note,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: AerisColors.cardDecoration(context),
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Expanded(
+                child:
+                    Text(title, style: Ts.title.copyWith(color: context.tk.t1)),
+              ),
+              if (note != null)
+                Text(note!,
+                    style: TextStyle(fontSize: 12, color: context.tk.t2)),
+            ],
           ),
-        ),
+          const SizedBox(height: 12),
+          child,
+        ],
       ),
     );
   }

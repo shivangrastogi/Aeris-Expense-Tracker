@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/routes.dart';
 import '../models/split.dart';
 import '../models/transaction.dart';
 import '../utils/formatters.dart';
@@ -291,6 +292,7 @@ class SmsImportService {
           when: t.timestamp);
     }
     await _maybeAlertLowBalance(t);
+    await _maybeAskReview(t);
   }
 
   static const lowBalanceKey = 'low_balance_alert';
@@ -319,6 +321,34 @@ class SmsImportService {
       'Only ${formatRupees(bal, decimals: true)} left after '
           '${t.isDebit ? 'spending' : 'receiving'} '
           '${formatRupees(t.amount, decimals: true)}.',
+      route: AppRoutes.accounts,
+      actions: const [('See accounts', AppRoutes.accounts)],
+    );
+  }
+
+  /// A fresh bank SMS that AERIS wasn't sure about: "Check this payment"
+  /// with a Review button (SMS → notification → review → detail).
+  Future<void> _maybeAskReview(Transaction t) async {
+    if (!t.needsReview) return;
+    // Only for news: a backfill of old SMS must not ring.
+    if (DateTime.now().difference(t.timestamp) > const Duration(hours: 2)) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool('reminders_on') ?? false)) return;
+    if (!(prefs.getBool('notif_review') ?? true)) return;
+    final who = t.merchant ?? (t.isCredit ? 'Money in' : 'A payment');
+    // The salary lock covers notifications too.
+    final salary = t.isCredit && t.categoryId == 'salary';
+    final amount = salary && (prefs.getBool('income_locked') ?? false)
+        ? 'amount hidden'
+        : formatRupees(t.amount);
+    await NotificationService.instance.showNow(
+      3200 + (t.id.hashCode.abs() % 100),
+      'Check this payment',
+      '$who · $amount — AERIS wasn\'t sure of the category.',
+      route: AppRoutes.smsReview,
+      actions: const [('Review', AppRoutes.smsReview)],
     );
   }
 

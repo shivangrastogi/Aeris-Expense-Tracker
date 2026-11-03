@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/ph_icons.dart';
 
 import 'category.dart';
 
@@ -9,26 +10,26 @@ class CustomCategories {
   CustomCategories._();
 
   static const icons = <IconData>[
-    Icons.label_outline_rounded,
-    Icons.pets_rounded,
-    Icons.child_care_rounded,
-    Icons.fitness_center_rounded,
-    Icons.local_cafe_rounded,
-    Icons.card_giftcard_rounded,
-    Icons.volunteer_activism_outlined,
-    Icons.local_laundry_service_outlined,
-    Icons.build_outlined,
-    Icons.devices_other_rounded,
-    Icons.sports_esports_outlined,
-    Icons.flight_takeoff_rounded,
-    Icons.local_bar_outlined,
-    Icons.medication_outlined,
-    Icons.checkroom_rounded,
-    Icons.wifi_rounded,
-    Icons.savings_outlined,
-    Icons.work_outline_rounded,
-    Icons.directions_bike_rounded,
-    Icons.local_florist_outlined,
+    PhosphorIconsRegular.tag,
+    PhosphorIconsRegular.pawPrint,
+    PhosphorIconsRegular.baby,
+    PhosphorIconsRegular.barbell,
+    PhosphorIconsRegular.coffee,
+    PhosphorIconsRegular.gift,
+    PhosphorIconsRegular.handHeart,
+    PhosphorIconsRegular.washingMachine,
+    PhosphorIconsRegular.wrench,
+    PhosphorIconsRegular.devices,
+    PhosphorIconsRegular.gameController,
+    PhosphorIconsRegular.airplaneTakeoff,
+    PhosphorIconsRegular.wine,
+    PhosphorIconsRegular.pill,
+    PhosphorIconsRegular.coatHanger,
+    PhosphorIconsRegular.wifiHigh,
+    PhosphorIconsRegular.piggyBank,
+    PhosphorIconsRegular.briefcase,
+    PhosphorIconsRegular.bicycle,
+    PhosphorIconsRegular.flower,
   ];
 
   /// The validated muted chart palette plus four quieter tones.

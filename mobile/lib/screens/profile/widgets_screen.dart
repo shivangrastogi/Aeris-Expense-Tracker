@@ -13,6 +13,7 @@ import '../../providers/village_provider.dart';
 import '../../services/widget_service.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 /// Gallery of the AERIS home-screen widgets. Every preview is a Flutter
 /// replica of the native widget (android/.../res/layout/aeris_*_widget.xml +
@@ -40,8 +41,8 @@ class WidgetsScreen extends ConsumerWidget {
       today: snap.todaySpent,
       budget: budget,
       streak: g.liveStreak,
-      week: g.weekCheckins(),
-      todayIdx: g.todayWeekIndex,
+      week: g.recentCheckins(),
+      todayIdx: 6, // the last 7 days, today on the right
       aura: g.available,
       town: ref.watch(villageProvider).townLevel,
       name: name,
@@ -89,7 +90,7 @@ class WidgetsScreen extends ConsumerWidget {
                     const Spacer(),
                     FilledButton.tonalIcon(
                       onPressed: () => _add(context, d),
-                      icon: const Icon(Icons.add, size: 18),
+                      icon: const Icon(Ph.plus, size: 18),
                       label: const Text('Add'),
                     ),
                   ]),
@@ -185,7 +186,7 @@ Widget _label(BuildContext c, String s) => Text(s.toUpperCase(),
     style: TextStyle(fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w600, color: _W.of(c).muted));
 
 Widget _fire(BuildContext c, int streak, double size) =>
-    Icon(Icons.local_fire_department, size: size, color: streak > 0 ? _W.of(c).warn : _W.of(c).muted);
+    Icon(Ph.flame, size: size, color: streak > 0 ? _W.of(c).warn : _W.of(c).muted);
 
 class _OverviewW extends StatelessWidget {
   final _Model m;
@@ -328,7 +329,9 @@ class _StreakW extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = _W.of(context);
-    const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    final days = [
+      for (final d in GamificationState.recentDays()) GamificationState.dayLetter(d)
+    ];
     return _Shell(
       child: Column(children: [
         Expanded(
@@ -371,7 +374,7 @@ class _StreakW extends StatelessWidget {
                     color: m.week[i] ? w.accent : (i == m.todayIdx ? Colors.transparent : w.track),
                     border: i == m.todayIdx && !m.week[i] ? Border.all(color: w.accent, width: 2) : null,
                   ),
-                  child: m.week[i] ? Icon(Icons.check, size: 14, color: w.onAccent) : null,
+                  child: m.week[i] ? Icon(Ph.check, size: 14, color: w.onAccent) : null,
                 ),
                 const SizedBox(height: 4),
                 Text(days[i],
@@ -453,14 +456,14 @@ class _QuickW extends StatelessWidget {
           width: 38,
           height: 38,
           decoration: BoxDecoration(color: w.track, borderRadius: BorderRadius.circular(12)),
-          child: Icon(Icons.mic_none, size: 20, color: w.text),
+          child: Icon(Ph.microphone, size: 20, color: w.text),
         ),
         const SizedBox(width: 8),
         Container(
           width: 38,
           height: 38,
           decoration: BoxDecoration(color: w.accent, borderRadius: BorderRadius.circular(12)),
-          child: Icon(Icons.add, size: 20, color: w.onAccent),
+          child: Icon(Ph.plus, size: 20, color: w.onAccent),
         ),
       ]),
     );

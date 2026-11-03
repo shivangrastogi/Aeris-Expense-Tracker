@@ -138,6 +138,33 @@ class WidgetService {
     } catch (_) {}
   }
 
+  /// From the background refresh (widget_background.dart): exact month /
+  /// today totals ([snap]; null when the data couldn't be read, which keeps
+  /// the stored ones) and the streak. Budget, name and currency only change
+  /// in the app, so they stay as its last [pushAll] left them.
+  static Future<void> pushFromBackground({
+    required WidgetSnapshot? snap,
+    required int streak,
+    required String? lastCheckinDay,
+    required Iterable<String> checkinDays,
+  }) async {
+    final days = checkinDays.toList()..sort();
+    final recent = days.length > 14 ? days.sublist(days.length - 14) : days;
+    try {
+      if (snap != null) {
+        await _save('w_month', snap.monthKey);
+        await _save('w_spent', snap.monthSpent.toStringAsFixed(2));
+        await _save('w_day', snap.dayKey);
+        await _save('w_today', snap.todaySpent.toStringAsFixed(2));
+      }
+      await _save('w_streak', streak);
+      await _save('w_last_checkin', lastCheckinDay ?? '');
+      await _save('w_checkins', recent.join(','));
+      await _save('w_updated', DateTime.now().millisecondsSinceEpoch.toString());
+      await refresh();
+    } catch (_) {}
+  }
+
   static Future<void> refresh() async {
     for (final name in providers) {
       await HomeWidget.updateWidget(androidName: name);

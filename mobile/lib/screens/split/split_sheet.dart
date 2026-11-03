@@ -13,6 +13,7 @@ import '../../services/split_links.dart';
 import '../../services/split_service.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/ds.dart';
 
 /// Split [bill] (or edit its split). Returns the saved transaction, or null
 /// if the user backed out.
@@ -175,13 +176,22 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
   Widget build(BuildContext context) {
     final groups = ref.watch(splitGroupsProvider).valueOrNull ?? const [];
     _seed(groups);
-    final scheme = Theme.of(context).colorScheme;
-    final muted = AerisColors.muted(context);
+    final tk = context.tk;
     final others = _othersTotal();
     final mine = _bill.amount - others;
     final over = mine < -0.5;
     final title = _bill.merchant ?? Categories.byId(_bill.categoryId).label;
     final isNewGroup = _groupId == null;
+
+    Widget toggle(String t, String sub, bool v, ValueChanged<bool> on) =>
+        DsRow(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          minHeight: 56,
+          title: t,
+          sub: sub,
+          trailing: Switch(value: v, onChanged: on),
+          onTap: () => on(!v),
+        );
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -192,57 +202,48 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Split ${formatRupees(_bill.amount, decimals: true)} · $title',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+                  style: Ts.title.copyWith(color: tk.t1)),
               const SizedBox(height: 4),
               Text(
                   'Only your share counts as your spending. Their payments '
                   'back are matched automatically.',
-                  style: TextStyle(fontSize: 12.5, color: muted)),
+                  style: Ts.bodyS.copyWith(color: tk.t2)),
               const SizedBox(height: 14),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final g in groups)
-                  ChoiceChip(
-                    label: Text(g.name),
-                    selected: _groupId == g.id,
-                    onSelected: (_) => setState(() => _pickGroup(g)),
-                  ),
-                ChoiceChip(
-                  avatar: const Icon(Icons.add, size: 16),
-                  label: const Text('New people'),
-                  selected: isNewGroup,
-                  onSelected: (_) => setState(() {
-                    for (final p in _people) {
-                      p.amount.dispose();
-                    }
-                    _people.clear();
-                    _groupId = null;
-                    _myWeight = 1;
-                    _auto = false;
-                  }),
-                ),
+                  DsChip(g.name,
+                      selected: _groupId == g.id,
+                      showCheck: true,
+                      icon: Ph.usersThree,
+                      onTap: () => setState(() => _pickGroup(g))),
+                DsChip('New people',
+                    selected: isNewGroup,
+                    showCheck: true,
+                    icon: Ph.plus,
+                    onTap: () => setState(() {
+                          for (final p in _people) {
+                            p.amount.dispose();
+                          }
+                          _people.clear();
+                          _groupId = null;
+                          _myWeight = 1;
+                          _auto = false;
+                        })),
               ]),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               for (var i = 0; i < _people.length; i++)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: 10),
                   child: Row(children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: AerisColors.accentSoft(context),
-                      child: Text(_people[i].name[0].toUpperCase(),
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: AerisColors.accent(context))),
-                    ),
+                    InitialAvatar(_people[i].name, size: 36),
                     const SizedBox(width: 10),
                     Expanded(
                         child: Text(_people[i].name,
-                            style: const TextStyle(fontWeight: FontWeight.w600))),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Ts.rowTitle.copyWith(color: tk.t1))),
                     SizedBox(
-                      width: 120,
+                      width: 128,
                       child: TextField(
                         controller: _people[i].amount,
                         keyboardType:
@@ -250,15 +251,26 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
                         inputFormatters: const [AmountInputFormatter()],
                         textAlign: TextAlign.right,
                         onChanged: (_) => setState(() {}),
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: over ? tk.bad : tk.t1,
+                            fontFeatures: const [FontFeature.tabularFigures()]),
                         decoration: InputDecoration(
                           isDense: true,
                           prefixText: '${kCurrency.symbol.trim()} ',
+                          enabledBorder: over
+                              ? OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(Rad.input),
+                                  borderSide: BorderSide(color: tk.bad))
+                              : null,
                         ),
                       ),
                     ),
                     IconButton(
                       tooltip: 'Remove ${_people[i].name}',
-                      icon: const Icon(Icons.close_rounded, size: 20),
+                      icon: Icon(Ph.x, size: 18, color: tk.t2),
                       onPressed: () => setState(() {
                         _people.removeAt(i).amount.dispose();
                       }),
@@ -271,10 +283,10 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
                     controller: _newPerson,
                     textCapitalization: TextCapitalization.words,
                     onSubmitted: (_) => _addPerson(),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       isDense: true,
                       hintText: 'Add a person (e.g. Rahul)',
-                      prefixIcon: Icon(Icons.person_add_alt_1_outlined),
+                      prefixIcon: Icon(Ph.userPlus, size: 18, color: tk.t2),
                     ),
                   ),
                 ),
@@ -282,33 +294,49 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
                 IconButton.filledTonal(
                     tooltip: 'Add',
                     onPressed: _addPerson,
-                    icon: const Icon(Icons.add)),
+                    style: IconButton.styleFrom(
+                        backgroundColor: tk.accSoft, foregroundColor: tk.acc),
+                    icon: const Icon(PhBold.plus, size: 18)),
               ]),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Row(children: [
                 TextButton.icon(
                   onPressed: _people.isEmpty ? null : _equal,
-                  icon: const Icon(Icons.balance_rounded, size: 18),
+                  icon: const Icon(Ph.scales, size: 18),
                   label: const Text('Split equally'),
                 ),
                 const Spacer(),
-                Text(
-                  over
-                      ? 'More than the bill'
-                      : 'Your share ${formatRupees(mine < 0 ? 0 : mine, decimals: true)}',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: over ? AerisColors.danger(context) : null),
-                ),
+                if (!over)
+                  Text(
+                      'Your share ${formatRupees(mine < 0 ? 0 : mine, decimals: true)}',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: tk.t1,
+                          fontFeatures: const [FontFeature.tabularFigures()])),
               ]),
-              if (isNewGroup && _people.isNotEmpty) ...[
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _saveGroup,
-                  onChanged: (v) => setState(() => _saveGroup = v),
-                  title: const Text('Save these people as a group'),
-                  subtitle: const Text('Reuse them for the next bill'),
+              // Over the bill: red, with an icon and the numbers — never
+              // colour alone.
+              if (over)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(children: [
+                    Icon(PhFill.warningCircle, size: 15, color: tk.bad),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                          'More than the bill by ${formatRupees(-mine, decimals: true)}',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: tk.bad)),
+                    ),
+                  ]),
                 ),
+              if (isNewGroup && _people.isNotEmpty) ...[
+                toggle('Save these people as a group',
+                    'Reuse them for the next bill', _saveGroup,
+                    (v) => setState(() => _saveGroup = v)),
                 if (_saveGroup)
                   TextField(
                     controller: _groupName,
@@ -317,14 +345,12 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
                         isDense: true, hintText: 'Group name (e.g. Flat)'),
                   ),
               ],
-              if (_payee != null && (!isNewGroup || _saveGroup) && _people.isNotEmpty)
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _auto,
-                  onChanged: (v) => setState(() => _auto = v),
-                  title: Text('Always split payments to $title'),
-                  subtitle: const Text('Next month\'s bill splits by itself'),
-                ),
+              if (_payee != null &&
+                  (!isNewGroup || _saveGroup) &&
+                  _people.isNotEmpty)
+                toggle('Always split payments to $title',
+                    'Next month\'s bill splits by itself', _auto,
+                    (v) => setState(() => _auto = v)),
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -333,11 +359,7 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
                       ? null
                       : () => _save(groups),
                   child: _busy
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: scheme.onPrimary))
+                      ? RisingLoader(color: tk.onAcc)
                       : const Text('Save split'),
                 ),
               ),

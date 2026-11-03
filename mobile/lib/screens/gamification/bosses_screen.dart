@@ -8,6 +8,7 @@ import '../../models/category.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/budgets_provider.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/ds.dart';
 
 /// Each budgeted category is a "boss". Your budget is the shield; spending
 /// chips it away. Keep spend under the cap all month → you defeat the boss.
@@ -49,7 +50,7 @@ class BossesScreen extends ConsumerWidget {
           const SizedBox(height: 4),
           OutlinedButton.icon(
             onPressed: () => Navigator.pushNamed(context, AppRoutes.budgetEdit),
-            icon: const Icon(Icons.add, size: 18),
+            icon: const Icon(Ph.plus, size: 18),
             label: const Text('New boss battle'),
           ),
         ],
@@ -115,7 +116,7 @@ class _BossCard extends StatelessWidget {
     final color = broken
         ? AerisColors.danger(context)
         : shield < 0.25
-            ? AerisColors.warning
+            ? context.tk.warn
             : AerisColors.moneyIn(context);
 
     return Card(

@@ -13,8 +13,9 @@ import org.json.JSONObject
  * notification's title + text is queued on-device and handed to Dart, which
  * parses it with the same pipeline as bank SMS. Nothing leaves the phone.
  *
- * Runs whenever the user has granted notification access, app open or not;
- * the queue is drained the next time the app is open (immediately, if it is).
+ * Runs whenever the user has granted notification access, app open or not.
+ * The open app drains the queue immediately; when it's closed, [BackgroundDart]
+ * saves the payment and refreshes the home-screen widgets right away.
  */
 class UpiNotificationListener : NotificationListenerService() {
 
@@ -106,6 +107,9 @@ class UpiNotificationListener : NotificationListenerService() {
                 .put("text", text)
                 .put("ts", sbn.postTime),
         )
-        onQueued?.invoke()
+        // App running: it drains the queue itself. Closed: save the payment
+        // and move the widgets now, from a background engine.
+        val running = onQueued
+        if (running != null) running() else BackgroundDart.run(this)
     }
 }

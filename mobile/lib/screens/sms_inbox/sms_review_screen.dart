@@ -15,6 +15,7 @@ import '../../utils/formatters.dart';
 import '../../widgets/receipt_field.dart';
 import '../../widgets/text_input_dialog.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 class SmsReviewScreen extends ConsumerStatefulWidget {
   const SmsReviewScreen({super.key});
@@ -269,9 +270,8 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
   @override
   Widget build(BuildContext context) {
     final txnsAsync = ref.watch(transactionsStreamProvider);
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final scheme = Theme.of(context).colorScheme;
-    final cardBg = dark ? AerisColors.cardDark : Colors.white;
+    final cardBg = context.tk.surface;
 
     return Scaffold(
       body: SafeArea(
@@ -297,8 +297,8 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
                             ? _exitSelectMode
                             : () => Navigator.pop(context),
                         icon: Icon(_selectMode
-                            ? Icons.close_rounded
-                            : Icons.arrow_back_rounded),
+                            ? Ph.x
+                            : Ph.arrowLeft),
                         style: IconButton.styleFrom(
                           backgroundColor:
                               scheme.onSurface.withValues(alpha: 0.07),
@@ -330,7 +330,7 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
                                   fontWeight: FontWeight.w600,
                                   color: pending.isEmpty
                                       ? AerisColors.moneyIn(context)
-                                      : AerisColors.warning),
+                                      : context.tk.warn),
                             ),
                           ],
                         ),
@@ -340,8 +340,8 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
                           onPressed: () => setState(() => _deck = !_deck),
                           icon: Icon(
                               _deck
-                                  ? Icons.view_list_rounded
-                                  : Icons.style_rounded,
+                                  ? Ph.listBullets
+                                  : Ph.palette,
                               size: 22),
                           tooltip: _deck ? 'Show as list' : 'Review one by one',
                           style: IconButton.styleFrom(
@@ -375,7 +375,7 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
                             : IconButton(
                                 onPressed: () =>
                                     _enterSelectMode(pending.first.id),
-                                icon: const Icon(Icons.checklist_rounded,
+                                icon: const Icon(Ph.listChecks,
                                     size: 22),
                                 tooltip: 'Multi-select',
                                 style: IconButton.styleFrom(
@@ -478,30 +478,13 @@ class _SmsReviewScreenState extends ConsumerState<SmsReviewScreen> {
   }
 
   Widget _emptyState(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.mark_email_read_rounded,
-                size: 52, color: AerisColors.accent(context).withValues(alpha: 0.5)),
-            const SizedBox(height: 14),
-            const Text('All clear',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text(
-              'Bank SMS and payment screenshots land here so you can '
-              'verify or correct them before they\'re finalised.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.5)),
-            ),
-          ],
+    return const Center(
+      child: SingleChildScrollView(
+        child: EmptyState(
+          icon: PhFill.checkCircle,
+          title: 'All caught up',
+          body: 'Bank SMS and payment screenshots land here so you can check '
+              'or correct them before they count.',
         ),
       ),
     );
@@ -544,7 +527,7 @@ class _BulkActionBar extends StatelessWidget {
                 Expanded(
                   child: _BulkBtn(
                     label: 'Ignore sel.',
-                    icon: Icons.delete_outline_rounded,
+                    icon: Ph.trash,
                     color: AerisColors.danger(context),
                     onTap: onIgnoreSelected,
                   ),
@@ -554,7 +537,7 @@ class _BulkActionBar extends StatelessWidget {
                   flex: 2,
                   child: _BulkBtn(
                     label: 'Add selected',
-                    icon: Icons.check_circle_outline_rounded,
+                    icon: Ph.checkCircle,
                     color: AerisColors.accent(context),
                     filled: true,
                     onTap: onAddSelected,
@@ -567,7 +550,7 @@ class _BulkActionBar extends StatelessWidget {
                 Expanded(
                   child: _BulkBtn(
                     label: 'Delete all',
-                    icon: Icons.delete_sweep_rounded,
+                    icon: Ph.broom,
                     color: AerisColors.danger(context),
                     onTap: onIgnoreAll,
                   ),
@@ -577,7 +560,7 @@ class _BulkActionBar extends StatelessWidget {
                   flex: 2,
                   child: _BulkBtn(
                     label: 'Add all',
-                    icon: Icons.playlist_add_check_rounded,
+                    icon: Ph.listChecks,
                     color: AerisColors.accent(context),
                     filled: true,
                     onTap: onAddAll,
@@ -724,7 +707,10 @@ class _SmsCard extends ConsumerWidget {
                               color: AerisColors.accent(context).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(99),
                             ),
-                            child: Text(txn.smsSender!,
+                            child: Text(
+                                txn.scanGenerated
+                                    ? 'SCANNED · not a bank SMS'
+                                    : txn.smsSender!,
                                 style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
@@ -762,7 +748,7 @@ class _SmsCard extends ConsumerWidget {
                         ),
                       ),
                       child: selected
-                          ? Icon(Icons.check_rounded,
+                          ? Icon(Ph.check,
                               size: 14, color: AerisColors.onAccent(context))
                           : null,
                     )
@@ -771,14 +757,14 @@ class _SmsCard extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AerisColors.warning.withValues(alpha: 0.12),
+                        color: context.tk.warnSoft,
                         borderRadius: BorderRadius.circular(99),
                       ),
-                      child: const Text('Edited',
+                      child: Text('Edited',
                           style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: AerisColors.warning)),
+                              color: context.tk.warn)),
                     ),
                 ],
               ),
@@ -829,7 +815,7 @@ class _SmsCard extends ConsumerWidget {
                               ),
                               if (!selectMode) ...[
                                 const SizedBox(width: 4),
-                                Icon(Icons.edit_rounded,
+                                Icon(Ph.pencilSimple,
                                     size: 12,
                                     color: scheme.onSurface
                                         .withValues(alpha: 0.3)),
@@ -852,7 +838,7 @@ class _SmsCard extends ConsumerWidget {
                                               .withValues(alpha: 0.5))),
                               if (!selectMode) ...[
                                 const SizedBox(width: 3),
-                                Icon(Icons.arrow_drop_down_rounded,
+                                Icon(Ph.caretDown,
                                     size: 14,
                                     color: catOverride != null
                                         ? cat.color
@@ -887,7 +873,7 @@ class _SmsCard extends ConsumerWidget {
                     Expanded(
                       child: _ActionBtn(
                         label: 'Ignore',
-                        icon: Icons.close_rounded,
+                        icon: Ph.x,
                         color: scheme.onSurface.withValues(alpha: 0.4),
                         bgColor: scheme.onSurface.withValues(alpha: 0.07),
                         onTap: onIgnore,
@@ -898,7 +884,7 @@ class _SmsCard extends ConsumerWidget {
                       flex: 2,
                       child: _ActionBtn(
                         label: 'Add',
-                        icon: Icons.add_rounded,
+                        icon: Ph.plus,
                         color: Colors.white,
                         bgColor: AerisColors.accent(context),
                         onTap: onAccept,
@@ -908,11 +894,11 @@ class _SmsCard extends ConsumerWidget {
                     // Full editor (amount, category, merchant, date, note) —
                     // the same screen the Activity list opens.
                     _SquareIconBtn(
-                      icon: Icons.edit_outlined,
+                      icon: Ph.pencilSimple,
                       color: AerisColors.accent(context),
                       onTap: onEdit,
                     ),
-                    if (txn.smsSender != null) ...[
+                    if (txn.smsSender != null && !txn.scanGenerated) ...[
                       const SizedBox(width: 8),
                       _BlockBtn(
                         onTap: () => _block(context, ref),
@@ -1157,7 +1143,7 @@ class _BlockBtn extends StatelessWidget {
           color: AerisColors.danger(context).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(Icons.block_rounded,
+        child: Icon(Ph.prohibit,
             size: 18, color: AerisColors.danger(context)),
       ),
     );
@@ -1240,7 +1226,7 @@ class _ShotStripState extends ConsumerState<_ShotStrip> {
                   width: 40,
                   height: 56,
                   color: muted.withValues(alpha: 0.12),
-                  child: Icon(Icons.image_outlined, size: 18, color: muted),
+                  child: Icon(Ph.image, size: 18, color: muted),
                 )
               : Image.memory(img,
                   width: 40,
@@ -1320,45 +1306,29 @@ class _ReviewDeck extends StatelessWidget {
           ]),
         );
 
+    final tk = context.tk;
     final card = Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: scheme.onSurface.withValues(alpha: 0.08)),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 16,
-              offset: const Offset(0, 6)),
-        ],
+        border: tk.edge,
+        boxShadow: tk.shadowRaised,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(children: [
-            if (txn.smsSender != null)
-              Text(txn.smsSender!,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: AerisColors.ink(context))),
-            const Spacer(),
-            Text(relativeDate(txn.timestamp),
-                style: TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600, color: muted)),
-          ]),
-          const SizedBox(height: 14),
-          Text(
-            '${txn.isCredit ? '+' : '−'}${formatRupees(txn.amount, decimals: txn.amount % 1 != 0)}',
-            style: TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -1,
-                color: money),
+          Overline(txn.isCredit ? 'Credit' : 'Debit'),
+          const SizedBox(height: 6),
+          MoneyText(
+            txn.amount,
+            credit: txn.isCredit,
+            decimals: txn.amount % 1 != 0,
+            style: Ts.display,
+            color: money,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           InkWell(
             onTap: onMerchantTap,
             borderRadius: BorderRadius.circular(8),
@@ -1372,28 +1342,38 @@ class _ReviewDeck extends StatelessWidget {
                         : (txn.isCredit ? 'Add payer' : 'Add merchant'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w700),
+                    style: Ts.title.copyWith(color: tk.t1),
                   ),
                 ),
                 const SizedBox(width: 6),
-                Icon(Icons.edit_outlined, size: 15, color: muted),
+                Icon(Ph.pencilSimple, size: 15, color: tk.t3),
               ]),
             ),
           ),
           if (txn.smsBody != null) ...[
-            const SizedBox(height: 10),
-            Text(txn.smsBody!,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, height: 1.4, color: muted)),
+            const SizedBox(height: 14),
+            // The original message, quoted in monospace.
+            Container(
+              padding: const EdgeInsets.only(left: 12),
+              decoration: BoxDecoration(
+                  border: Border(left: BorderSide(color: tk.hair2, width: 2))),
+              child: Text(txn.smsBody!,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      height: 20 / 13,
+                      color: tk.t2)),
+            ),
           ],
           if (txn.fromScreenshot) ...[
             const SizedBox(height: 10),
             _ShotStrip(key: ValueKey('shot-${txn.id}'), txn: txn),
           ],
           const SizedBox(height: 16),
-          Text('Add as', style: TextStyle(fontSize: 12.5, color: muted)),
+          Text('Add as', style: Ts.label.copyWith(
+              fontWeight: FontWeight.w400, color: tk.t2)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -1403,18 +1383,53 @@ class _ReviewDeck extends StatelessWidget {
                 Builder(builder: (context) {
                   final c = Categories.byId(id);
                   final guess = id == categoryId;
-                  return ActionChip(
-                    avatar: Icon(c.icon, size: 16, color: c.color),
-                    label: Text(c.label.split(' ').first),
-                    backgroundColor:
-                        guess ? c.color.withValues(alpha: 0.16) : null,
-                    side: BorderSide(
-                        color: guess ? c.color : scheme.outlineVariant),
-                    onPressed: () => onAccept(id),
+                  return InkWell(
+                    onTap: () => onAccept(id),
+                    borderRadius: BorderRadius.circular(Rad.chip),
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: guess
+                            ? c.color.withValues(alpha: 0.14)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(Rad.chip),
+                        border: Border.all(color: guess ? c.color : tk.hair2),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(c.icon, size: 16, color: c.color),
+                        const SizedBox(width: 6),
+                        Text(c.label.split(' ').first,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: tk.t1)),
+                      ]),
+                    ),
                   );
                 }),
             ],
           ),
+          const SizedBox(height: 16),
+          Row(children: [
+            Icon(Ph.chatText, size: 14, color: tk.t3),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                [
+                  if (txn.scanGenerated)
+                    'Generated from a scan'
+                  else if (txn.smsSender != null)
+                    'From ${txn.smsSender}',
+                  relativeDate(txn.timestamp),
+                ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Ts.label
+                    .copyWith(fontWeight: FontWeight.w400, color: tk.t2),
+              ),
+            ),
+          ]),
         ],
       ),
     );
@@ -1424,10 +1439,10 @@ class _ReviewDeck extends StatelessWidget {
       children: [
         Dismissible(
           key: ValueKey('deck-${txn.id}'),
-          background: swipeBg(AerisColors.moneyIn(context), Icons.check_rounded,
+          background: swipeBg(AerisColors.moneyIn(context), Ph.check,
               'Add', Alignment.centerLeft),
           secondaryBackground: swipeBg(AerisColors.danger(context),
-              Icons.close_rounded, 'Ignore', Alignment.centerRight),
+              Ph.x, 'Ignore', Alignment.centerRight),
           onDismissed: (dir) => dir == DismissDirection.startToEnd
               ? onAccept(categoryId)
               : onIgnore(),
@@ -1438,7 +1453,7 @@ class _ReviewDeck extends StatelessWidget {
           Expanded(
             child: OutlinedButton.icon(
               onPressed: onIgnore,
-              icon: const Icon(Icons.close_rounded),
+              icon: const Icon(Ph.x),
               label: const Text('Ignore'),
               style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48)),
@@ -1448,7 +1463,7 @@ class _ReviewDeck extends StatelessWidget {
           Expanded(
             child: FilledButton.icon(
               onPressed: () => onAccept(categoryId),
-              icon: const Icon(Icons.check_rounded),
+              icon: const Icon(Ph.check),
               label: Text(
                   'Add as ${Categories.byId(categoryId).label.split(' ').first}'),
               style: FilledButton.styleFrom(

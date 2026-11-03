@@ -11,6 +11,7 @@ import '../../providers/transactions_provider.dart';
 import '../../services/category_rules.dart';
 import '../../services/sms_templates.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 /// Categories & learning: your own categories, the built-in ones, and what
 /// AERIS has learned from your corrections (and a way to undo it).
@@ -55,7 +56,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
           FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: AerisColors.danger(context),
-                  foregroundColor: Colors.white),
+                  foregroundColor: context.tk.isDark ? const Color(0xFF1A0F0E) : Colors.white),
               onPressed: () => Navigator.pop(d, true),
               child: const Text('Delete')),
         ],
@@ -98,92 +99,88 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final custom = ref.watch(customCategoriesProvider).valueOrNull ?? const [];
-    final muted = AerisColors.muted(context);
 
-    Widget catTile(ExpenseCategory c, {bool editable = false}) => ListTile(
-          leading: CircleAvatar(
-            radius: 18,
-            backgroundColor: c.color.withValues(alpha: 0.16),
-            child: Icon(c.icon, color: c.color, size: 20),
+    Widget group(String head, List<Widget> rows) => Padding(
+          padding: const EdgeInsets.only(bottom: 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                child: Overline(head),
+              ),
+              ListGroup(children: rows),
+            ],
           ),
-          title: Text(c.label),
-          trailing: editable
-              ? IconButton(
-                  tooltip: 'Delete ${c.label}',
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => _delete(c))
-              : null,
+        );
+
+    Widget xButton(String tooltip, VoidCallback onTap) => IconButton(
+        tooltip: tooltip,
+        icon: Icon(Ph.x, size: 18, color: tk.t2),
+        onPressed: onTap);
+
+    Widget catRow(ExpenseCategory c, {bool editable = false}) => DsRow(
+          minHeight: 60,
+          padding: EdgeInsets.fromLTRB(16, 10, editable ? 4 : 16, 10),
+          leading: CatTile.of(c),
+          title: c.label,
+          trailing: editable ? xButton('Delete ${c.label}', () => _delete(c)) : null,
           onTap: editable ? () => _edit(c) : null,
         );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Categories & learning')),
+      appBar: AppBar(title: const Text('Categories and learning')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
-          const SectionLabel('Your categories'),
-          AerisCard(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(children: [
-              for (final c in custom) catTile(c, editable: true),
-              ListTile(
-                leading: const Icon(Icons.add_rounded),
-                title: const Text('Add a category'),
-                subtitle: custom.isEmpty
-                    ? const Text('e.g. Pets, Gym, Kids, Gifts')
-                    : null,
-                onTap: () => _edit(),
-              ),
-            ]),
-          ),
-          const SizedBox(height: 20),
-          const SectionLabel('Learned from you'),
+          group('Your categories', [
+            for (final c in custom) catRow(c, editable: true),
+            DsRow(
+              minHeight: 60,
+              leading: BadgeTile(icon: Ph.plus, tint: tk.acc),
+              title: 'Add a category',
+              sub: custom.isEmpty ? 'e.g. Pets, Gym, Kids, Gifts' : null,
+              onTap: () => _edit(),
+            ),
+          ]),
           FutureBuilder<Map<String, String>>(
             future: _rules,
             builder: (context, snap) {
               final rules = snap.data ?? const {};
-              return AerisCard(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Column(children: [
-                  if (rules.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                          'When you change a merchant\'s category, AERIS '
-                          'remembers it here for next time.',
-                          style: TextStyle(color: muted)),
-                    ),
-                  for (final e in rules.entries)
-                    ListTile(
-                      leading: Icon(Categories.byId(e.value).icon,
-                          color: Categories.byId(e.value).color),
-                      title: Text(e.key),
-                      subtitle: Text('→ ${Categories.byId(e.value).label}'),
-                      trailing: IconButton(
-                          tooltip: 'Forget',
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: () => _forgetRule(e.key)),
-                    ),
-                  ListTile(
-                    leading: const Icon(Icons.restart_alt_rounded),
-                    title: const Text('Reset learned SMS formats'),
-                    subtitle: const Text(
-                        'Amount / type fixes taught for bank messages'),
-                    onTap: _resetFormats,
+              return group('Learned from you', [
+                if (rules.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                        'When you change a merchant\'s category, AERIS '
+                        'remembers it here for next time.',
+                        style: Ts.bodyS.copyWith(color: tk.t2)),
                   ),
-                ]),
-              );
+                for (final e in rules.entries)
+                  DsRow(
+                    minHeight: 60,
+                    padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
+                    leading: const BadgeTile(icon: Ph.lightbulb),
+                    title: '${e.key} → ${Categories.byId(e.value).label}',
+                    sub: 'Applied automatically',
+                    trailing: xButton('Forget', () => _forgetRule(e.key)),
+                  ),
+                DsRow(
+                  minHeight: 60,
+                  leading: BadgeTile(icon: Ph.arrowCounterClockwise, tint: tk.bad),
+                  title: 'Reset learned SMS formats',
+                  titleColor: tk.bad,
+                  sub: 'Re-learns how your banks word their alerts',
+                  onTap: _resetFormats,
+                ),
+              ]);
             },
           ),
-          const SizedBox(height: 20),
-          const SectionLabel('Built in'),
-          AerisCard(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(children: [
-              for (final c in Categories.builtIn) catTile(c),
-            ]),
-          ),
+          group('Built in', [
+            for (final c in Categories.builtIn) catRow(c),
+          ]),
         ],
       ),
     );
@@ -228,10 +225,7 @@ class _CategoryEditorState extends State<_CategoryEditor> {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(widget.existing == null ? 'New category' : 'Edit category',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)),
+                style: Ts.title.copyWith(color: context.tk.t1)),
             const SizedBox(height: 12),
             TextField(
               controller: _name,
@@ -259,9 +253,9 @@ class _CategoryEditorState extends State<_CategoryEditor> {
                       borderRadius: BorderRadius.circular(12),
                       color: i == _icon ? _color.withValues(alpha: 0.16) : null,
                       border: Border.all(
-                          color: i == _icon ? _color : AerisColors.line(context)),
+                          color: i == _icon ? _color : context.tk.hair),
                     ),
-                    child: Icon(i, color: i == _icon ? _color : null),
+                    child: Icon(i, color: i == _icon ? _color : context.tk.t2),
                   ),
                 ),
             ]),

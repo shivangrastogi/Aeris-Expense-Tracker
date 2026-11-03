@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'tokens.dart';
+
+export 'tokens.dart';
+
 /// The bundled UI font, registered with all its weights in pubspec.yaml.
 const kFontFamily = 'PlusJakartaSans';
 
@@ -22,32 +26,32 @@ class AerisColors {
 
   // ── Supporting palette (muted; names kept from the old HUD palette) ──
   /// Soft steel blue — the accent as it reads on dark panels.
-  static const arc = Color(0xFF7AA6DA);
+  static const arc = Color(0xFF6E9EE0);
 
   /// Iris — the one secondary hue (goals, gradients' far end).
   static const violet = Color(0xFF8C82CF);
 
   /// Soft green — good / money in on dark.
-  static const mint = Color(0xFF63B98F);
+  static const mint = Color(0xFF5CB88A);
 
   /// Muted amber — streaks, "needs you".
-  static const amber = Color(0xFFD2A35A);
+  static const amber = Color(0xFFD6A453);
 
   /// Soft red — warnings on dark.
-  static const coral = Color(0xFFD9786F);
+  static const coral = Color(0xFFE0766D);
 
   // ── Neutrals ───────────────────────────────────────────────
-  static const bgLight = Color(0xFFF3F4F6); // soft grey canvas
+  static const bgLight = Color(0xFFF4F5F7); // soft grey canvas
   static const cardLight = Color(0xFFFFFFFF);
-  static const inkLight = Color(0xFF151A22); // headings, amounts
+  static const inkLight = Color(0xFF12161C); // headings, amounts
   static const mutedLight = Color(0xFF5E6978); // secondary text (5.6:1)
   static const lineLight = Color(0xFFE3E6EB); // hairlines
 
-  static const bgDark = Color(0xFF0F1115); // graphite canvas
-  static const cardDark = Color(0xFF181B21); // panel
-  static const inkDark = Color(0xFFE6E8EB);
-  static const mutedDark = Color(0xFF9199A5);
-  static const lineDark = Color(0xFF272B33);
+  static const bgDark = Color(0xFF0E1013); // graphite canvas
+  static const cardDark = Color(0xFF16191E); // panel
+  static const inkDark = Color(0xFFECEEF1);
+  static const mutedDark = Color(0xFF9AA2AE);
+  static const lineDark = Color(0xFF2A2F37);
 
   /// The interactive accent for the current theme — follows the user's accent
   /// choice (Customize dashboard); softened in dark mode, deepened in light.
@@ -71,30 +75,27 @@ class AerisColors {
 
   /// A soft tint of the accent, for selected pills and icon plates.
   static Color accentSoft(BuildContext context) =>
-      accent(context).withValues(alpha: _dark(context) ? 0.14 : 0.10);
+      context.tk.accSoft;
 
   static Color card(BuildContext context) =>
-      _dark(context) ? cardDark : cardLight;
+      context.tk.surface;
   static Color canvas(BuildContext context) =>
-      _dark(context) ? bgDark : bgLight;
+      context.tk.bg;
   static Color line(BuildContext context) =>
-      _dark(context) ? lineDark : lineLight;
+      context.tk.hair;
   static Color muted(BuildContext context) =>
-      _dark(context) ? mutedDark : mutedLight;
+      context.tk.t2;
 
   /// Money in — mint/green. Money out — plain ink: spending is normal, so it
   /// isn't painted as an alarm. Use these for every amount.
   static Color moneyIn(BuildContext context) =>
-      _dark(context) ? creditDark : credit;
+      context.tk.ok;
   static Color moneyOut(BuildContext context) =>
-      Theme.of(context).colorScheme.onSurface;
+      context.tk.t1;
 
   /// Warnings and destructive actions only (over budget, delete, sign out).
   static Color danger(BuildContext context) =>
-      _dark(context) ? debitDark : debit;
-
-  static bool _dark(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark;
+      context.tk.bad;
 
   static const credit = Color(0xFF2E8656); // money in — light (4.6:1)
   static const creditDark = mint; // money in — dark
@@ -118,14 +119,14 @@ class AerisColors {
   static const heroGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF3A6EAD), Color(0xFF3F5596)],
+    colors: [Color(0xFF3E78C2), Color(0xFF2A5B9C)],
   );
 
   /// The same on dark panels (lighter, still quiet).
   static const arcGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF6F9CD3), Color(0xFF6E86C4)],
+    colors: [Color(0xFF7AA6DA), Color(0xFF4F86C6)],
   );
 
   /// The Home hero panel — a flat graphite slab in both themes.
@@ -160,24 +161,14 @@ class AerisColors {
   /// The standard panel: white with a soft cool shadow in light mode, a
   /// hairline-edged navy panel in dark mode (shadows vanish on dark).
   static BoxDecoration cardDecoration(BuildContext context,
-      {double radius = 22, Color? color}) {
-    final dark = _dark(context);
+      {double radius = Rad.card, Color? color}) {
+    final tk = context.tk;
+    // Graphite: depth by tone + a 1 dp hairline. Porcelain: one soft shadow.
     return BoxDecoration(
-      color: color ?? card(context),
+      color: color ?? tk.surface,
       borderRadius: BorderRadius.circular(radius),
-      border: dark ? Border.all(color: lineDark) : null,
-      boxShadow: dark
-          ? null
-          : const [
-              BoxShadow(
-                  color: Color(0x120B1220),
-                  blurRadius: 18,
-                  offset: Offset(0, 6)),
-              BoxShadow(
-                  color: Color(0x0A0B1220),
-                  blurRadius: 3,
-                  offset: Offset(0, 1)),
-            ],
+      border: tk.edge,
+      boxShadow: tk.shadow,
     );
   }
 }
@@ -187,7 +178,7 @@ TextStyle hudLabel(BuildContext context, {Color? color, double size = 11}) =>
     TextStyle(
       fontSize: size,
       fontWeight: FontWeight.w700,
-      letterSpacing: 0.9,
+      letterSpacing: 0.8,
       color: color ?? AerisColors.muted(context),
     );
 
@@ -204,7 +195,7 @@ class AerisCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(16),
-    this.radius = 22,
+    this.radius = Rad.card,
     this.onTap,
     this.color,
   });
@@ -241,9 +232,9 @@ class SectionLabel extends StatelessWidget {
         padding: padding,
         child: Text(text.toUpperCase(),
             style: TextStyle(
-                fontSize: 11.5,
+                fontSize: 11,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.1,
+                letterSpacing: 0.8,
                 color: AerisColors.muted(context))),
       );
 }
@@ -303,221 +294,291 @@ Color accentFor(Brightness brightness, Color seed) {
   return c;
 }
 
+
+/// The app theme, built from the AERIS Design System tokens ([AerisTokens]).
+/// Graphite (dark) gets depth from tone and hairlines; Porcelain (light) from
+/// one soft shadow. Everything a Material widget draws comes from the tokens.
 ThemeData buildAerisTheme(Brightness brightness, {Color? seed}) {
   final dark = brightness == Brightness.dark;
-  final accent = accentFor(brightness, seed ?? AerisColors.seed);
-  final ink = dark ? AerisColors.inkDark : AerisColors.inkLight;
-  final muted = dark ? AerisColors.mutedDark : AerisColors.mutedLight;
-  final line = dark ? AerisColors.lineDark : AerisColors.lineLight;
-  final card = dark ? AerisColors.cardDark : AerisColors.cardLight;
-  final canvas = dark ? AerisColors.bgDark : AerisColors.bgLight;
+  final baseTokens = dark ? AerisTokens.graphite : AerisTokens.porcelain;
+  // The design's exact accent by default; a user-picked accent is toned for
+  // the theme by accentFor().
+  final accent = seed == null || seed == AerisColors.seed
+      ? baseTokens.acc
+      : accentFor(brightness, seed);
+  final tk = accent == baseTokens.acc
+      ? baseTokens
+      : baseTokens.withAccent(
+          accent, dark ? const Color(0xFF0E141C) : Colors.white);
 
   final scheme = ColorScheme.fromSeed(
-    seedColor: seed ?? AerisColors.seed,
+    seedColor: accent,
     brightness: brightness,
   ).copyWith(
-    primary: accent,
-    // Neon accent in dark mode → near-black text on it; deep accent in light
-    // mode → white text.
-    onPrimary: dark ? const Color(0xFF0E141C) : Colors.white,
-    secondary: AerisColors.violet,
-    surface: card,
-    onSurface: ink,
-    onSurfaceVariant: muted,
+    primary: tk.acc,
+    onPrimary: tk.onAcc,
+    primaryContainer: tk.accSoft2,
+    onPrimaryContainer: tk.t1,
+    secondary: tk.acc,
+    onSecondary: tk.onAcc,
+    secondaryContainer: tk.accSoft,
+    onSecondaryContainer: tk.t1,
+    surface: tk.surface,
+    onSurface: tk.t1,
+    onSurfaceVariant: tk.t2,
     surfaceTint: Colors.transparent,
-    surfaceContainerLowest: dark ? const Color(0xFF0B0D10) : Colors.white,
-    surfaceContainerLow:
-        dark ? const Color(0xFF14171C) : const Color(0xFFF8F9FA),
-    surfaceContainer: dark ? const Color(0xFF1D2128) : const Color(0xFFECEEF1),
-    surfaceContainerHigh:
-        dark ? const Color(0xFF22262E) : const Color(0xFFE6E9ED),
-    surfaceContainerHighest:
-        dark ? const Color(0xFF2A2F38) : const Color(0xFFE0E3E8),
-    outline: dark ? const Color(0xFF4A515C) : const Color(0xFF9AA3AF),
-    outlineVariant: line,
-    error: dark ? AerisColors.debitDark : AerisColors.debit,
+    surfaceContainerLowest: tk.sunken,
+    surfaceContainerLow: tk.surface,
+    surfaceContainer: tk.raised,
+    surfaceContainerHigh: tk.raised,
+    surfaceContainerHighest: tk.sunken,
+    outline: tk.hair2,
+    outlineVariant: tk.hair,
+    error: tk.bad,
+    onError: dark ? const Color(0xFF1A0F0E) : Colors.white,
+    inverseSurface: tk.inv,
+    onInverseSurface: tk.onInv,
+    inversePrimary: tk.invAcc,
   );
 
   final base = dark ? ThemeData.dark() : ThemeData.light();
   final text = base.textTheme.apply(
     fontFamily: kFontFamily,
-    bodyColor: ink,
-    displayColor: ink,
+    bodyColor: tk.t1,
+    displayColor: tk.t1,
   );
-  TextStyle jakarta(double size, FontWeight w, {Color? color}) => TextStyle(
-      fontFamily: kFontFamily,
-      fontSize: size,
-      fontWeight: w,
-      color: color ?? ink);
+  TextStyle jakarta(double size, FontWeight w, {Color? color, double? height}) =>
+      TextStyle(
+          fontFamily: kFontFamily,
+          fontSize: size,
+          fontWeight: w,
+          height: height,
+          color: color ?? tk.t1);
+  const label = TextStyle(
+      fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w600);
+  OutlineInputBorder box(Color c, [double w = 1]) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(Rad.input),
+      borderSide: BorderSide(color: c, width: w));
+  final pressed = WidgetStateProperty.resolveWith<Color?>(
+      (s) => s.contains(WidgetState.pressed) ? tk.press : null);
 
   return base.copyWith(
     colorScheme: scheme,
-    scaffoldBackgroundColor: canvas,
-    canvasColor: canvas,
-    dividerColor: line,
+    extensions: [tk],
+    scaffoldBackgroundColor: tk.bg,
+    canvasColor: tk.bg,
+    dividerColor: tk.hair,
+    splashFactory: InkSparkle.splashFactory,
     textTheme: _tabular(text),
     primaryTextTheme: base.primaryTextTheme.apply(fontFamily: kFontFamily),
+    iconTheme: IconThemeData(color: tk.t1, size: 22),
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
-      foregroundColor: ink,
+      foregroundColor: tk.t1,
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: 0,
       elevation: 0,
       centerTitle: false,
-      titleTextStyle: TextStyle(
-        fontFamily: kFontFamily,
-        fontSize: 20,
-        fontWeight: FontWeight.w800,
-        color: ink,
-        letterSpacing: -0.5,
-      ),
+      titleTextStyle: jakarta(24, FontWeight.w700).copyWith(letterSpacing: -0.5),
     ),
     cardTheme: CardThemeData(
       elevation: 0,
       margin: EdgeInsets.zero,
-      color: card,
+      color: tk.surface,
       surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(22),
-        side: BorderSide(
-            color: dark ? AerisColors.lineDark : const Color(0x0D0F1A1A)),
+        borderRadius: BorderRadius.circular(Rad.card),
+        side: BorderSide(color: dark ? tk.hair : const Color(0x0A12161C)),
       ),
     ),
-    dividerTheme: DividerThemeData(color: line, thickness: 1, space: 1),
+    dividerTheme: DividerThemeData(color: tk.hair, thickness: 1, space: 1),
     listTileTheme: ListTileThemeData(
-      iconColor: muted,
+      iconColor: tk.t2,
+      minVerticalPadding: 12,
       titleTextStyle: jakarta(15, FontWeight.w600),
-      subtitleTextStyle: jakarta(12.5, FontWeight.w500, color: muted),
+      subtitleTextStyle: jakarta(13, FontWeight.w400, color: tk.t2),
     ),
-    // Fields are white with a hairline, so they read on the warm canvas and
-    // on white sheets alike; focus swaps the hairline for the accent.
+    // Fields: 56 dp, radius 14, sunken well in dark / white in light; focus is
+    // a 2 dp accent edge; errors are red with helper text (never colour alone).
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: dark ? const Color(0xFF14171C) : Colors.white,
-      prefixIconColor: muted,
-      labelStyle: jakarta(14, FontWeight.w500, color: muted),
-      floatingLabelStyle: jakarta(14, FontWeight.w600, color: accent),
-      hintStyle: jakarta(14, FontWeight.w500, color: muted),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: line),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: line),
-      ),
-      disabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: line.withValues(alpha: 0.5)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: accent, width: 1.5),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: scheme.error),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: scheme.error, width: 1.5),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      fillColor: tk.field,
+      prefixIconColor: tk.t2,
+      suffixIconColor: tk.t2,
+      labelStyle: jakarta(14, FontWeight.w500, color: tk.t2),
+      floatingLabelStyle: jakarta(14, FontWeight.w600, color: tk.acc),
+      hintStyle: jakarta(15, FontWeight.w400, color: tk.t3),
+      helperStyle: jakarta(12, FontWeight.w500, color: tk.t2),
+      errorStyle: jakarta(12, FontWeight.w600, color: tk.bad),
+      border: box(tk.hair),
+      enabledBorder: box(tk.hair),
+      disabledBorder: box(tk.hair.withValues(alpha: 0.5)),
+      focusedBorder: box(tk.acc, 2),
+      errorBorder: box(tk.bad),
+      focusedErrorBorder: box(tk.bad, 2),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
     ),
+    // Buttons: 48 dp, radius 16, label 15/600.
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: accent,
-        foregroundColor: scheme.onPrimary,
-        minimumSize: const Size(64, 50),
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        textStyle: const TextStyle(
-            fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w700),
-      ),
+        backgroundColor: tk.acc,
+        foregroundColor: tk.onAcc,
+        disabledBackgroundColor: tk.hair,
+        disabledForegroundColor: tk.t3,
+        minimumSize: const Size(64, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.button)),
+        textStyle: label,
+      ).copyWith(overlayColor: pressed),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: accent,
-        foregroundColor: scheme.onPrimary,
+        backgroundColor: tk.acc,
+        foregroundColor: tk.onAcc,
         elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        textStyle: const TextStyle(
-            fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w700),
+        minimumSize: const Size(64, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.button)),
+        textStyle: label,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: ink,
-        side: BorderSide(color: line, width: 1.2),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        textStyle: const TextStyle(
-            fontFamily: kFontFamily, fontSize: 15, fontWeight: FontWeight.w700),
-      ),
+        foregroundColor: tk.t1,
+        side: BorderSide(color: tk.hair2, width: 1.5),
+        minimumSize: const Size(64, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.button)),
+        textStyle: label,
+      ).copyWith(overlayColor: pressed),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: accent,
-        textStyle: const TextStyle(
-            fontFamily: kFontFamily, fontSize: 14, fontWeight: FontWeight.w700),
+        foregroundColor: tk.acc,
+        textStyle: label.copyWith(fontSize: 14, fontWeight: FontWeight.w700),
       ),
     ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        foregroundColor: tk.t1,
+        minimumSize: const Size(48, 48),
+        iconSize: 22,
+      ),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: SegmentedButton.styleFrom(
+        backgroundColor: tk.sunken,
+        selectedBackgroundColor: tk.segSel,
+        selectedForegroundColor: tk.t1,
+        foregroundColor: tk.t2,
+        side: BorderSide.none,
+        textStyle: jakarta(14, FontWeight.w600),
+      ),
+    ),
+    // Chips: 40 dp, radius 12; selected = accent-soft + accent text.
     chipTheme: ChipThemeData(
-      backgroundColor: card,
-      selectedColor: accent.withValues(alpha: dark ? 0.22 : 0.12),
-      labelStyle: jakarta(12.5, FontWeight.w600),
-      secondaryLabelStyle: jakarta(12.5, FontWeight.w700, color: accent),
-      iconTheme: IconThemeData(color: muted, size: 18),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      side: BorderSide(color: line),
+      backgroundColor: tk.surface,
+      selectedColor: tk.accSoft2,
+      checkmarkColor: tk.acc,
+      labelStyle: jakarta(13.5, FontWeight.w600),
+      secondaryLabelStyle: jakarta(13.5, FontWeight.w700, color: tk.acc),
+      iconTheme: IconThemeData(color: tk.t2, size: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.chip)),
+      side: BorderSide(color: tk.hair2),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(
-      color: accent,
-      linearTrackColor: accent.withValues(alpha: 0.14),
-      circularTrackColor: accent.withValues(alpha: 0.14),
+      color: tk.acc,
+      linearTrackColor: tk.track,
+      circularTrackColor: Colors.transparent,
+      // Pull-to-refresh: the accent spinner on a raised disc.
+      refreshBackgroundColor: tk.raised,
     ),
     switchTheme: SwitchThemeData(
       trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+      thumbColor: WidgetStateProperty.resolveWith((s) =>
+          s.contains(WidgetState.selected)
+              ? (dark ? const Color(0xFFF4F5F7) : Colors.white)
+              : (dark ? tk.t2 : Colors.white)),
+      trackColor: WidgetStateProperty.resolveWith((s) =>
+          s.contains(WidgetState.selected) ? tk.acc : tk.hair2),
     ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? tk.acc : Colors.transparent),
+      checkColor: WidgetStateProperty.all(tk.onAcc),
+      side: BorderSide(color: tk.hair2, width: 1.5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+    ),
+    sliderTheme: SliderThemeData(
+      activeTrackColor: tk.acc,
+      inactiveTrackColor: tk.track,
+      thumbColor: tk.acc,
+      overlayColor: tk.accSoft,
+      trackHeight: 4,
+    ),
+    // Sheets: radius 28 top, frosted glass, 36×4 handle.
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: card,
+      backgroundColor: tk.glassSheet,
       surfaceTintColor: Colors.transparent,
-      modalBackgroundColor: card,
-      dragHandleColor: dark ? const Color(0xFF353A44) : const Color(0xFFD1D5DB),
+      modalBackgroundColor: dark ? tk.raised : tk.surface,
+      modalBarrierColor: tk.scrim,
+      dragHandleColor: tk.hair2,
+      dragHandleSize: const Size(36, 4),
+      // Tablets: sheets stay a comfortable reading width, centred.
+      constraints: const BoxConstraints(maxWidth: 560),
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Rad.sheet))),
     ),
+    // Dialogs: raised surface, radius 28, max 320 dp wide.
     dialogTheme: DialogThemeData(
-      backgroundColor: card,
+      backgroundColor: tk.raised,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      titleTextStyle: jakarta(19, FontWeight.w800),
-      contentTextStyle: jakarta(14, FontWeight.w500, color: muted),
+      barrierColor: tk.scrim,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.dialog)),
+      titleTextStyle: jakarta(20, FontWeight.w700),
+      contentTextStyle: jakarta(15, FontWeight.w400, color: tk.t2, height: 1.45),
     ),
+    // Snackbars: inverse surface, floating 16 dp above the nav.
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: dark ? const Color(0xFF272B33) : AerisColors.inkLight,
-      contentTextStyle: jakarta(13.5, FontWeight.w600,
-          color: dark ? AerisColors.inkDark : Colors.white),
-      actionTextColor: dark ? AerisColors.arc : const Color(0xFF9CC3EC),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      backgroundColor: tk.inv,
+      contentTextStyle: jakarta(14, FontWeight.w600, color: tk.onInv),
+      actionTextColor: tk.invAcc,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Rad.input)),
     ),
     popupMenuTheme: PopupMenuThemeData(
-      color: card,
+      color: tk.raised,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      textStyle: jakarta(15, FontWeight.w500),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Rad.button),
+          side: BorderSide(color: dark ? tk.hair : Colors.transparent)),
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+          color: tk.inv, borderRadius: BorderRadius.circular(8)),
+      textStyle: jakarta(12, FontWeight.w600, color: tk.onInv),
+    ),
+    tabBarTheme: TabBarThemeData(
+      labelColor: tk.t1,
+      unselectedLabelColor: tk.t2,
+      indicatorColor: tk.acc,
+      dividerColor: tk.hair,
+      labelStyle: jakarta(14, FontWeight.w700),
+      unselectedLabelStyle: jakarta(14, FontWeight.w600),
     ),
     bottomAppBarTheme: BottomAppBarThemeData(
-      color: card,
-      elevation: 8,
-      shadowColor: Colors.black.withValues(alpha: 0.12),
+      color: tk.surface,
+      elevation: 0,
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
-      backgroundColor: accent,
-      foregroundColor: scheme.onPrimary,
+      backgroundColor: tk.acc,
+      foregroundColor: tk.onAcc,
       shape: const StadiumBorder(),
-      elevation: 2,
+      elevation: 0,
     ),
     pageTransitionsTheme: const PageTransitionsTheme(builders: {
       TargetPlatform.android: ZoomPageTransitionsBuilder(),

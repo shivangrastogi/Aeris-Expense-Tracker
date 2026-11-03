@@ -13,6 +13,7 @@ import '../../providers/privacy_provider.dart';
 import '../../services/money_insights.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 /// A grade for the month — budget, savings and habits — that can be shared as
 /// an image. Early in a month it shows last month's final card; later it
@@ -75,25 +76,37 @@ class _ReportCardState extends ConsumerState<ReportCardScreen> {
   @override
   Widget build(BuildContext context) {
     ref.watch(amountHiddenProvider);
+    final tk = context.tk;
     final c = ref.watch(reportCardProvider(_month));
     return Scaffold(
-      appBar: AppBar(title: const Text('Report card')),
+      appBar: AppBar(
+        title: Text('${_names[_month.month]} report card'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: TonalButton(_sharing ? 'Preparing…' : 'Share',
+                icon: Ph.shareNetwork,
+                height: 40,
+                onPressed: _sharing ? null : () => _share(c)),
+          ),
+        ],
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
         children: [
           Row(children: [
             IconButton(
               tooltip: 'Previous month',
               onPressed: () => setState(
                   () => _month = DateTime(_month.year, _month.month - 1)),
-              icon: const Icon(Icons.chevron_left_rounded),
+              icon: const Icon(Ph.caretLeft),
             ),
             Expanded(
               child: Text(
                 '${_names[_month.month]} ${_month.year}${c.inProgress ? ' · so far' : ''}',
                 textAlign: TextAlign.center,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600, color: tk.t2),
               ),
             ),
             IconButton(
@@ -102,45 +115,47 @@ class _ReportCardState extends ConsumerState<ReportCardScreen> {
                   ? null
                   : () => setState(
                       () => _month = DateTime(_month.year, _month.month + 1)),
-              icon: const Icon(Icons.chevron_right_rounded),
+              icon: const Icon(Ph.caretRight),
             ),
           ]),
-          const SizedBox(height: 8),
-          RepaintBoundary(key: _cardKey, child: _Card(card: c, month: _month)),
-          const SizedBox(height: 18),
-          const SectionLabel('How to score higher'),
-          AerisCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final tip in _tips(c))
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.arrow_right_rounded,
-                              color: AerisColors.accent(context)),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(tip,
-                                style: const TextStyle(
-                                    fontSize: 13.5, height: 1.4)),
-                          ),
-                        ]),
-                  ),
-              ],
+          RepaintBoundary(
+            key: _cardKey,
+            // The shared image carries the screen's ground behind it.
+            child: ColoredBox(
+              color: tk.bg,
+              child: _Card(card: c, month: _month),
             ),
           ),
-          const SizedBox(height: 18),
-          FilledButton.icon(
-            onPressed: _sharing ? null : () => _share(c),
-            icon: const Icon(Icons.ios_share_rounded),
-            label: Text(_sharing ? 'Preparing…' : 'Share as image'),
-          ),
+          const SizedBox(height: 12),
+          if (_wins(c).isNotEmpty) ...[
+            _ListCard(
+                title: 'What went well',
+                icon: PhBold.check,
+                color: tk.ok,
+                lines: _wins(c)),
+            const SizedBox(height: 12),
+          ],
+          _ListCard(
+              title: 'Try next month',
+              icon: PhBold.arrowRight,
+              color: tk.acc,
+              lines: _tips(c)),
         ],
       ),
     );
+  }
+
+  /// Only what the month's own numbers support — nothing invented.
+  List<String> _wins(ReportCard c) {
+    final rate = c.savingsRate;
+    return [
+      if (rate != null && rate > 0)
+        'You kept ${(rate * 100).round()}% of your income',
+      if (c.budget > 0 && c.spent <= c.budget)
+        'Stayed within your ${formatRupees(c.budget, compact: true)} budget',
+      if (c.noSpendDays >= 4) '${c.noSpendDays} no-spend days',
+      if (c.trackedDays >= 15) 'Tracked spending on ${c.trackedDays} days',
+    ];
   }
 
   List<String> _tips(ReportCard c) {
@@ -166,88 +181,81 @@ class _ReportCardState extends ConsumerState<ReportCardScreen> {
   }
 }
 
-/// The shareable card itself — self-contained HUD panel.
+
+/// The shareable card: the grade on a ring, a one-line read of the month and
+/// the three scores as rising lines.
 class _Card extends StatelessWidget {
   final ReportCard card;
   final DateTime month;
   const _Card({required this.card, required this.month});
 
-  Color _gradeColor(String g) => switch (g[0]) {
-        'A' => AerisColors.mint,
-        'B' => AerisColors.arc,
-        'C' => AerisColors.amber,
-        _ => AerisColors.coral,
-      };
-
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final c = card;
-    final gc = _gradeColor(c.grade);
-    const dim = Color(0xB3E6E8EB);
     final rate = c.savingsRate;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      decoration: BoxDecoration(
-        gradient: AerisColors.inkGradient,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: gc.withValues(alpha: 0.35)),
+    final summary = [
+      'Spent ${formatRupees(c.spent, compact: true)}',
+      if (rate != null) 'saved ${(rate * 100).round()}% of income',
+      '${c.noSpendDays} no-spend days',
+    ].join(' · ');
+    return Column(children: [
+      const SizedBox(height: 8),
+      CatRing(
+        value: c.score / 100,
+        color: tk.acc,
+        size: 152,
+        stroke: 4,
+        center: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(c.grade,
+              style: TextStyle(
+                  fontSize: 56,
+                  height: 1,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -1,
+                  color: tk.t1)),
+          const SizedBox(height: 6),
+          Text('${c.score} / 100',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  color: tk.t2)),
+        ]),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text('AERIS · REPORT CARD', style: hudLabel(context, color: dim)),
-          const Spacer(),
-          Text(
-              '${const ['', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][month.month]} ${month.year}',
-              style: hudLabel(context, color: dim)),
+      const SizedBox(height: 16),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Text(summary,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 15, height: 22 / 15, color: tk.t2)),
+      ),
+      const SizedBox(height: 16),
+      AerisCard(
+        child: Column(children: [
+          _Bar(
+              label: 'Budget',
+              score: c.budgetScore,
+              max: 40,
+              note: c.budget <= 0
+                  ? 'No monthly budget set.'
+                  : '${formatRupees(c.spent, compact: true)} of '
+                      '${formatRupees(c.budget, compact: true)}.'),
+          _Bar(
+              label: 'Savings',
+              score: c.savingsScore,
+              max: 40,
+              note: rate == null
+                  ? 'Add your income to grade savings.'
+                  : 'You kept ${(rate * 100).round()}% of income. The target is 30%.'),
+          _Bar(
+              label: 'Habits',
+              score: c.habitScore,
+              max: 20,
+              note: '${c.trackedDays} days tracked · ${c.noSpendDays} no-spend days.'),
         ]),
-        const SizedBox(height: 16),
-        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          Container(
-            width: 104,
-            height: 104,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: gc, width: 3),
-              boxShadow: [
-                BoxShadow(color: gc.withValues(alpha: 0.45), blurRadius: 24),
-              ],
-            ),
-            child: Text(c.grade,
-                style: TextStyle(
-                    color: gc,
-                    fontSize: 44,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -1)),
-          ),
-          const SizedBox(width: 18),
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${c.score}/100',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text(
-                  'Spent ${formatRupees(c.spent, compact: true)}'
-                  '${rate == null ? '' : ' · saved ${(rate * 100).round()}%'}',
-                  style: const TextStyle(
-                      color: dim, fontSize: 13, fontWeight: FontWeight.w600)),
-              Text(
-                  '${c.noSpendDays} no-spend days · ${c.trackedDays} days tracked',
-                  style: const TextStyle(
-                      color: dim, fontSize: 13, fontWeight: FontWeight.w600)),
-            ]),
-          ),
-        ]),
-        const SizedBox(height: 18),
-        _Bar(label: 'BUDGET', score: c.budgetScore, max: 40, color: AerisColors.arc),
-        _Bar(label: 'SAVINGS', score: c.savingsScore, max: 40, color: AerisColors.mint),
-        _Bar(label: 'HABITS', score: c.habitScore, max: 20, color: AerisColors.violet),
-      ]),
-    );
+      ),
+    ]);
   }
 }
 
@@ -255,42 +263,79 @@ class _Bar extends StatelessWidget {
   final String label;
   final int score;
   final int max;
-  final Color color;
+  final String note;
   const _Bar(
       {required this.label,
       required this.score,
       required this.max,
-      required this.color});
+      required this.note});
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(children: [
-        SizedBox(
-            width: 74,
-            child: Text(label,
-                style: hudLabel(context, color: const Color(0xB3E6E8EB), size: 10))),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              value: score / max,
-              minHeight: 7,
-              color: color,
-              backgroundColor: Colors.white.withValues(alpha: 0.08),
-            ),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+              child: Text(label, style: Ts.rowTitle.copyWith(color: tk.t1))),
+          Text.rich(
+            TextSpan(children: [
+              TextSpan(
+                  text: '$score',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              TextSpan(text: '/$max', style: TextStyle(color: tk.t2)),
+            ]),
+            style: TextStyle(
+                fontSize: 15,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: tk.t1),
           ),
-        ),
-        SizedBox(
-          width: 48,
-          child: Text('$score/$max',
-              textAlign: TextAlign.end,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700)),
-        ),
+        ]),
+        const SizedBox(height: 6),
+        RisingProgress(value: max == 0 ? 0 : score / max, stroke: 3, dot: 4),
+        const SizedBox(height: 6),
+        Text(note, style: TextStyle(fontSize: 12, color: tk.t2)),
+      ]),
+    );
+  }
+}
+
+/// "What went well" / "Try next month": an overline and short lines.
+class _ListCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final List<String> lines;
+  const _ListCard(
+      {required this.title,
+      required this.icon,
+      required this.color,
+      required this.lines});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return AerisCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Overline(title),
+        const SizedBox(height: 6),
+        for (final l in lines)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(icon, size: 16, color: color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(l,
+                    style: TextStyle(
+                        fontSize: 15, height: 22 / 15, color: tk.t1)),
+              ),
+            ]),
+          ),
       ]),
     );
   }

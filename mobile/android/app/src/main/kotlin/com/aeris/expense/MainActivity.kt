@@ -51,6 +51,8 @@ class MainActivity : FlutterFragmentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        // Widgets placed before background refresh existed get it now.
+        if (WidgetData.anyPlaced(this)) WidgetData.keepFresh(this)
         // Opened from another app's share sheet. Not on a restore: the same
         // intent comes back then, and the image has already been handed over.
         if (savedInstanceState == null) captureShare(intent)

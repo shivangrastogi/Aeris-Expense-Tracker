@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -9,22 +9,26 @@ import '../../core/routes.dart';
 import '../../core/theme.dart';
 import '../../models/budget.dart';
 import '../../models/category.dart';
+import '../../models/loan.dart';
 import '../../models/subscription.dart';
 import '../../models/transaction.dart';
 import '../../providers/accounts_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/loans_provider.dart';
 import '../../providers/transactions_provider.dart';
 import '../../providers/money_providers.dart';
 import '../../services/category_rules.dart';
 import '../../services/entry_checks.dart';
+import '../../services/loan_service.dart';
 import '../../services/receipt_scanner.dart';
+import '../../services/scan_reader.dart';
 import '../../services/sms_templates.dart';
 import '../../utils/amount_input_formatter.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/discard_guard.dart';
 import '../../widgets/receipt_field.dart';
-import '../loans/loans_screen.dart';
 import '../../widgets/aeris_toast.dart';
+import '../../widgets/ds.dart';
 
 const _kLastAccountPref = 'last_txn_account';
 
@@ -70,7 +74,16 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   Uint8List? _receipt;
   Uint8List? _originalReceipt;
   bool _busy = false;
-  bool _scanning = false; // OCR running on a just-attached receipt
+  bool _scanning = false; // OCR running on a just-scanned photo
+  // What was read from it (UPI ID, UTR…). Saved as a generated SMS-style
+  // text in place of the photo, which isn't kept.
+  ScanResult? _scanned;
+
+  // Lent / borrowed money and its repayments: neither spend nor income.
+  _Kind _kind = _Kind.normal;
+  String? _loanId; // the loan repaid; null = one not recorded yet
+  final _loanTotal = TextEditingController(); // that new loan's full amount
+  List<Loan> _loans = const [];
 
   // Snapshot of the data this screen needs, taken once on open so streams
   // emitting in the background never rebuild (or reshuffle) the form.
@@ -104,9 +117,13 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
         _account ?? '',
         _when.millisecondsSinceEpoch ~/ 60000,
         _receipt?.length ?? 0,
+        _scanned != null,
         _repeatMonthly,
         if (_editing || _categoryManual) _categoryId,
         if (_editing) _dir.name,
+        _kind.name,
+        _loanId ?? '',
+        _loanTotal.text,
       ].join('|');
 
   bool get _dirty => _snapshot() != _baseline;
@@ -124,6 +141,20 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     _when = e?.timestamp ?? DateTime.now();
     _initialAmount = e == null ? '' : _plain(e.amount / _rate);
     _amount.text = _initialAmount;
+    _kind = e == null
+        ? _Kind.normal
+        : e.startsLoan
+            ? _Kind.start
+            : e.repaysLoan
+                ? _Kind.repay
+                : _Kind.normal;
+    _loanId = e != null && e.repaysLoan ? e.loanId : null;
+    // Loans may still be loading when the form opens.
+    _loans = ref.read(loansStreamProvider).valueOrNull ?? const [];
+    ref.listenManual(loansStreamProvider, (_, next) {
+      final v = next.valueOrNull;
+      if (v != null && mounted) setState(() => _loans = v);
+    });
 
     _txns = ref.read(transactionsStreamProvider).asData?.value ?? const [];
     _budgets = ref.read(effectiveBudgetsProvider);
@@ -148,6 +179,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     _amount.addListener(_syncGuard);
     _merchant.addListener(_syncGuard);
     _note.addListener(_syncGuard);
+    _loanTotal.addListener(_syncGuard);
 
     if (e == null) {
       _restoreLastAccount();
@@ -188,6 +220,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     _amountFocus.dispose();
     _merchant.dispose();
     _note.dispose();
+    _loanTotal.dispose();
     super.dispose();
   }
 
@@ -225,7 +258,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     final m = merchant.trim();
     if (m.isEmpty) return;
     final learned = await CategoryRules.instance.categoryFor(m);
-    final cat = learned ?? Categories.classify(m);
+    var cat = learned ?? Categories.classify(m);
+    // Hindi / Hinglish words the keywords don't know: "sabzi", "दवा".
+    if (cat == 'other') cat = ScanReader.categoryHint(m) ?? cat;
     if (cat != 'other' && mounted && !_categoryManual && cat != _categoryId) {
       setState(() {
         _categoryId = cat;
@@ -314,13 +349,14 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
   }
 
   Future<void> _openAllCategories() async {
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (s) => SafeArea(
+    final picked = await showDsSheet<String>(
+      context,
+      title: 'Category',
+      builder: (s) => SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: EdgeInsets.zero,
           child: GridView.count(
+            physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
             crossAxisCount: 4,
             mainAxisSpacing: 8,
@@ -348,6 +384,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
       final wasDefault = _categoryId == _defaultCategory;
       _dir = d;
       if (d == TxnDirection.credit) _repeatMonthly = false;
+      if (!_repayable.any((l) => l.id == _loanId)) _loanId = null;
       if (!_categoryManual && wasDefault) _categoryId = _defaultCategory;
       _chips = _chipCategories();
       _recents = _editing
@@ -355,6 +392,118 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
           : EntryChecks.recentTemplates(_txns, direction: _dir, limit: 8);
     });
     _syncGuard();
+  }
+
+  /// A split bill, or a friend's share of one paid back, has its own link
+  /// (on the detail screen) — no loan choice for those.
+  bool get _loanable {
+    final e = widget.existing;
+    return e == null || (e.split == null && (e.isLoan || !e.isSettlement));
+  }
+
+  /// Open loans this payment can pay back: money in repays what you lent,
+  /// money out what you borrowed. The one it already repays stays listed.
+  List<Loan> get _repayable {
+    final e = widget.existing;
+    final own = e != null && e.repaysLoan ? e.loanId : null;
+    return [
+      for (final l in _loans)
+        if ((!l.isSettled || l.id == own) &&
+            l.borrowed == (_dir == TxnDirection.debit))
+          l
+    ];
+  }
+
+  void _setKind(_Kind k) {
+    if (k == _kind) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _kind = k;
+      if (k != _Kind.normal) _repeatMonthly = false;
+      final list = _repayable;
+      if (k == _Kind.repay && !list.any((l) => l.id == _loanId)) {
+        // The payer's own loan if there is one, else the newest.
+        final who = _merchant.text.trim().toLowerCase();
+        _loanId = (list
+                    .where((l) =>
+                        who.isNotEmpty &&
+                        who.contains(l.person.toLowerCase().split(' ').first))
+                    .firstOrNull ??
+                list.firstOrNull)
+            ?.id;
+      }
+    });
+    _syncGuard();
+  }
+
+  /// "What is it?": ordinary spend/income, or money lent / borrowed, or a
+  /// repayment of a loan (with which one).
+  List<Widget> _loanSection(bool income) {
+    final tk = context.tk;
+    final repayable = _repayable;
+    final hint = switch ((_kind, income)) {
+      (_Kind.start, false) => 'Not counted as spending. The person you paid '
+          'owes it back; track it in Activity → Lent.',
+      (_Kind.start, true) => 'Not counted as income. You owe it back to the '
+          'person who sent it; track it in Activity → Lent.',
+      (_Kind.repay, true) =>
+        'Not counted as income. It comes off what they owe you, so you can '
+            'record a loan paid back in parts.',
+      (_Kind.repay, false) =>
+        'Not counted as spending. It comes off what you owe them.',
+      _ => null,
+    };
+    return [
+      const _SectionLabel('What is it?'),
+      const SizedBox(height: 6),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final (k, label) in [
+          (_Kind.normal, income ? 'Income' : 'Spending'),
+          (_Kind.start, income ? 'Borrowed' : 'Lent'),
+          (_Kind.repay, income ? 'Loan paid back' : 'Repaying a loan'),
+        ])
+          DsChip(label, selected: _kind == k, onTap: () => _setKind(k)),
+      ]),
+      if (hint != null) ...[
+        const SizedBox(height: 8),
+        Text(hint, style: Ts.bodyS.copyWith(color: tk.t2)),
+      ],
+      if (_kind == _Kind.repay) ...[
+        const SizedBox(height: 12),
+        _SectionLabel(income ? 'Which loan?' : 'Which loan are you repaying?'),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final l in repayable)
+            DsChip('${l.person} · ${formatRupees(l.outstanding)} left',
+                selected: _loanId == l.id, onTap: () {
+              setState(() => _loanId = l.id);
+              _syncGuard();
+            }),
+          DsChip('Not listed',
+              icon: Ph.plus,
+              selected: _loanId == null,
+              onTap: () {
+                setState(() => _loanId = null);
+                _syncGuard();
+              }),
+        ]),
+        if (_loanId == null) ...[
+          const SizedBox(height: 10),
+          TextField(
+            controller: _loanTotal,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: const [_formatter],
+            decoration: InputDecoration(
+              prefixText: '${kCurrency.symbol} ',
+              hintText: income
+                  ? 'How much did you lend them in total?'
+                  : 'How much did they lend you in total?',
+            ),
+          ),
+        ],
+      ],
+    ];
   }
 
   void _applyRecent(Transaction t) {
@@ -413,35 +562,94 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     _syncGuard();
   }
 
-  Future<void> _attachReceipt() async {
-    final picked = await pickReceipt(context);
-    if (picked == null || !mounted) return;
-    setState(() {
-      _receipt = picked;
-      _scanning = true;
-    });
-    _syncGuard();
-    // Read the bill on-device and fill whatever is still empty — never
-    // overwrite something the user already typed.
-    final info = await ReceiptScanner.scan(picked);
+  /// The text saved in place of the scanned photo, from the form as it is
+  /// now — corrections made after scanning are in it. Null without a scan.
+  String? _scanText(double amount) {
+    final s = _scanned;
+    if (s == null) return null;
+    final merchant = _merchant.text.trim();
+    final note = _note.text.trim();
+    return ScanSms.compose(
+      amount: amount,
+      direction: _dir,
+      when: _when,
+      kindLabel: s.kindLabel,
+      name: merchant.isEmpty ? null : merchant,
+      upiVpa: s.upiVpa,
+      reference: s.reference,
+      account: _account ?? s.account,
+      phone: s.phone,
+      note: note.isEmpty ? null : note,
+    );
+  }
+
+  void _showScanText() {
+    final text = _scanText(_amountInr(_amount.text) ?? 0);
+    if (text == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Saved instead of the photo'),
+        content: Text(text,
+            style: const TextStyle(
+                fontFamily: 'monospace', fontSize: 13, height: 1.4)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _scanPhoto() async {
+    final path = await pickScanImage(context);
+    if (path == null || !mounted) return;
+    setState(() => _scanning = true);
+    // Read it on-device (payment screen, bill or handwritten note) and fill
+    // whatever is still empty — never overwrite something the user already
+    // typed. The photo itself isn't kept.
+    final info = await ReceiptScanner.read(path);
+    await ReceiptScanner.forget(path); // the text is kept, not the photo
     if (!mounted) return;
-    setState(() => _scanning = false);
-    if (info == null) return;
+    setState(() {
+      _scanning = false;
+      _scanned = info;
+      // The account it was paid from, if it's one already tracked.
+      if (_account == null && _accounts.any((a) => a.key == info?.account)) {
+        _account = info!.account;
+      }
+    });
+    if (info == null) {
+      ScaffoldMessenger.of(context).showToast(SnackBar(
+          content: Text(ReceiptScanner.modelDownloading
+              ? 'The text reader is still downloading. Stay online and try '
+                  'again in a minute.'
+              : "Couldn't read any text in that photo.")));
+      return;
+    }
     // A payment screenshot knows whether the money came in or went out.
     if (info.direction != null && !_editing) _setDirection(info.direction!);
     final filled = <String>[];
-    if (info.total != null && _amount.text.trim().isEmpty) {
-      final s = _plain(info.total! / _rate);
+    // What it was for ("Category: food", "sabzi ke liye"); the name's own
+    // category, below, wins when it has one.
+    final purpose = [info.category, info.note].whereType<String>().join(' ');
+    if (purpose.isNotEmpty) await _autoCategorizeFor(purpose);
+    if (!mounted) return;
+    if (info.amount != null && _amount.text.trim().isEmpty) {
+      final s = _plain(info.amount! / _rate);
       _amount.value = TextEditingValue(
           text: s, selection: TextSelection.collapsed(offset: s.length));
-      filled.add(formatRupees(info.total!, decimals: info.total! % 1 != 0));
+      filled.add(formatRupees(info.amount!, decimals: info.amount! % 1 != 0));
     }
-    if (info.merchant != null && _merchant.text.trim().isEmpty) {
-      _merchant.text = info.merchant!;
-      _autoCategorizeFor(info.merchant!);
-      filled.add(info.merchant!);
+    if (info.name != null && _merchant.text.trim().isEmpty) {
+      _merchant.text = info.name!;
+      _autoCategorizeFor(info.name!);
+      filled.add(info.name!);
     }
-    final d = info.date;
+    if (info.note != null && _note.text.trim().isEmpty) {
+      _note.text = info.note!;
+    }
+    final d = info.when;
     if (d != null &&
         !d.isAfter(DateTime.now()) &&
         DateTime.now().difference(d).inDays < 120 &&
@@ -453,17 +661,30 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
           : DateTime(d.year, d.month, d.day, _when.hour, _when.minute));
     }
     _syncGuard();
-    if (filled.isNotEmpty) {
-      ScaffoldMessenger.of(context).showToast(
-          SnackBar(content: Text('Read from receipt: ${filled.join(' · ')}')));
-    }
+    // Ask for what the photo didn't have, and flag what was only guessed.
+    final missing = [
+      if (_amount.text.trim().isEmpty) 'the amount',
+      if (_merchant.text.trim().isEmpty) 'who it was ${_dir == TxnDirection.credit ? 'from' : 'paid to'}',
+      if (info.direction == null && !_editing) 'whether it was paid or received',
+    ];
+    final guessed = [
+      if (info.unsure.contains(ScanField.amount) && filled.isNotEmpty) 'amount',
+      if (info.unsure.contains(ScanField.name)) 'name',
+    ];
+    if (_amount.text.trim().isEmpty) _amountFocus.requestFocus();
+    ScaffoldMessenger.of(context).showToast(SnackBar(
+        content: Text([
+      filled.isEmpty ? 'Read the photo' : 'Read: ${filled.join(' · ')}',
+      if (missing.isNotEmpty) 'please enter ${missing.join(', ')}',
+      if (missing.isEmpty && guessed.isNotEmpty)
+        'check the ${guessed.join(' and ')}',
+    ].join(' — '))));
   }
 
   // ── Build ──────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final income = _dir == TxnDirection.credit;
     // Spend is typed in plain ink, income in green; Save is always the accent.
     final money =
@@ -526,7 +747,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                     if (_recents.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       SizedBox(
-                        height: 34,
+                        height: 36,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: _recents.length,
@@ -534,12 +755,10 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                           itemBuilder: (_, i) {
                             final t = _recents[i];
                             final c = Categories.byId(t.categoryId);
-                            return ActionChip(
-                              avatar: Icon(c.icon, size: 16, color: c.color),
-                              label: Text(
-                                  '${t.merchant} · ${formatRupees(t.amount)}'),
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => _applyRecent(t),
+                            return DsChip(
+                              '${t.merchant} · ${formatRupees(t.amount)}',
+                              icon: c.icon,
+                              onTap: () => _applyRecent(t),
                             );
                           },
                         ),
@@ -552,84 +771,64 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                       known: _knownMerchants,
                       onChanged: _autoCategorizeFor,
                     ),
-                    gap,
-                    const _SectionLabel('Category'),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      height: 40,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          for (final c in _chips) ...[
-                            ChoiceChip(
-                              avatar: Icon(c.icon, size: 16, color: c.color),
-                              label: Text(_short(c.label)),
-                              selected: c.id == _categoryId,
-                              showCheckmark: false,
-                              selectedColor: c.color.withValues(alpha: 0.18),
-                              side: BorderSide(
-                                  color: c.id == _categoryId
-                                      ? c.color
-                                      : scheme.outlineVariant),
-                              onSelected: (_) => _pickCategory(c.id),
-                            ),
-                            const SizedBox(width: 8),
+                    if (_loanable) ...[gap, ..._loanSection(income)],
+                    // A loan isn't spending or income, so it has no category.
+                    if (_kind == _Kind.normal) ...[
+                      gap,
+                      const _SectionLabel('Category'),
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        height: 40,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            for (final c in _chips) ...[
+                              _CatChip(
+                                category: c,
+                                selected: c.id == _categoryId,
+                                onTap: () => _pickCategory(c.id),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            DsChip('All',
+                                icon: Ph.squaresFour,
+                                onTap: _openAllCategories),
                           ],
-                          ActionChip(
-                            avatar:
-                                const Icon(Icons.grid_view_rounded, size: 16),
-                            label: const Text('All'),
-                            onPressed: _openAllCategories,
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                     gap,
                     const _SectionLabel('When'),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
-                      runSpacing: 6,
+                      runSpacing: 8,
                       children: [
-                        ChoiceChip(
-                          label: const Text('Today'),
-                          selected: _sameDay(_when, now),
-                          onSelected: (_) => _setDay(now),
-                        ),
-                        ChoiceChip(
-                          label: const Text('Yesterday'),
-                          selected: _sameDay(_when, yesterday),
-                          onSelected: (_) => _setDay(yesterday),
-                        ),
-                        ChoiceChip(
-                          avatar: Icon(Icons.calendar_today_rounded,
-                              size: 16,
-                              color: customDay
-                                  ? scheme.onSecondaryContainer
-                                  : scheme.onSurfaceVariant),
-                          label: Text(customDay
-                              ? DateFormat('d MMM yyyy').format(_when)
-                              : 'Pick date'),
-                          selected: customDay,
-                          showCheckmark: false,
-                          onSelected: (_) => _pickDate(),
-                        ),
-                        ActionChip(
-                          avatar: const Icon(Icons.schedule_rounded, size: 16),
-                          label: Text(
-                              TimeOfDay.fromDateTime(_when).format(context)),
-                          onPressed: _pickTime,
-                        ),
+                        DsChip('Today',
+                            selected: _sameDay(_when, now),
+                            onTap: () => _setDay(now)),
+                        DsChip('Yesterday',
+                            selected: _sameDay(_when, yesterday),
+                            onTap: () => _setDay(yesterday)),
+                        DsChip(
+                            customDay
+                                ? DateFormat('d MMM yyyy').format(_when)
+                                : 'Pick date',
+                            icon: Ph.calendarBlank,
+                            selected: customDay,
+                            onTap: _pickDate),
+                        DsChip(TimeOfDay.fromDateTime(_when).format(context),
+                            icon: Ph.clock, onTap: _pickTime),
                       ],
                     ),
                     gap,
                     if (_accounts.isNotEmpty) ...[
+                      const _SectionLabel('Account'),
+                      const SizedBox(height: 6),
                       DropdownButtonFormField<String?>(
                         initialValue: _account,
                         isExpanded: true,
-                        decoration: const InputDecoration(
-                            labelText: 'Account (optional)',
-                            prefixIcon: Icon(Icons.account_balance_rounded)),
+                        decoration: const InputDecoration(),
                         items: [
                           const DropdownMenuItem(
                               value: null, child: Text('No account')),
@@ -648,14 +847,15 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
+                    const _SectionLabel('Note'),
+                    const SizedBox(height: 6),
                     TextField(
                       controller: _note,
                       maxLength: 200,
                       textCapitalization: TextCapitalization.sentences,
                       textInputAction: TextInputAction.done,
                       decoration: const InputDecoration(
-                        labelText: 'Note (optional)',
-                        prefixIcon: Icon(Icons.notes_rounded),
+                        hintText: 'Optional',
                         counterText: '',
                       ),
                     ),
@@ -664,24 +864,37 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                       spacing: 8,
                       runSpacing: 6,
                       children: [
-                        if (_receipt == null)
+                        if (_scanning)
+                          const Chip(
+                            avatar: SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2)),
+                            label: Text('Reading…'),
+                          )
+                        else if (_scanned != null)
+                          InputChip(
+                            avatar: const Icon(Ph.chatText, size: 16),
+                            label: const Text('Scanned'),
+                            onPressed: _showScanText,
+                            onDeleted: () {
+                              setState(() => _scanned = null);
+                              _syncGuard();
+                            },
+                          )
+                        else if (_receipt == null)
                           ActionChip(
-                            avatar: const Icon(Icons.document_scanner_outlined,
+                            avatar: const Icon(Ph.scan,
                                 size: 16),
-                            label: const Text('Scan receipt'),
-                            onPressed: _attachReceipt,
+                            label: const Text('Scan photo'),
+                            onPressed: _scanPhoto,
                           )
                         else
                           InputChip(
-                            avatar: _scanning
-                                ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2))
-                                : const Icon(Icons.receipt_long_rounded,
-                                    size: 16),
-                            label: Text(_scanning ? 'Reading…' : 'Receipt'),
+                            avatar: const Icon(Ph.receipt,
+                                size: 16),
+                            label: const Text('Receipt'),
                             onPressed: () =>
                                 showReceiptViewer(context, _receipt!),
                             onDeleted: () {
@@ -689,9 +902,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                               _syncGuard();
                             },
                           ),
-                        if (!_editing && !income)
+                        if (!_editing && !income && _kind == _Kind.normal)
                           FilterChip(
-                            avatar: const Icon(Icons.event_repeat_rounded,
+                            avatar: const Icon(Ph.repeat,
                                 size: 16),
                             label: Text(_repeatMonthly
                                 ? 'Repeats monthly (day ${_when.day.clamp(1, 28)})'
@@ -702,17 +915,6 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                               setState(() => _repeatMonthly = v);
                               _syncGuard();
                             },
-                          ),
-                        // Money lent to / borrowed from a friend isn't a
-                        // spend — it lives in "Lent & borrowed" until settled.
-                        if (!_editing && !_dirty)
-                          ActionChip(
-                            avatar:
-                                const Icon(Icons.handshake_outlined, size: 16),
-                            label: const Text('Lent or borrowed?'),
-                            onPressed: () => Navigator.pushReplacementNamed(
-                                context, AppRoutes.loans,
-                                arguments: LoansScreen.openAddSheet),
                           ),
                       ],
                     ),
@@ -725,7 +927,8 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
                 label: _editing
                     ? 'Update'
                     : (income ? 'Save income' : 'Save expense'),
-                color: AerisColors.accent(context),
+                amount: _amount,
+                amountInr: _amountInr,
                 busy: _busy,
                 onSave: _save,
               ),
@@ -782,7 +985,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
         final from =
             dup.source == TxnSource.sms ? ' (auto-imported from SMS)' : '';
         final ok = await _confirm(
-          icon: Icons.copy_all_outlined,
+          icon: Ph.copy,
           title: 'Possible duplicate',
           body: 'You already have '
               '${formatRupees(dup.amount, decimals: true, raw: true)}'
@@ -801,7 +1004,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
         EntryChecks.isUnusuallyLarge(amt, typical) &&
         mounted) {
       final ok = await _confirm(
-        icon: Icons.priority_high_rounded,
+        icon: Ph.warningCircle,
         title: 'That looks unusually high',
         body: '${formatRupees(amt, raw: true)} is much more than your usual '
             '${Categories.byId(_categoryId).label} '
@@ -816,6 +1019,48 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     return true;
   }
 
+  /// The loan choice as a [LoanLink], or null (after saying why) when it's
+  /// missing who the loan is with or how much it was.
+  LoanLink? _loanLink(String person) {
+    if (!_loanable || _kind == _Kind.normal) return const LoanNone();
+    String? problem;
+    LoanLink? link;
+    if (person.isEmpty) {
+      problem = _dir == TxnDirection.debit
+          ? 'Add who you paid: the loan is with them.'
+          : 'Add who paid you: the loan is with them.';
+    } else if (_kind == _Kind.start) {
+      link = LoanStart(person);
+    } else if (_loanId != null) {
+      final loan = _loans.where((l) => l.id == _loanId).firstOrNull;
+      if (loan != null) link = LoanRepay(loan);
+    } else {
+      final v = evalAmount(_loanTotal.text);
+      if (v != null && v > 0) {
+        link = LoanRepayNew(person, (v * _rate * 100).roundToDouble() / 100);
+      } else {
+        problem = 'Enter how much the whole loan was.';
+      }
+    }
+    if (link == null) {
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showToast(SnackBar(
+          content: Text(problem ?? 'Pick the loan this pays back.')));
+    }
+    return link;
+  }
+
+  String _loanSaved(String person) {
+    final income = _dir == TxnDirection.credit;
+    final what = switch ((_kind, income)) {
+      (_Kind.start, false) => 'Lent to $person',
+      (_Kind.start, true) => 'Borrowed from $person',
+      (_, true) => 'Payback from $person saved',
+      (_, false) => 'Repayment to $person saved',
+    };
+    return '$what · not counted as ${income ? 'income' : 'spending'}';
+  }
+
   Future<void> _save() async {
     final uid = ref.read(currentUserIdProvider);
     if (uid == null) return;
@@ -826,14 +1071,34 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
       HapticFeedback.heavyImpact();
       return;
     }
+    final merchant = _merchant.text.trim();
+    final link = _loanLink(merchant);
+    if (link == null) return;
     if (!await _passesChecks(amt) || !mounted) return;
 
     setState(() => _busy = true);
     final fs = ref.read(firestoreServiceProvider);
     final e = widget.existing;
-    final merchant = _merchant.text.trim();
     final note = _note.text.trim();
-    final t = Transaction(
+    // A scanned photo is kept as generated SMS-style text, rewritten when an
+    // earlier scan's entry is edited. A real bank SMS is never replaced.
+    final ownSms = e?.smsBody != null && !e!.scanGenerated;
+    final scanBody = ownSms
+        ? null
+        : _scanned != null
+            ? _scanText(amt)
+            : (e?.scanGenerated ?? false)
+                ? ScanSms.recompose(e!.smsBody!,
+                    amount: amt,
+                    direction: _dir,
+                    when: _when,
+                    name: merchant.isEmpty ? null : merchant,
+                    upiVpa: e.upiVpa,
+                    reference: e.reference,
+                    account: _account,
+                    note: note.isEmpty ? null : note)
+                : null;
+    var t = Transaction(
       id: e?.id ?? const Uuid().v4(),
       amount: amt,
       direction: _dir,
@@ -844,11 +1109,11 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
       note: note.isEmpty ? null : note,
       // Editing keeps provenance (SMS text, UPI ref…) intact.
       source: e?.source ?? TxnSource.manual,
-      smsBody: e?.smsBody,
-      smsSender: e?.smsSender,
+      smsBody: scanBody ?? e?.smsBody,
+      smsSender: scanBody != null ? Transaction.scanSender : e?.smsSender,
       reviewed: true,
-      reference: e?.reference,
-      upiVpa: e?.upiVpa,
+      reference: e?.reference ?? _scanned?.reference,
+      upiVpa: e?.upiVpa ?? _scanned?.upiVpa,
       hasReceipt: _receipt != null,
       balance: e?.balance,
       linkId: e?.linkId,
@@ -865,6 +1130,9 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
       // A fixed amount / type / category on an SMS import teaches the parser
       // this bank's message format.
       if (e != null) await SmsTemplates.instance.learn(e, t);
+      if (_loanable && (_kind != _Kind.normal || (e?.isLoan ?? false))) {
+        t = await LoanService.instance.relink(uid, e, t, link, _loans);
+      }
       if (_receipt != null && !identical(_receipt, _originalReceipt)) {
         await fs.setReceipt(uid, t.id, _receipt!);
       } else if (_receipt == null && (e?.hasReceipt ?? false)) {
@@ -891,7 +1159,7 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
           .showToast(SnackBar(content: Text('Could not save: $err')));
       return;
     }
-    if (merchant.isNotEmpty) {
+    if (merchant.isNotEmpty && _kind == _Kind.normal) {
       await CategoryRules.instance.remember(merchant, _categoryId);
     }
     try {
@@ -910,11 +1178,13 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
     final dir = _dir;
     messenger.hideToast();
     messenger.showToast(SnackBar(
-      content: Text(_editing
-          ? 'Transaction updated'
-          : '${dir == TxnDirection.credit ? 'Income' : 'Expense'} of '
-              '${formatRupees(amt, decimals: amt % 1 != 0, raw: true)} saved'
-              '${_repeatMonthly ? ' · added to Subscriptions' : ''}'),
+      content: Text(_kind != _Kind.normal
+          ? _loanSaved(merchant)
+          : _editing
+              ? 'Transaction updated'
+              : '${dir == TxnDirection.credit ? 'Income' : 'Expense'} of '
+                  '${formatRupees(amt, decimals: amt % 1 != 0, raw: true)} saved'
+                  '${_repeatMonthly ? ' · added to Subscriptions' : ''}'),
       action: _editing
           ? null
           : SnackBarAction(
@@ -932,18 +1202,17 @@ class _AddTransactionScreenState extends ConsumerState<AddTransactionScreen> {
 
 String _short(String label) => label.split(RegExp(r' [&/] ')).first;
 
+/// Field label, set above the field (12/600, secondary).
 class _SectionLabel extends StatelessWidget {
   final String text;
   const _SectionLabel(this.text);
 
   @override
-  Widget build(BuildContext context) => Text(text,
-      style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Theme.of(context).colorScheme.onSurfaceVariant));
+  Widget build(BuildContext context) =>
+      Text(text, style: Ts.label.copyWith(color: context.tk.t2));
 }
 
+/// × · Expense | Income · mic.
 class _Header extends StatelessWidget {
   final TxnDirection dir;
   final ValueChanged<TxnDirection> onDirection;
@@ -960,92 +1229,48 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    Widget seg(TxnDirection d, String label, IconData icon, Color color) {
-      final on = d == dir;
-      return Expanded(
-        child: Semantics(
-          button: true,
-          selected: on,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => onDirection(d),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-              decoration: on
-                  ? AerisColors.cardDecoration(context, radius: 11)
-                  : const BoxDecoration(),
-              alignment: Alignment.center,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon,
-                      size: 16, color: on ? color : scheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  // Flexible: narrow phones + large system font must shrink
-                  // the label, never overflow the header.
-                  Flexible(
-                    child: Text(label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: on ? color : scheme.onSurfaceVariant)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(4, 4, showVoice ? 4 : 16, 0),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Close',
-            icon: const Icon(Icons.close_rounded),
-            onPressed: onClose,
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Container(
-              height: 42,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  seg(TxnDirection.debit, 'Expense', Icons.south_west_rounded,
-                      AerisColors.moneyOut(context)),
-                  seg(TxnDirection.credit, 'Income', Icons.north_east_rounded,
-                      AerisColors.moneyIn(context)),
-                ],
-              ),
-            ),
-          ),
-          if (showVoice) ...[
-            const SizedBox(width: 4),
+    final tk = context.tk;
+    return SizedBox(
+      height: 56,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          children: [
             IconButton(
-              tooltip: 'Say it instead',
-              icon: const Icon(Icons.mic_none_rounded),
-              color: AerisColors.accent(context),
-              onPressed: onVoice,
+              tooltip: 'Close',
+              icon: Icon(Ph.x, size: 22, color: tk.t1),
+              onPressed: onClose,
             ),
+            Expanded(
+              child: Center(
+                child: SizedBox(
+                  width: 180,
+                  child: DsSegmented(
+                    height: 36,
+                    labels: const ['Expense', 'Income'],
+                    index: dir == TxnDirection.debit ? 0 : 1,
+                    onChanged: (i) => onDirection(
+                        i == 0 ? TxnDirection.debit : TxnDirection.credit),
+                  ),
+                ),
+              ),
+            ),
+            if (showVoice)
+              IconButton(
+                tooltip: 'Say it instead',
+                icon: Icon(Ph.microphone, size: 22, color: tk.t1),
+                onPressed: onVoice,
+              )
+            else
+              const SizedBox(width: 48),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
-/// The amount input with its operator rail attached underneath.
+/// The amount, large and centred, with its operator rail underneath.
 ///
 /// The rail sits inside a [TextFieldTapRegion] and its keys can't take focus,
 /// so tapping + − × ÷ keeps the keyboard open and the cursor in place.
@@ -1076,79 +1301,147 @@ class _AmountField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tk = context.tk;
+    const size = 40.0;
     return TextFieldTapRegion(
-      child: Container(
-        // The amount is the one thing this screen is about: a raised white
-        // card, outlined in red only when Save found it missing.
-        decoration: AerisColors.cardDecoration(context, radius: 20).copyWith(
-          border: error ? Border.all(color: scheme.error, width: 1.6) : null,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                autofocus: autofocus,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                textInputAction: TextInputAction.next,
-                inputFormatters: [formatter],
-                onChanged: (_) => onChanged(),
-                style: TextStyle(
-                  fontSize: 34,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // "₹" + the field, centred as one unit. The field is sized to its
+          // text so the pair stays centred while typing.
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, v, field) {
+              const style = TextStyle(
+                  fontFamily: kFontFamily,
+                  fontSize: size,
                   fontWeight: FontWeight.w700,
-                  color: color,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-                decoration: InputDecoration(
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  hintText: '0',
-                  hintStyle: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurfaceVariant.withValues(alpha: 0.4)),
-                  prefixIcon: Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: Text(kCurrency.symbol.trim(),
+                  letterSpacing: -1,
+                  fontFeatures: [FontFeature.tabularFigures()]);
+              final tp = TextPainter(
+                text: TextSpan(text: v.text.isEmpty ? '0' : v.text, style: style),
+                textDirection: TextDirection.ltr,
+                textScaler: MediaQuery.textScalerOf(context),
+                maxLines: 1,
+              )..layout();
+              final textW = tp.width;
+              tp.dispose();
+              return LayoutBuilder(builder: (context, c) {
+                final w = (textW + 12).clamp(40.0, c.maxWidth - 40);
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(kCurrency.symbol.trim(),
                         style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            color: scheme.onSurfaceVariant)),
-                  ),
-                  prefixIconConstraints:
-                      const BoxConstraints(minWidth: 0, minHeight: 0),
+                            fontSize: size * 0.64,
+                            fontWeight: FontWeight.w600,
+                            color: color.withValues(alpha: 0.62))),
+                    const SizedBox(width: 2),
+                    SizedBox(width: w, child: field),
+                  ],
+                );
+              });
+            },
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              autofocus: autofocus,
+              textAlign: TextAlign.center,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.next,
+              inputFormatters: [formatter],
+              onChanged: (_) => onChanged(),
+              style: TextStyle(
+                fontSize: size,
+                height: 44 / size,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -1,
+                color: color,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+              decoration: InputDecoration(
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                hintText: '0',
+                hintStyle: TextStyle(
+                    fontSize: size,
+                    fontWeight: FontWeight.w700,
+                    color: tk.t3),
+              ),
+            ),
+          ),
+          if (error)
+            Center(
+              child: Container(
+                  width: 120, height: 2, color: tk.bad),
+            ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (final op in const ['+', '−', '×', '÷'])
+                _OpKey(op: op, onTap: () => onOp(op)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _ResultText(
+                  controller: controller,
+                  color: color,
+                  error: error,
+                  onCollapse: onCollapse,
+                  fallback: helper,
                 ),
               ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
-              child: Row(
-                children: [
-                  for (final op in const ['+', '−', '×', '÷'])
-                    _OpKey(op: op, onTap: () => onOp(op)),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: _ResultText(
-                      controller: controller,
-                      color: color,
-                      error: error,
-                      onCollapse: onCollapse,
-                      fallback: helper,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A category choice chip: tile-tinted when selected, with a check.
+class _CatChip extends StatelessWidget {
+  final ExpenseCategory category;
+  final bool selected;
+  final VoidCallback onTap;
+  const _CatChip(
+      {required this.category, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final c = category.color;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Rad.chip),
+        child: AnimatedContainer(
+          duration: Mo.standard,
+          curve: Mo.curve,
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: selected ? c.withValues(alpha: 0.14) : Colors.transparent,
+            borderRadius: BorderRadius.circular(Rad.chip),
+            border: Border.all(color: selected ? c : tk.hair2),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(selected ? PhBold.check : category.icon,
+                size: 16, color: c),
+            const SizedBox(width: 6),
+            Text(_short(category.label),
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: tk.t1)),
+          ]),
         ),
       ),
     );
@@ -1166,7 +1459,7 @@ class _OpKey extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: Material(
-        color: scheme.surfaceContainer,
+        color: context.tk.sunken,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           canRequestFocus: false, // keep focus (and the keyboard) on amount
@@ -1290,7 +1583,7 @@ class _BudgetHint extends StatelessWidget {
             color = scheme.error;
           } else {
             text = '${formatRupees(left)} left in $name';
-            if ((used + amt) / cap > 0.8) color = AerisColors.warning;
+            if ((used + amt) / cap > 0.8) color = context.tk.warn;
           }
         }
         if (text.isEmpty && kCurrency.code != 'INR') {
@@ -1329,7 +1622,8 @@ class _BudgetHint extends StatelessWidget {
   }
 }
 
-/// Merchant / payer field with inline suggestions from past entries.
+/// Merchant / payer field with suggestions from past entries, shown as a
+/// raised list under the field (matched part in bold, category on the right).
 class _MerchantField extends StatelessWidget {
   final TextEditingController controller;
   final bool income;
@@ -1344,17 +1638,20 @@ class _MerchantField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _SectionLabel(income ? 'Payer' : 'Merchant'),
+        const SizedBox(height: 6),
         TextField(
           controller: controller,
           textCapitalization: TextCapitalization.words,
           textInputAction: TextInputAction.done,
           onChanged: onChanged,
+          style: TextStyle(fontSize: 15, color: tk.t1),
           decoration: InputDecoration(
-            labelText: income ? 'Payer / source' : 'Merchant / payee',
-            prefixIcon: const Icon(Icons.storefront_rounded),
+            hintText: income ? 'Who paid you?' : 'Where did you spend?',
           ),
         ),
         ValueListenableBuilder<TextEditingValue>(
@@ -1369,25 +1666,38 @@ class _MerchantField extends StatelessWidget {
                     .take(4)
                     .toList();
             if (hits.isEmpty) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  for (final s in hits)
-                    ActionChip(
-                      label: Text(s),
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () {
+            return Container(
+              margin: const EdgeInsets.only(top: 8),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: tk.raised,
+                borderRadius: BorderRadius.circular(Rad.button),
+                border: tk.isDark ? Border.all(color: tk.hair) : null,
+                boxShadow: tk.shadowRaised,
+              ),
+              child: Material(
+                type: MaterialType.transparency,
+                child: Column(children: [
+                  for (var i = 0; i < hits.length; i++) ...[
+                    if (i > 0) Container(height: 1, color: tk.hair),
+                    InkWell(
+                      onTap: () {
+                        final s = hits[i];
                         controller.value = TextEditingValue(
                             text: s,
                             selection:
                                 TextSelection.collapsed(offset: s.length));
                         onChanged(s);
                       },
+                      child: Container(
+                        constraints: const BoxConstraints(minHeight: 46),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        alignment: Alignment.centerLeft,
+                        child: _boldMatch(hits[i], q, tk),
+                      ),
                     ),
-                ],
+                  ],
+                ]),
               ),
             );
           },
@@ -1395,54 +1705,72 @@ class _MerchantField extends StatelessWidget {
       ],
     );
   }
+
+  Widget _boldMatch(String s, String q, AerisTokens tk) {
+    final i = s.toLowerCase().indexOf(q);
+    final base = TextStyle(fontSize: 15, color: tk.t1);
+    if (i < 0) return Text(s, style: base);
+    return Text.rich(TextSpan(style: base, children: [
+      TextSpan(text: s.substring(0, i)),
+      TextSpan(
+          text: s.substring(i, i + q.length),
+          style: const TextStyle(fontWeight: FontWeight.w700)),
+      TextSpan(text: s.substring(i + q.length)),
+    ]));
+  }
 }
 
+/// Pinned above the keyboard: "Save expense · ₹486".
 class _SaveBar extends StatelessWidget {
   final String label;
-  final Color color;
+  final TextEditingController amount;
+  final double? Function(String) amountInr;
   final bool busy;
   final VoidCallback onSave;
   const _SaveBar({
     required this.label,
-    required this.color,
+    required this.amount,
+    required this.amountInr,
     required this.busy,
     required this.onSave,
   });
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tk = context.tk;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
       decoration: BoxDecoration(
-        color: AerisColors.canvas(context),
-        border: Border(
-            top: BorderSide(
-                color: scheme.outlineVariant.withValues(alpha: 0.5))),
+        color: tk.bg,
+        border: Border(top: BorderSide(color: tk.hair)),
       ),
-      child: FilledButton(
-        style: FilledButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: AerisColors.onAccent(context),
-          minimumSize: const Size.fromHeight(50),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: SizedBox(
+        height: 48,
+        child: FilledButton(
+          onPressed: busy ? null : onSave,
+          style: busy
+              ? FilledButton.styleFrom(
+                  disabledBackgroundColor: tk.acc,
+                  disabledForegroundColor: tk.onAcc)
+              : null,
+          child: busy
+              ? RisingLoader(color: tk.onAcc)
+              : ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: amount,
+                  builder: (_, v, __) {
+                    final inr = amountInr(v.text);
+                    return Text(inr == null || inr <= 0
+                        ? label
+                        : '$label · ${formatRupees(inr)}');
+                  },
+                ),
         ),
-        onPressed: busy ? null : onSave,
-        child: busy
-            ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2.4, color: AerisColors.onAccent(context)))
-            : Text(label,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
     );
   }
 }
 
+/// One cell of the "All categories" sheet: the tile and the short name.
 class _CategoryTile extends StatelessWidget {
   final ExpenseCategory category;
   final bool selected;
@@ -1455,36 +1783,31 @@ class _CategoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final c = category.color;
+    final tk = context.tk;
     return Material(
-      color:
-          selected ? c.withValues(alpha: 0.16) : scheme.surfaceContainerLowest,
+      color: selected ? category.color.withValues(alpha: 0.10) : Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(Rad.button),
         side: BorderSide(
-          color: selected ? c : scheme.outlineVariant.withValues(alpha: 0.5),
-          width: selected ? 1.6 : 1,
-        ),
+            color: selected ? category.color : Colors.transparent, width: 1.5),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(Rad.button),
         onTap: onTap,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(category.icon, size: 22, color: c),
-            const SizedBox(height: 4),
+            CatTile.of(category),
+            const SizedBox(height: 6),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(_short(category.label),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                    color:
-                        selected ? scheme.onSurface : scheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    color: selected ? tk.t1 : tk.t2,
                   )),
             ),
           ],
@@ -1493,3 +1816,7 @@ class _CategoryTile extends StatelessWidget {
     );
   }
 }
+
+/// What the money is: ordinary spend / income, money lent or borrowed
+/// ([start]), or a repayment of a loan ([repay]).
+enum _Kind { normal, start, repay }

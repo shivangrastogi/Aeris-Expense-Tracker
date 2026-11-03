@@ -3,7 +3,10 @@
     <color name="ic_launcher_background">#181B21</color>
     <!-- AERIS graphite — the app's dark canvas. The launch window uses it so
          the first native frame already matches the first Flutter frame. -->
-    <color name="aeris_void">#0F1115</color>
+    <color name="aeris_void">#0E1013</color>
+    <!-- Notification accent: the brand steel blue. Tints the status-bar
+         icon and app name so notifications match the app. -->
+    <color name="aeris_notification">#4F86C6</color>
     <!-- Home-screen widgets (light system theme), "Graphite" palette.
          values-night/colors.xml holds the dark set; RemoteViews resolve them
          per launcher mode. Keep in step with widgets_screen.dart `_W`. -->

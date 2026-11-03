@@ -3,6 +3,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme.dart';
 import '../../widgets/brand_mark.dart';
+import '../../widgets/ds.dart';
 
 /// App version — keep in step with `version:` in pubspec.yaml.
 const kAppVersion = '1.0.0';
@@ -13,47 +14,41 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = AerisColors.muted(context);
+    final tk = context.tk;
     return Scaffold(
       appBar: AppBar(title: const Text('About')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
           Center(
             child: Column(children: [
               const AerisBrandMark(size: 84),
               const SizedBox(height: 12),
-              const Text('AERIS Expense',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-              Text('Version $kAppVersion', style: TextStyle(color: muted)),
+              Text('AERIS Expense', style: Ts.headline.copyWith(color: tk.t1)),
+              Text('Version $kAppVersion', style: Ts.bodyS.copyWith(color: tk.t2)),
               const SizedBox(height: 6),
               Text('Private, automatic money tracking',
-                  style: TextStyle(color: muted)),
+                  style: Ts.body.copyWith(color: tk.t2)),
             ]),
           ),
           const SizedBox(height: 24),
-          AerisCard(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(children: [
-              ListTile(
-                leading: const Icon(Icons.privacy_tip_outlined),
-                title: const Text('Privacy policy'),
-                subtitle: const Text('What AERIS reads, stores and never does'),
-                trailing: const Icon(Icons.chevron_right_rounded),
+          ListGroup(inset: 64, children: [
+              SettingsRow(
+                icon: Ph.lockKey,
+                title: 'Privacy policy',
+                sub: 'What AERIS reads, stores and never does',
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
               ),
-              ListTile(
-                leading: const Icon(Icons.feedback_outlined),
-                title: const Text('Send feedback'),
-                subtitle: const Text('Report a problem or suggest something'),
-                trailing: const Icon(Icons.chevron_right_rounded),
+              SettingsRow(
+                icon: Ph.chatCenteredText,
+                title: 'Send feedback',
+                sub: 'Report a problem or suggest something',
                 onTap: () => Share.share(
                     'AERIS Expense v$kAppVersion feedback:\n\n',
                     subject: 'AERIS Expense feedback'),
               ),
-            ]),
-          ),
+          ]),
         ],
       ),
     );
@@ -124,9 +119,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
           for (final (title, body) in _sections) ...[
-            Text(title,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(title, style: Ts.title.copyWith(color: context.tk.t1)),
             const SizedBox(height: 6),
             Text(body, style: TextStyle(height: 1.5, color: muted)),
             const SizedBox(height: 18),

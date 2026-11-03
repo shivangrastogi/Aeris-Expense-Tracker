@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
-import '../../widgets/brand_mark.dart';
 import '../../providers/auth_provider.dart';
 import 'auth_widgets.dart';
 import '../../widgets/recovery_key_dialog.dart';
+import '../../widgets/ds.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -51,7 +51,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme;
     return Scaffold(
       body: SafeArea(
         child: Form(
@@ -64,34 +63,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 14),
-                      // ── Brand ──────────────────────────────────────
-                      const Row(
-                        children: [
-                          AerisBrandMark(size: 40),
-                          SizedBox(width: 12),
-                          Text('AERIS',
-                              style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.5)),
-                        ],
+                      AuthHeader(
+                        title: 'Create account',
+                        subtitle:
+                            "Everything is encrypted on this phone before it's backed up.",
+                        onBack: Navigator.canPop(context)
+                            ? () => Navigator.pop(context)
+                            : null,
                       ),
-                      const SizedBox(height: 32),
-                      const Text('Create account',
-                          style: TextStyle(
-                              fontSize: 27,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.8)),
-                      const SizedBox(height: 6),
-                      Text(
-                        "We'll generate your encryption keys & recovery key.",
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: c.onSurfaceVariant),
-                      ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 20),
 
                       // ── Tabs ───────────────────────────────────────
                       AuthTabs(
@@ -103,88 +83,64 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       // ── Fields ─────────────────────────────────────
                       AuthField(
                         controller: _name,
-                        icon: Icons.person_outline,
+                        icon: Ph.user,
                         hint: 'Full name',
                         textCapitalization: TextCapitalization.words,
                         validator: (v) => (v == null || v.trim().length < 2)
                             ? 'Enter your name'
                             : null,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       AuthField(
                         controller: _email,
-                        icon: Icons.mail_outline,
+                        icon: Ph.envelopeSimple,
                         hint: 'Email',
                         keyboardType: TextInputType.emailAddress,
                         validator: (v) => (v == null || !v.contains('@'))
                             ? 'Enter a valid email'
                             : null,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       AuthField(
                         controller: _pwd,
-                        icon: Icons.lock_outline,
+                        icon: Ph.lock,
                         hint: 'Password',
+                        placeholder: 'Create a password',
                         obscure: true,
-                        helper: 'At least 8 characters, with a letter and a '
-                            'number. It also unlocks your encrypted data.',
+                        onChanged: (_) => setState(() {}),
                         validator: passwordProblem,
                       ),
+                      AuthPasswordRules(_pwd.text),
 
                       if (_error != null) ...[
                         const SizedBox(height: 12),
-                        Text(_error!,
-                            style: TextStyle(color: c.error, fontSize: 13)),
+                        AuthError(_error!),
                       ],
 
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 20),
+                      // ── Recovery-key notice ────────────────────────
+                      AuthNote(
+                        icon: Ph.key,
+                        text: TextSpan(children: [
+                          const TextSpan(text: "Next you'll get a "),
+                          TextSpan(
+                            text: 'Recovery Key',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: context.tk.t1),
+                          ),
+                          const TextSpan(
+                              text: ". It's the only way back in if you "
+                                  'forget your password.'),
+                        ]),
+                      ),
+
+                      const SizedBox(height: 24),
                       AuthPrimaryButton(
                         label: 'Create account',
                         busyLabel: 'Creating account…',
                         busy: _busy,
                         onPressed: _submit,
-                      ),
-
-                      const SizedBox(height: 18),
-                      // ── Recovery-key notice ────────────────────────
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                        decoration: BoxDecoration(
-                          color: AerisColors.info.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.vpn_key_outlined,
-                                size: 20, color: AerisColors.info),
-                            const SizedBox(width: 9),
-                            Expanded(
-                              child: Text.rich(
-                                TextSpan(
-                                  style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w600,
-                                      height: 1.5,
-                                      color: c.onSurfaceVariant),
-                                  children: [
-                                    const TextSpan(text: "You'll see a "),
-                                    TextSpan(
-                                      text: 'Recovery Key',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          color: c.onSurface),
-                                    ),
-                                    const TextSpan(
-                                        text:
-                                            ' next — the only way back in if you '
-                                            'forget your password.'),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
 
                       const SizedBox(height: 8),
